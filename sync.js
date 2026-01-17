@@ -128,6 +128,7 @@ class SyncService {
       return { ok: false, reason: 'not_authenticated' };
     }
     this.syncAbort = false;
+    const warnings = [];
     await this.store.purgeHistory(HISTORY_RETENTION_DAYS);
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
@@ -137,7 +138,7 @@ class SyncService {
       return { ok: false, reason: 'aborted' };
     }
 
-    await this._syncTable('history', async () => this.store.listHistory({ limit: 1000 }), {
+    const historyResult = await this._syncTable('history', async () => this.store.listHistory({ limit: 1000 }), {
       table: 'history',
       key: 'history',
       mapRow: (row) => ({
@@ -152,11 +153,14 @@ class SyncService {
       }),
       upsertLocal: (row) => this.store.addHistory(row),
     });
+    if (historyResult && historyResult.skipped) {
+      warnings.push({ table: 'history', reason: historyResult.reason });
+    }
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
 
-    await this._syncTable('dictionary', () => this.store.listDictionary(), {
+    const dictionaryResult = await this._syncTable('dictionary', () => this.store.listDictionary(), {
       table: 'dictionary',
       key: 'dictionary',
       mapRow: (row) => ({
@@ -169,11 +173,14 @@ class SyncService {
       }),
       upsertLocal: (row) => this.store.upsertDictionary(row),
     });
+    if (dictionaryResult && dictionaryResult.skipped) {
+      warnings.push({ table: 'dictionary', reason: dictionaryResult.reason });
+    }
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
 
-    await this._syncTable('styles', () => this.store.listStyles(), {
+    const stylesResult = await this._syncTable('styles', () => this.store.listStyles(), {
       table: 'styles',
       key: 'styles',
       mapRow: (row) => ({
@@ -186,11 +193,14 @@ class SyncService {
       }),
       upsertLocal: (row) => this.store.upsertStyle(row),
     });
+    if (stylesResult && stylesResult.skipped) {
+      warnings.push({ table: 'styles', reason: stylesResult.reason });
+    }
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
 
-    await this._syncTable('notes', () => this.store.listNotes({ limit: 1000 }), {
+    const notesResult = await this._syncTable('notes', () => this.store.listNotes({ limit: 1000 }), {
       table: 'notes',
       key: 'notes',
       mapRow: (row) => ({
@@ -204,93 +214,121 @@ class SyncService {
       }),
       upsertLocal: (row) => this.store.addNote(row),
     });
+    if (notesResult && notesResult.skipped) {
+      warnings.push({ table: 'notes', reason: notesResult.reason });
+    }
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
 
-    await this._syncSettings();
+    const settingsResult = await this._syncSettings();
+    if (settingsResult && settingsResult.skipped) {
+      warnings.push({ table: 'user_settings', reason: settingsResult.reason });
+    }
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
 
-    return { ok: true };
+    return { ok: true, warnings };
   }
 
   async _syncSettings() {
-    const cursor = await this.store.getSyncCursor('settings');
-    const settingsMeta = await this.store.getSettingsWithMeta();
-    const settingsRows = Object.entries(settingsMeta).map(([key, meta]) => ({
-      id: `${this.user.id}:${key}`,
-      user_id: this.user.id,
-      key,
-      value: JSON.stringify(meta.value),
-      updated_at: meta.updated_at || new Date().toISOString(),
-    }));
-    if (settingsRows.length) {
-      await this.client.from('user_settings').upsert(settingsRows, { onConflict: 'id' });
-    }
+    try {
+      const cursor = await this.store.getSyncCursor('settings');
+      const settingsMeta = await this.store.getSettingsWithMeta();
+      const settingsRows = Object.entries(settingsMeta).map(([key, meta]) => ({
+        id: `${this.user.id}:${key}`,
+        user_id: this.user.id,
+        key,
+        value: JSON.stringify(meta.value),
+        updated_at: meta.updated_at || new Date().toISOString(),
+      }));
+      if (settingsRows.length) {
+        const { error: upsertError } = await this.client.from('user_settings').upsert(settingsRows, { onConflict: 'id' });
+        if (upsertError) {
+          throw upsertError;
+        }
+      }
 
-    let remoteQuery = this.client.from('user_settings').select('*').eq('user_id', this.user.id);
-    if (cursor) {
-      remoteQuery = remoteQuery.gte('updated_at', cursor);
-    }
-    const { data: remoteRows, error } = await remoteQuery;
-    if (error) {
+      let remoteQuery = this.client.from('user_settings').select('*').eq('user_id', this.user.id);
+      if (cursor) {
+        remoteQuery = remoteQuery.gte('updated_at', cursor);
+      }
+      const { data: remoteRows, error } = await remoteQuery;
+      if (error) {
+        throw error;
+      }
+
+      const localByKey = settingsMeta;
+      for (const row of remoteRows || []) {
+        const local = localByKey[row.key];
+        if (!local || row.updated_at > local.updated_at) {
+          await this.store.setSettingWithTimestamp(row.key, JSON.parse(row.value), row.updated_at);
+        }
+      }
+      await this.store.setSyncCursor('settings', new Date().toISOString());
+      return { skipped: false };
+    } catch (error) {
+      if (this._isMissingTableError(error)) {
+        return { skipped: true, reason: 'missing_table' };
+      }
       throw error;
     }
-
-    const localByKey = settingsMeta;
-    for (const row of remoteRows || []) {
-      const local = localByKey[row.key];
-      if (!local || row.updated_at > local.updated_at) {
-        await this.store.setSettingWithTimestamp(row.key, JSON.parse(row.value), row.updated_at);
-      }
-    }
-    await this.store.setSyncCursor('settings', new Date().toISOString());
   }
 
   async _syncTable(name, getLocalRows, config) {
-    if (this.syncAbort) {
-      return;
-    }
-    const cursor = await this.store.getSyncCursor(config.key);
-    const localRows = await getLocalRows();
-    if (this.syncAbort) {
-      return;
-    }
-    const localUpdates = cursor
-      ? localRows.filter((row) => row.updated_at >= cursor)
-      : localRows;
+    try {
+      if (this.syncAbort) {
+        return { skipped: false };
+      }
+      const cursor = await this.store.getSyncCursor(config.key);
+      const localRows = await getLocalRows();
+      if (this.syncAbort) {
+        return { skipped: false };
+      }
+      const localUpdates = cursor
+        ? localRows.filter((row) => row.updated_at >= cursor)
+        : localRows;
 
-    if (localUpdates.length > 0) {
-      const payload = localUpdates.map(config.mapRow);
-      await this.client.from(config.table).upsert(payload, { onConflict: 'id' });
-    }
-    if (this.syncAbort) {
-      return;
-    }
+      if (localUpdates.length > 0) {
+        const payload = localUpdates.map(config.mapRow);
+        const { error: upsertError } = await this.client.from(config.table).upsert(payload, { onConflict: 'id' });
+        if (upsertError) {
+          throw upsertError;
+        }
+      }
+      if (this.syncAbort) {
+        return { skipped: false };
+      }
 
-    let remoteQuery = this.client.from(config.table).select('*').eq('user_id', this.user.id);
-    if (cursor) {
-      remoteQuery = remoteQuery.gte('updated_at', cursor);
-    }
-    const { data: remoteRows, error } = await remoteQuery;
-    if (error) {
+      let remoteQuery = this.client.from(config.table).select('*').eq('user_id', this.user.id);
+      if (cursor) {
+        remoteQuery = remoteQuery.gte('updated_at', cursor);
+      }
+      const { data: remoteRows, error } = await remoteQuery;
+      if (error) {
+        throw error;
+      }
+
+      const localById = new Map(localRows.map((row) => [row.id, row]));
+      for (const row of remoteRows || []) {
+        if (this.syncAbort) {
+          return { skipped: false };
+        }
+        const local = localById.get(row.id);
+        if (!local || row.updated_at > local.updated_at) {
+          await config.upsertLocal(row);
+        }
+      }
+
+      await this.store.setSyncCursor(config.key, new Date().toISOString());
+      return { skipped: false };
+    } catch (error) {
+      if (this._isMissingTableError(error)) {
+        return { skipped: true, reason: 'missing_table' };
+      }
       throw error;
     }
-
-    const localById = new Map(localRows.map((row) => [row.id, row]));
-    for (const row of remoteRows || []) {
-      if (this.syncAbort) {
-        return;
-      }
-      const local = localById.get(row.id);
-      if (!local || row.updated_at > local.updated_at) {
-        await config.upsertLocal(row);
-      }
-    }
-
-    await this.store.setSyncCursor(config.key, new Date().toISOString());
   }
 
   async _purgeRemoteHistory(days) {
@@ -319,6 +357,17 @@ class SyncService {
 
   abortSync() {
     this.syncAbort = true;
+  }
+
+  _isMissingTableError(error) {
+    const message = (error && error.message ? error.message : '').toLowerCase();
+    if (message.includes('could not find the table')) {
+      return true;
+    }
+    if (message.includes('relation') && message.includes('does not exist')) {
+      return true;
+    }
+    return false;
   }
 
   _registerAuthListener() {

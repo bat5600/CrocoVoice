@@ -121,6 +121,8 @@
       <div class="status" id="signupStatus"></div>
       <button class="cta" type="submit" id="signupSubmit">Creer un compte</button>
     </form>
+    <div class="status" id="signupSuccess" style="display:none;"></div>
+    <a class="muted" id="signupBackLink" href="/" style="display:none;text-decoration:none;">Revenir en arriere</a>
     <div class="details">
       Pensez a configurer SUPABASE_URL et SUPABASE_ANON_KEY dans ce fichier.
     </div>
@@ -138,11 +140,30 @@
       const passwordInput = document.getElementById('signupPassword');
       const passwordConfirmInput = document.getElementById('signupPasswordConfirm');
       const statusEl = document.getElementById('signupStatus');
+      const successEl = document.getElementById('signupSuccess');
+      const backLinkEl = document.getElementById('signupBackLink');
       const submitButton = document.getElementById('signupSubmit');
 
       function setStatus(message, isError) {
         statusEl.textContent = message || '';
         statusEl.style.color = isError ? '#dc2626' : '#16a34a';
+      }
+
+      function showSuccess(message) {
+        form.style.display = 'none';
+        statusEl.textContent = '';
+        successEl.textContent = message || 'Verifiez votre boite mail pour confirmer la creation du compte.';
+        successEl.style.display = 'block';
+        successEl.style.color = '#16a34a';
+        backLinkEl.style.display = 'inline-flex';
+      }
+
+      function maybeHandleConfirmation() {
+        const hash = window.location.hash || '';
+        if (!hash.includes('type=signup')) {
+          return;
+        }
+        showSuccess('Email confirme. Vous pouvez vous connecter dans l\'app.');
       }
 
       function isConfigured() {
@@ -162,6 +183,7 @@
       }
 
       const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      maybeHandleConfirmation();
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -189,12 +211,12 @@
           if (error) {
             throw error;
           }
-          if (data && data.session) {
-            setStatus('Compte cree. Vous pouvez vous connecter dans l\'app.', false);
-          } else {
-            setStatus('Compte cree. Verifiez votre boite mail pour confirmer.', false);
-          }
           form.reset();
+          if (data && data.session) {
+            showSuccess('Compte cree. Vous pouvez vous connecter dans l\'app.');
+          } else {
+            showSuccess('Verifiez votre boite mail pour confirmer la creation du compte.');
+          }
         } catch (error) {
           setStatus(error?.message || 'Echec de creation du compte.', true);
         } finally {
