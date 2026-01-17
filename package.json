@@ -1,0 +1,31 @@
+{
+  "name": "croco-voice",
+  "version": "1.0.0",
+  "description": "Voice-to-Text application using Electron and OpenAI Whisper",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "bmad:refresh": "bmad-method install -f -i codex",
+    "bmad:list": "bmad-method list:agents",
+    "bmad:validate": "bmad-method validate"
+  },
+  "keywords": [
+    "electron",
+    "voice-to-text",
+    "whisper",
+    "transcription"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "@nut-tree-fork/nut-js": "^4.1.0",
+    "dotenv": "^16.3.1",
+    "openai": "^4.20.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5"
+  }
+}

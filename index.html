@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      background: transparent;
+      background-color: rgba(0, 0, 0, 0);
+      background-image: none;
+      display: block;
+      min-height: 100vh;
+      font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+      overflow: visible;
+    }
+
+    :root {
+      --pill-bg: #0a0b0d;
+      --pill-edge: rgba(255, 255, 255, 0.08);
+      --pill-text: #f3f4f6;
+      --pill-muted: rgba(243, 244, 246, 0.6);
+      --croco-green: #36d96f;
+      --menu-bg: #0b0c0f;
+      --menu-border: rgba(255, 255, 255, 0.08);
+      --menu-hover: rgba(255, 255, 255, 0.08);
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .widget-shell {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 4px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    body.auth-gated {
+      background: radial-gradient(circle at top, rgba(24, 26, 30, 0.98), rgba(7, 8, 10, 0.98));
+    }
+
+    body.auth-gated .widget-shell {
+      display: none;
+    }
+
+    .auth-gate {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: var(--pill-text);
+    }
+
+    body.auth-gated .auth-gate {
+      display: flex;
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 320px;
+      background: rgba(12, 14, 18, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .auth-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--pill-text);
+    }
+
+    .auth-subtitle {
+      font-size: 12px;
+      color: var(--pill-muted);
+      line-height: 1.4;
+    }
+
+    .auth-status {
+      font-size: 12px;
+      color: var(--pill-muted);
+      min-height: 18px;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .auth-form input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--pill-text);
+      font-size: 12px;
+    }
+
+    .auth-form input::placeholder {
+      color: rgba(243, 244, 246, 0.5);
+    }
+
+    .auth-primary {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: linear-gradient(135deg, #36d96f, #22c55e);
+      color: #0b0c0f;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .auth-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .auth-actions button {
+      flex: 1;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: transparent;
+      color: var(--pill-text);
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .auth-actions button.secondary {
+      border-color: rgba(255, 255, 255, 0.1);
+      color: var(--pill-muted);
+    }
+
+    .widget-container {
+      position: relative;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    .pill-button {
+      width: 92px;
+      height: 28px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #101217 0%, #050607 100%);
+      border: 1px solid var(--pill-edge);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 22px rgba(0, 0, 0, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, width 0.2s ease, height 0.2s ease, opacity 0.2s ease;
+    }
+
+    .widget-container.idle .pill-button {
+      width: 64px;
+      height: 10px;
+      background: radial-gradient(70% 160% at 50% 50%, rgba(18, 20, 24, 0.95) 0%, rgba(12, 13, 16, 0.8) 55%, rgba(10, 11, 13, 0.65) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: none;
+      opacity: 0.85;
+    }
+
+    .widget-container.idle:hover .pill-button {
+      width: 92px;
+      height: 28px;
+      background: linear-gradient(180deg, #101217 0%, #050607 100%);
+      border: 1px solid var(--pill-edge);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 22px rgba(0, 0, 0, 0.35);
+      opacity: 1;
+    }
+
+    .widget-container.recording .pill-button {
+      width: 190px;
+      padding: 0 8px;
+      justify-content: space-between;
+    }
+
+    .widget-container:hover .pill-button {
+      transform: translateY(-1px);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .waveform {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      height: 18px;
+      flex: 1;
+    }
+
+    .waveform-canvas {
+      width: 58px;
+      height: 18px;
+    }
+
+    .spinner {
+      display: none;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(243, 244, 246, 0.2);
+      border-top-color: var(--croco-green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .cancel-button {
+      display: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: #2a2c30;
+      color: rgba(255, 255, 255, 0.85);
+      place-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .stop-button {
+      display: none;
+      height: 20px;
+      padding: 0 8px;
+      border-radius: 999px;
+      border: none;
+      background: #ef4444;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .stop-icon {
+      width: 8px;
+      height: 8px;
+      background: #ffffff;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .widget-container.idle .waveform,
+    .widget-container.idle .spinner,
+    .widget-container.idle .cancel-button,
+    .widget-container.idle .stop-button {
+      display: none;
+    }
+
+    .widget-container.recording .waveform {
+      display: flex;
+    }
+
+    .widget-container.recording .spinner {
+      display: none;
+    }
+
+    .widget-container.recording .cancel-button {
+      display: grid;
+    }
+
+    .widget-container.recording .stop-button {
+      display: inline-flex;
+    }
+
+    .widget-container.processing .spinner {
+      display: block;
+    }
+
+    .widget-container.processing .waveform {
+      display: none;
+    }
+
+    .widget-container.error .waveform,
+    .widget-container.error .spinner {
+      display: none;
+    }
+
+    .tooltip {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      left: 50%;
+      transform: translate(-50%, 8px);
+      background: var(--menu-bg);
+      color: var(--pill-text);
+      padding: 8px 12px;
+      font-size: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--menu-border);
+      box-shadow: var(--shadow);
+      max-width: calc(100vw - 20px);
+      white-space: normal;
+      text-align: center;
+      line-height: 1.3;
+      display: none;
+      pointer-events: none;
+    }
+
+    .tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 10px;
+      height: 10px;
+      background: var(--menu-bg);
+      border-right: 1px solid var(--menu-border);
+      border-bottom: 1px solid var(--menu-border);
+      transform-origin: center;
+      rotate: 45deg;
+    }
+
+    .tooltip kbd {
+      font-family: inherit;
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--pill-text);
+      padding: 2px 6px;
+      border-radius: 8px;
+      margin-left: 4px;
+    }
+
+    .status-text {
+      margin-top: 6px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--pill-muted);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .widget-container.processing .status-text,
+    .widget-container.error .status-text {
+      opacity: 1;
+    }
+
+    .widget-container:hover .tooltip {
+      display: block;
+      transform: translate(-50%, 0);
+    }
+
+    .context-menu {
+      position: absolute;
+      bottom: calc(100% + 18px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 260px;
+      background: var(--menu-bg);
+      border: 1px solid var(--menu-border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 8px 0;
+      display: none;
+      overflow: hidden;
+    }
+
+    .widget-container.context-open .context-menu {
+      display: block;
+      animation: menuIn 0.18s ease;
+    }
+
+    .widget-container.context-open .tooltip {
+      opacity: 0;
+      transform: translate(-50%, 8px);
+    }
+
+    .context-menu button {
+      appearance: none;
+      background: transparent;
+      border: none;
+      color: var(--pill-text);
+      width: 100%;
+      text-align: left;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .context-menu button:hover {
+      background: var(--menu-hover);
+    }
+
+    .menu-muted {
+      color: var(--pill-muted);
+      font-size: 11px;
+    }
+
+    .menu-separator {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 6px 0;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes menuIn {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 6px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-shell">
+    <div class="widget-container idle" id="widgetContainer">
+      <div class="pill-button">
+        <button class="cancel-button" type="button" id="cancelRecordingButton" aria-label="Annuler l'enregistrement">x</button>
+        <div class="waveform" aria-hidden="true">
+          <canvas class="waveform-canvas" id="waveformCanvas" width="58" height="18"></canvas>
+        </div>
+        <button class="stop-button" type="button" id="stopRecordingButton" aria-label="Arrêter">
+          <span class="stop-icon" aria-hidden="true"></span>
+          Arrêter
+        </button>
+        <div class="spinner" aria-hidden="true"></div>
+      </div>
+
+      <div class="tooltip" role="tooltip">
+        Cliquez ou maintenez <kbd id="shortcutLabel">[Raccourci]</kbd> pour dicter
+      </div>
+
+      <div class="status-text" id="statusText">Prêt</div>
+
+      <div class="context-menu" role="menu" aria-hidden="true">
+        <button type="button" role="menuitem" data-action="hide-1h">Masquer pendant 1 heure</button>
+        <button type="button" role="menuitem" data-action="open-settings">Paramètres</button>
+        <div class="menu-separator" role="separator"></div>
+        <button type="button" role="menuitem" data-action="open-microphone">
+          <span>Changer de microphone</span>
+          <span class="menu-muted">&gt;</span>
+        </button>
+        <button type="button" role="menuitem" data-action="open-language">
+          <span>Langue</span>
+          <span class="menu-muted">&gt;</span>
+        </button>
+        <div class="menu-separator" role="separator"></div>
+        <button type="button" role="menuitem" data-action="open-history">Voir l'historique</button>
+        <button type="button" role="menuitem" data-action="paste-latest">
+          <span>Coller la dernière transcription</span>
+          <span class="menu-muted">(Raccourci)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="auth-gate" id="authGate" aria-hidden="true">
+    <div class="auth-card">
+      <div class="auth-title">Connexion requise</div>
+      <p class="auth-subtitle">Connectez-vous pour acceder a CrocoVoice et synchroniser vos donnees.</p>
+      <div class="auth-status" id="authStatusText"></div>
+      <form class="auth-form" id="authForm">
+        <input id="authEmailInput" type="email" placeholder="Email" autocomplete="email" />
+        <input id="authPasswordInput" type="password" placeholder="Mot de passe" autocomplete="current-password" />
+        <button class="auth-primary" type="submit" id="authSubmitButton">Se connecter</button>
+      </form>
+      <div class="auth-actions">
+        <button class="secondary" type="button" id="authRetryButton">Reessayer</button>
+        <button type="button" id="authSignupButton">Creer un compte</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

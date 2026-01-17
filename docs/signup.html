@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creer un compte CrocoVoice</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(circle at top, #f8fafc, #e2e8f0);
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #ffffff;
+      border-radius: 20px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      box-shadow: 0 24px 50px rgba(15, 23, 42, 0.18);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    p {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #36d96f, #22c55e);
+      color: #0b0c0f;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field label {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .field input {
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 14px;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+
+    .status {
+      min-height: 18px;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .details {
+      font-size: 12px;
+      color: #64748b;
+      background: #f1f5f9;
+      padding: 10px 12px;
+      border-radius: 10px;
+      word-break: break-all;
+    }
+
+    .muted {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Creer un compte CrocoVoice</h1>
+    <p>Inscrivez-vous pour synchroniser vos donnees entre vos appareils.</p>
+    <form id="signupForm">
+      <div class="field">
+        <label for="signupEmail">Email</label>
+        <input id="signupEmail" type="email" placeholder="email@exemple.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="signupPassword">Mot de passe</label>
+        <input id="signupPassword" type="password" placeholder="8 caracteres minimum" autocomplete="new-password" />
+      </div>
+      <div class="field">
+        <label for="signupPasswordConfirm">Confirmer le mot de passe</label>
+        <input id="signupPasswordConfirm" type="password" placeholder="Confirmez le mot de passe" autocomplete="new-password" />
+      </div>
+      <div class="status" id="signupStatus"></div>
+      <button class="cta" type="submit" id="signupSubmit">Creer un compte</button>
+    </form>
+    <div class="details">
+      Pensez a configurer SUPABASE_URL et SUPABASE_ANON_KEY dans ce fichier.
+    </div>
+    <p class="muted">Deja un compte ? Connectez-vous directement dans l'app.</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script>
+    (() => {
+      const SUPABASE_URL = 'https://wkoqeffrwrlfvfcvqhee.supabase.co';
+      const SUPABASE_ANON_KEY = 'sb_publishable_4sRfQi2qDooCe722JUQwqQ_gF1NXLbu';
+
+      const form = document.getElementById('signupForm');
+      const emailInput = document.getElementById('signupEmail');
+      const passwordInput = document.getElementById('signupPassword');
+      const passwordConfirmInput = document.getElementById('signupPasswordConfirm');
+      const statusEl = document.getElementById('signupStatus');
+      const submitButton = document.getElementById('signupSubmit');
+
+      function setStatus(message, isError) {
+        statusEl.textContent = message || '';
+        statusEl.style.color = isError ? '#dc2626' : '#16a34a';
+      }
+
+      function isConfigured() {
+        return SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('your-');
+      }
+
+      if (!window.supabase || !window.supabase.createClient) {
+        setStatus('SDK Supabase indisponible.', true);
+        submitButton.disabled = true;
+        return;
+      }
+
+      if (!isConfigured()) {
+        setStatus('Configurez SUPABASE_URL et SUPABASE_ANON_KEY.', true);
+        submitButton.disabled = true;
+        return;
+      }
+
+      const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const email = (emailInput.value || '').trim();
+        const password = passwordInput.value || '';
+        const passwordConfirm = passwordConfirmInput.value || '';
+
+        if (!email || !email.includes('@')) {
+          setStatus('Email invalide.', true);
+          return;
+        }
+        if (password.length < 8) {
+          setStatus('Mot de passe trop court (8 caracteres min).', true);
+          return;
+        }
+        if (password !== passwordConfirm) {
+          setStatus('Les mots de passe ne correspondent pas.', true);
+          return;
+        }
+
+        submitButton.disabled = true;
+        setStatus('Creation du compte...', false);
+        try {
+          const { data, error } = await client.auth.signUp({ email, password });
+          if (error) {
+            throw error;
+          }
+          if (data && data.session) {
+            setStatus('Compte cree. Vous pouvez vous connecter dans l\'app.', false);
+          } else {
+            setStatus('Compte cree. Verifiez votre boite mail pour confirmer.', false);
+          }
+          form.reset();
+        } catch (error) {
+          setStatus(error?.message || 'Echec de creation du compte.', true);
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
