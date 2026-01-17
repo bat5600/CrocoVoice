@@ -1,4 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, clipboard, shell } = require('electron');
+
+app.disableHardwareAcceleration();
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -68,7 +70,7 @@ const RecordingState = Object.freeze({
 });
 
 const ACTION_DEBOUNCE_MS = 500;
-const HISTORY_RETENTION_DAYS = 14;
+const HISTORY_RETENTION_DAYS = 14; // Retain last 14 days of history before purge.
 let recordingState = RecordingState.IDLE;
 const lastActionAt = {
   start: 0,
@@ -78,6 +80,8 @@ let transitionLock = false;
 let processingTimeoutId = null;
 let pendingPasteBuffer = '';
 let typingTarget = null;
+let pendingSync = null;
+let syncInFlight = null;
 const OPENAI_TRANSCRIBE_TIMEOUT_MS = 30000;
 const OPENAI_CHAT_TIMEOUT_MS = 20000;
 const OPENAI_MAX_RETRIES = 2;
@@ -124,6 +128,57 @@ function setRecordingState(state, message) {
   recordingState = state;
   isRecording = state === RecordingState.RECORDING;
   sendStatus(state, message);
+  if (state === RecordingState.IDLE && pendingSync) {
+    const deferred = pendingSync;
+    pendingSync = null;
+    performSync({ refreshSettings: deferred.refreshSettings })
+      .then(deferred.resolve)
+      .catch(deferred.reject);
+  }
+}
+
+function shouldDeferSync() {
+  return recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING;
+}
+
+function performSync({ refreshSettings } = {}) {
+  if (!syncService || !syncService.isReady()) {
+    return Promise.resolve({ ok: false, reason: 'not_configured' });
+  }
+  if (!syncService.getUser()) {
+    return Promise.resolve({ ok: false, reason: 'not_authenticated' });
+  }
+  if (syncInFlight) {
+    return syncInFlight;
+  }
+  syncInFlight = (async () => {
+    const result = await syncService.syncAll();
+    if (refreshSettings) {
+      await refreshSettingsFromStore();
+    }
+    return result;
+  })().catch((error) => {
+    console.error('Sync failed:', error);
+    return { ok: false, reason: 'error' };
+  }).finally(() => {
+    syncInFlight = null;
+  });
+  return syncInFlight;
+}
+
+function requestSync({ refreshSettings } = {}) {
+  if (shouldDeferSync()) {
+    if (!pendingSync) {
+      pendingSync = {};
+      pendingSync.promise = new Promise((resolve, reject) => {
+        pendingSync.resolve = resolve;
+        pendingSync.reject = reject;
+      });
+    }
+    pendingSync.refreshSettings = pendingSync.refreshSettings || refreshSettings;
+    return pendingSync.promise;
+  }
+  return performSync({ refreshSettings });
 }
 
 function broadcastAuthState() {
@@ -692,9 +747,6 @@ function createMainWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     broadcastAuthState();
   });
-  if (process.platform === 'win32') {
-    mainWindow.setOpacity(0.99);
-  }
 
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
@@ -1359,8 +1411,7 @@ ipcMain.handle('auth:sign-in', async (event, email, password) => {
     const result = await syncService.signIn(email, password);
     authErrorCount = 0;
     clearAuthRetry();
-    await syncService.syncAll();
-    await refreshSettingsFromStore();
+    await requestSync({ refreshSettings: true });
     setAuthState({
       status: 'authenticated',
       message: '',
@@ -1396,8 +1447,7 @@ ipcMain.handle('auth:sign-up', async (event, email, password) => {
     const result = await syncService.signUp(email, password);
     authErrorCount = 0;
     clearAuthRetry();
-    await syncService.syncAll();
-    await refreshSettingsFromStore();
+    await requestSync({ refreshSettings: true });
     setAuthState({
       status: 'authenticated',
       message: '',
@@ -1462,8 +1512,7 @@ ipcMain.handle('sync:now', async () => {
     notifyAuthRequired('Connexion requise pour synchroniser.');
     return { ok: false, reason: 'not_authenticated' };
   }
-  const result = await syncService.syncAll();
-  await refreshSettingsFromStore();
+  const result = await requestSync({ refreshSettings: true });
   return result;
 });
 
@@ -1509,6 +1558,7 @@ app.whenReady().then(async () => {
   await store.init();
   settings = await store.getSettings();
   await ensureDefaultStyle();
+  console.info(`History retention policy: keep last ${HISTORY_RETENTION_DAYS} days; purge older entries on startup/sync.`);
   await store.purgeHistory(HISTORY_RETENTION_DAYS);
 
   syncService = new SyncService({
@@ -1538,10 +1588,9 @@ app.whenReady().then(async () => {
     }
   });
   if (syncService.isReady() && syncService.getUser()) {
-    syncService.syncAll().catch((error) => {
+    requestSync({ refreshSettings: true }).catch((error) => {
       console.error('Initial sync failed:', error);
     });
-    await refreshSettingsFromStore();
   }
   await hydrateAuthState();
 

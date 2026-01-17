@@ -54,6 +54,6 @@ N/A
 
 ### File List
 - main.js
-- docs/stories/1.1.robustifier-cycle-enregistrement-etats.md
+- docs/stories/DONE-DONE-1.1.robustifier-cycle-enregistrement-etats.md
 
 ## QA Results

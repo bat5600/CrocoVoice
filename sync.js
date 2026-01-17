@@ -1,7 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const HISTORY_RETENTION_DAYS = 14;
+const HISTORY_RETENTION_DAYS = 14; // Retain last 14 days of history before purge.
+
+function logHistoryRetentionPolicy(context) {
+  console.info(`History retention policy (${context}): keep last ${HISTORY_RETENTION_DAYS} days; purge older entries.`);
+}
 
 class SyncService {
   constructor({ store, supabaseUrl, supabaseKey }) {
@@ -128,6 +132,7 @@ class SyncService {
       return { ok: false, reason: 'not_authenticated' };
     }
     this.syncAbort = false;
+    logHistoryRetentionPolicy('sync');
     await this.store.purgeHistory(HISTORY_RETENTION_DAYS);
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };

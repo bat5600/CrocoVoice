@@ -461,6 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (widgetContainer) {
     let isContextOpen = false;
     let isHovering = false;
+    let hoverOutTimeout = null;
 
     const updateExpandedState = () => {
       if (window.electronAPI && window.electronAPI.setWidgetExpanded) {
@@ -490,13 +491,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     widgetContainer.addEventListener('mouseenter', () => {
+      if (hoverOutTimeout) {
+        clearTimeout(hoverOutTimeout);
+        hoverOutTimeout = null;
+      }
       isHovering = true;
       updateExpandedState();
     });
 
     widgetContainer.addEventListener('mouseleave', () => {
-      isHovering = false;
-      updateExpandedState();
+      if (hoverOutTimeout) {
+        clearTimeout(hoverOutTimeout);
+      }
+      hoverOutTimeout = setTimeout(() => {
+        isHovering = false;
+        updateExpandedState();
+        hoverOutTimeout = null;
+      }, 150);
     });
 
     document.addEventListener('click', (event) => {

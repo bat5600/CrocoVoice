@@ -16,6 +16,8 @@ class Store {
     const dbPath = path.join(this.userDataPath, 'flow.sqlite');
     await this._ensureDir(this.userDataPath);
     this.db = new sqlite3.Database(dbPath);
+    // Ensure SQLite executes statements sequentially to avoid contention.
+    this.db.serialize();
     await this._run('PRAGMA foreign_keys = ON;');
     await this._createSchema();
     await this._migrateFromJsonSettings();
