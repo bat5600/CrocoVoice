@@ -1067,10 +1067,93 @@ async function pasteText(text) {
   }
 }
 
-async function handleAudioPayload(event, audioData) {
-  clearProcessingTimeout();
+// Critical flow: record -> transcribe -> post-process -> dictionary -> persist -> type.
+// Integration points: OpenAI (transcribe/post-process/title), OS keyboard/clipboard, SQLite store, Supabase sync.
+// Manual regression checks: start/stop, transcription, post-process fallback, typing, history entry, sync optional.
+
+function normalizeAudioPayload(audioData) {
+  let mimeType = '';
+  let payload = audioData;
+
+  if (audioData && typeof audioData === 'object' && audioData.buffer) {
+    payload = audioData.buffer;
+    if (typeof audioData.mimeType === 'string') {
+      mimeType = audioData.mimeType;
+    }
+  }
+
+  let buffer;
+  if (Buffer.isBuffer(payload)) {
+    buffer = payload;
+  } else if (payload instanceof ArrayBuffer) {
+    buffer = Buffer.from(payload);
+  } else if (Array.isArray(payload)) {
+    buffer = Buffer.from(payload);
+  } else {
+    buffer = Buffer.from(payload);
+  }
+
+  return { buffer, mimeType };
+}
+
+function resolveRecordingTarget() {
   const target = recordingDestination || 'clipboard';
   recordingDestination = 'clipboard';
+  return target;
+}
+
+async function runTranscriptionPipeline(buffer, mimeType) {
+  const transcribedText = await transcribeAudio(buffer, mimeType);
+  if (!transcribedText || isNoAudioTranscription(transcribedText)) {
+    return { skip: true, transcribedText: '' };
+  }
+
+  const stylePrompt = await getActiveStylePrompt();
+  let editedText = transcribedText;
+  let warningMessage = '';
+  try {
+    editedText = await postProcessText(transcribedText, stylePrompt);
+  } catch (error) {
+    if (error?.code === 'missing_api_key') {
+      warningMessage = 'Post-traitement ignore: OPENAI_API_KEY manquante.';
+    } else {
+      warningMessage = getOpenAIUserMessage(error);
+    }
+    console.warn('Post-processing failed, using raw transcript.');
+  }
+
+  const finalText = await applyDictionary(editedText);
+  const title = await generateEntryTitle(finalText);
+  return {
+    skip: false,
+    transcribedText,
+    finalText,
+    title,
+    warningMessage,
+  };
+}
+
+async function persistTranscription({ transcribedText, finalText, title }) {
+  if (!store) {
+    return;
+  }
+  const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
+  await store.addHistory({
+    id: crypto.randomUUID(),
+    user_id: userId,
+    text: finalText,
+    raw_text: transcribedText,
+    language: settings.language || 'fr',
+    duration_ms: recordingStartTime ? Date.now() - recordingStartTime : null,
+    title,
+  });
+  await store.setSetting('last_transcription', finalText);
+  sendDashboardEvent('dashboard:data-updated');
+}
+
+async function handleAudioPayload(event, audioData) {
+  clearProcessingTimeout();
+  const target = resolveRecordingTarget();
   try {
     if (!OPENAI_API_KEY) {
       const message = 'OPENAI_API_KEY manquante.';
@@ -1079,65 +1162,24 @@ async function handleAudioPayload(event, audioData) {
       event.reply('transcription-error', message);
       return;
     }
-    let buffer;
-    let mimeType = '';
-    let payload = audioData;
+    const { buffer, mimeType } = normalizeAudioPayload(audioData);
 
-    if (audioData && typeof audioData === 'object' && audioData.buffer) {
-      payload = audioData.buffer;
-      if (typeof audioData.mimeType === 'string') {
-        mimeType = audioData.mimeType;
-      }
-    }
-
-    if (Buffer.isBuffer(payload)) {
-      buffer = payload;
-    } else if (payload instanceof ArrayBuffer) {
-      buffer = Buffer.from(payload);
-    } else if (Array.isArray(payload)) {
-      buffer = Buffer.from(payload);
-    } else {
-      buffer = Buffer.from(payload);
-    }
-    const audio = buffer;
-
-    const transcribedText = await transcribeAudio(buffer, mimeType);
-    if (!transcribedText || isNoAudioTranscription(transcribedText)) {
+    const pipelineResult = await runTranscriptionPipeline(buffer, mimeType);
+    if (pipelineResult.skip) {
       setRecordingState(RecordingState.IDLE);
       event.reply('transcription-success', '');
       return;
     }
-    const stylePrompt = await getActiveStylePrompt();
-    let editedText = transcribedText;
-    let warningMessage = '';
-    try {
-      editedText = await postProcessText(transcribedText, stylePrompt);
-    } catch (error) {
-      if (error?.code === 'missing_api_key') {
-        warningMessage = 'Post-traitement ignore: OPENAI_API_KEY manquante.';
-      } else {
-        warningMessage = getOpenAIUserMessage(error);
-      }
-      console.warn('Post-processing failed, using raw transcript.');
-    }
-    const finalText = await applyDictionary(editedText);
-    const title = await generateEntryTitle(finalText);
+
+    const {
+      transcribedText,
+      finalText,
+      title,
+      warningMessage,
+    } = pipelineResult;
     const shouldSkipPaste = target === 'notes';
 
-    if (store) {
-      const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
-      await store.addHistory({
-        id: crypto.randomUUID(),
-        user_id: userId,
-        text: finalText,
-        raw_text: transcribedText,
-        language: settings.language || 'fr',
-        duration_ms: recordingStartTime ? Date.now() - recordingStartTime : null,
-        title,
-      });
-      await store.setSetting('last_transcription', finalText);
-      sendDashboardEvent('dashboard:data-updated');
-    }
+    await persistTranscription({ transcribedText, finalText, title });
 
     if (!shouldSkipPaste) {
       await pasteText(finalText);

@@ -1,7 +1,7 @@
 # Story 1.8: Supprimer le texte CrocoVoice au-dessus du widget
 
 ## Status
-Approved
+Done
 
 ## Story
 **As a** user,
@@ -16,11 +16,11 @@ Approved
 5. Aucune modification des canaux IPC ni du comportement global du cycle start/stop.
 
 ## Tasks / Subtasks
-- [ ] Identifier la source du texte parasite dans le widget (AC: 1,2)
-- [ ] Corriger le rendu initial du widget (AC: 2)
-- [ ] Verifier le comportement au survol et interactions start/stop (AC: 3,4)
-- [ ] Confirmer aucun impact IPC ou cycle start/stop (AC: 5)
-- [ ] Tests manuels sur overlay/widget
+- [x] Identifier la source du texte parasite dans le widget (AC: 1,2)
+- [x] Corriger le rendu initial du widget (AC: 2)
+- [x] Verifier le comportement au survol et interactions start/stop (AC: 3,4)
+- [x] Confirmer aucun impact IPC ou cycle start/stop (AC: 5)
+- [x] Tests manuels sur overlay/widget
 
 ## Dev Notes
 - Source d'architecture: `docs/architecture.md`

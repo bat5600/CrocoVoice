@@ -817,10 +817,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  const windowControls = document.querySelectorAll('.window-control');
+  const windowControls = document.querySelectorAll('.window-control, .win-control');
   windowControls.forEach((control) => {
     control.addEventListener('click', () => {
-      const action = control.dataset.windowControl;
+      let action = control.dataset.windowControl || control.dataset.action;
+      if (!action) {
+        const label = (control.getAttribute('title') || '').toLowerCase();
+        if (label.includes('min')) {
+          action = 'minimize';
+        } else if (label.includes('max')) {
+          action = 'maximize';
+        } else if (label.includes('close')) {
+          action = 'close';
+        }
+      }
       if (!action || !window.electronAPI?.sendWindowControl) {
         return;
       }

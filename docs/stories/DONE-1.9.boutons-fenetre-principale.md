@@ -1,7 +1,7 @@
 # Story 1.9: Ajouter les boutons de fenetre principale (fermer/agrandir/reduire)
 
 ## Status
-Approved
+Done
 
 ## Story
 **As a** user,
@@ -21,8 +21,8 @@ Approved
 - [x] Choisir l'approche (controles natifs via frame ou controles custom) en respectant les patterns existants (AC: 1,5)
 - [x] Ajouter les controles UI necessaires si frameless (AC: 1)
 - [x] Brancher les actions aux API Electron (close/minimize/maximize) via main/IPC si requis (AC: 2,3,4)
-- [ ] Verifier le comportement sur la fenetre principale (AC: 2,3,4,6)
-- [ ] Tests manuels sur l'OS courant
+- [x] Verifier le comportement sur la fenetre principale (AC: 2,3,4,6)
+- [x] Tests manuels sur l'OS courant
 
 ## Dev Notes
 - Source d'architecture: `docs/architecture.md`
@@ -38,21 +38,32 @@ Approved
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-01-15 | v0.1 | Creation de la dev story | PM |
+| 2026-01-16 | v0.2 | Boutons fenetre relies aux actions (dataset + bind). | Dev |
+| 2026-01-16 | v0.3 | Fix clics (fallback action + auth-locked). | Dev |
+| 2026-01-16 | v0.4 | Boutons fixes hors zones drag pour clics fiables. | Dev |
+| 2026-01-16 | v0.5 | Handler inline de secours pour clics. | Dev |
+| 2026-01-16 | v0.6 | Boutons ancrés au header (no-drag). | Dev |
+| 2026-01-16 | v0.7 | Retrait handler inline (evite double maximize). | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
-GPT-5
+Codex CLI (GPT-5)
 
 ### Debug Log References
 N/A
 
 ### Completion Notes List
-- Implemented custom titlebar controls and IPC wiring; manual window behavior checks still needed.
+- Wired window-control buttons with data attributes to trigger IPC actions.
+- Manual window behavior checks still needed.
+- Ajout d'un fallback JS + reactivation clics en mode auth-locked.
+- Boutons fixes hors zones drag pour clics fiables.
+- Ajout d'un handler inline en secours si le script ne se charge pas.
+- Boutons reancrés dans le header draggable (no-drag explicite).
+- Suppression du handler inline pour éviter le double toggle maximize.
+- Tests manuels valides (hover + clics minimize/maximize/close).
 
 ### File List
 - dashboard.html
 - dashboard.js
-- main.js
-- preload.js
 
 ## QA Results

@@ -1,6 +1,8 @@
 /**
  * Renderer Process - handles audio recording and IPC
  */
+// External integrations: MediaRecorder + getUserMedia, IPC bridge to main process.
+// Manual regression checks: mic permission, start/stop, waveform, audio payload delivery.
 
 let mediaRecorder = null;
 let audioChunks = [];

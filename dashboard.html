@@ -218,6 +218,7 @@
       display: flex;
       z-index: 50;
       -webkit-app-region: no-drag;
+      pointer-events: auto;
     }
 
     .win-control {
@@ -230,6 +231,7 @@
       place-items: center;
       cursor: pointer;
       transition: background 0.2s, color 0.2s;
+      -webkit-app-region: no-drag;
     }
 
     .win-control:hover {
@@ -802,6 +804,11 @@
       user-select: none;
     }
 
+    body.auth-locked .windows-caption,
+    body.auth-locked .windows-caption .win-control {
+      pointer-events: auto;
+    }
+
     .auth-card {
       width: 100%;
       max-width: 360px;
@@ -920,20 +927,6 @@
 
   <!-- Main Content -->
   <main class="main-wrapper">
-    
-    <!-- Windows Caption Controls -->
-    <div class="windows-caption">
-      <button class="win-control" title="Minimize">
-        <svg viewBox="0 0 10 1"><path d="M0,0h10v1H0V0z"/></svg>
-      </button>
-      <button class="win-control" title="Maximize">
-        <svg viewBox="0 0 10 10"><path d="M1,1h8v8H1V1z M0,0v10h10V0H0z"/></svg>
-      </button>
-      <button class="win-control close" title="Close">
-        <svg viewBox="0 0 10 10"><polygon points="10,1 9,0 5,4 1,0 0,1 4,5 0,9 1,10 5,6 9,10 10,9 6,5"/></svg>
-      </button>
-    </div>
-
     <!-- Glass Header -->
     <header class="top-header">
       <div class="page-title">
@@ -944,6 +937,17 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <input id="dashboardSearchInput" type="text" placeholder="Search across your notes & history...">
         </div>
+      </div>
+      <div class="windows-caption">
+        <button class="win-control window-control" data-window-control="minimize" title="Minimize" type="button">
+          <svg viewBox="0 0 10 1"><path d="M0,0h10v1H0V0z"/></svg>
+        </button>
+        <button class="win-control window-control" data-window-control="maximize" title="Maximize" type="button">
+          <svg viewBox="0 0 10 10"><path d="M1,1h8v8H1V1z M0,0v10h10V0H0z"/></svg>
+        </button>
+        <button class="win-control window-control close" data-window-control="close" title="Close" type="button">
+          <svg viewBox="0 0 10 10"><polygon points="10,1 9,0 5,4 1,0 0,1 4,5 0,9 1,10 5,6 9,10 10,9 6,5"/></svg>
+        </button>
       </div>
     </header>
 

@@ -1,7 +1,7 @@
 # Story 1.4: Renforcer la persistence locale et la sync optionnelle
 
 ## Status
-Ready for Review
+Done
 
 ## Story
 **As a** user,
