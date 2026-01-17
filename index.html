@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title></title>
+  <title>CrocoVoiceGG</title>
   <style>
     * {
       margin: 0;
@@ -14,8 +14,6 @@
     html,
     body {
       background: transparent;
-      background-color: rgba(0, 0, 0, 0);
-      background-image: none;
       display: block;
       min-height: 100vh;
       font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
@@ -447,11 +445,11 @@
         <div class="spinner" aria-hidden="true"></div>
       </div>
 
-      <div class="tooltip" role="tooltip">
+      <div class="tooltip" role="tooltip" id="recordingTooltip">
         Cliquez ou maintenez <kbd id="shortcutLabel">[Raccourci]</kbd> pour dicter
       </div>
 
-      <div class="status-text" id="statusText">Prêt</div>
+      <div class="status-text" id="statusText" aria-live="polite">Prêt</div>
 
       <div class="context-menu" role="menu" aria-hidden="true">
         <button type="button" role="menuitem" data-action="hide-1h">Masquer pendant 1 heure</button>
@@ -478,16 +476,16 @@
   <div class="auth-gate" id="authGate" aria-hidden="true">
     <div class="auth-card">
       <div class="auth-title">Connexion requise</div>
-      <p class="auth-subtitle">Connectez-vous pour acceder a CrocoVoice et synchroniser vos donnees.</p>
-      <div class="auth-status" id="authStatusText"></div>
+      <p class="auth-subtitle">Connectez-vous pour accéder à CrocoVoice et synchroniser vos données.</p>
+      <div class="auth-status" id="authStatusText" aria-live="polite"></div>
       <form class="auth-form" id="authForm">
         <input id="authEmailInput" type="email" placeholder="Email" autocomplete="email" />
         <input id="authPasswordInput" type="password" placeholder="Mot de passe" autocomplete="current-password" />
         <button class="auth-primary" type="submit" id="authSubmitButton">Se connecter</button>
       </form>
       <div class="auth-actions">
-        <button class="secondary" type="button" id="authRetryButton">Reessayer</button>
-        <button type="button" id="authSignupButton">Creer un compte</button>
+        <button class="secondary" type="button" id="authRetryButton">Réessayer</button>
+        <button type="button" id="authSignupButton">Créer un compte</button>
       </div>
     </div>
   </div>

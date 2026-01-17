@@ -27,13 +27,11 @@ try {
   keyboardLib = nutjs.keyboard;
   nutKey = nutjs.Key;
   getActiveWindow = nutjs.getActiveWindow;
-  console.log('nut-js loaded');
 } catch (error) {
   console.warn('nut-js not available, trying robotjs...');
   try {
     keyboardLib = require('robotjs');
     useRobotjs = true;
-    console.log('robotjs loaded');
   } catch (error2) {
     console.error('No keyboard library available');
   }
@@ -87,7 +85,7 @@ const OPENAI_BASE_BACKOFF_MS = 800;
 const OPENAI_MAX_BACKOFF_MS = 5000;
 let recordingDestination = 'clipboard';
 
-const compactWindowSize = { width: 220, height: 120 };
+const compactWindowSize = { width: 220, height: 52 };
 const expandedWindowSize = { width: 360, height: 420 };
 
 const defaultSettings = {
@@ -686,8 +684,6 @@ function createMainWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
-
   mainWindow.loadFile('index.html');
   mainWindow.setBackgroundColor('#00000000');
 
@@ -836,7 +832,6 @@ function registerGlobalShortcut(shortcut) {
     return false;
   } else {
     currentShortcut = shortcut;
-    console.log(`Global shortcut registered: ${shortcut}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('shortcut-updated', shortcut);
     }
@@ -896,13 +891,10 @@ async function stopRecording() {
   }
 
   transitionLock = true;
-  console.log('[MAIN] REQUEST_STOP received, state=', recordingState);
   await captureTypingTarget();
   const recordingDuration = recordingStartTime ? Date.now() - recordingStartTime : 0;
-  console.log(`Recording stopped (duration: ${recordingDuration}ms)`);
 
   if (mainWindow && !mainWindow.isDestroyed()) {
-    console.log('[MAIN] sending CMD_STOP to renderer');
     mainWindow.webContents.send('stop-recording');
   }
   setRecordingState(RecordingState.PROCESSING);
@@ -947,7 +939,6 @@ async function transcribeAudio(audioBuffer, mimeType) {
       throw error;
     }
 
-    console.log('Sending audio to OpenAI Whisper...');
 
     const tempDir = require('os').tmpdir();
     const extension = getAudioExtension(mimeType);
@@ -966,7 +957,6 @@ async function transcribeAudio(audioBuffer, mimeType) {
     });
 
     const transcribedText = transcription.text.trim();
-    console.log(`Transcription: "${transcribedText}"`);
 
     return transcribedText;
   } catch (error) {
@@ -1007,8 +997,6 @@ async function pasteText(text) {
     await assertTypingTargetStillActive();
     previousClipboard = clipboard.readText();
     pendingPasteBuffer = text;
-    console.log(`Pasting text length: ${text.length}`);
-    console.log(`Library: ${useRobotjs ? 'robotjs' : '@nut-tree-fork/nut-js'}`);
 
     await new Promise((resolve) => setTimeout(resolve, 300));
     clipboard.writeText(pendingPasteBuffer);
@@ -1060,7 +1048,6 @@ async function handleAudioPayload(event, audioData) {
       buffer = Buffer.from(payload);
     }
     const audio = buffer;
-    console.log('[MAIN] AUDIO_RECEIVED bytes=', audio?.length || audio?.byteLength, 'type=', mimeType);
 
     const transcribedText = await transcribeAudio(buffer, mimeType);
     if (!transcribedText || isNoAudioTranscription(transcribedText)) {
@@ -1155,7 +1142,6 @@ ipcMain.on('recording-error', (event, error) => {
 });
 
 ipcMain.on('recording-empty', (event, reason) => {
-  console.log('Recording empty:', reason || 'no_audio');
   recordingStartTime = null;
   clearProcessingTimeout();
   setRecordingState(RecordingState.IDLE);
@@ -1523,7 +1509,6 @@ app.whenReady().then(async () => {
   await store.init();
   settings = await store.getSettings();
   await ensureDefaultStyle();
-  console.log(`History retention policy: keep last ${HISTORY_RETENTION_DAYS} days.`);
   await store.purgeHistory(HISTORY_RETENTION_DAYS);
 
   syncService = new SyncService({

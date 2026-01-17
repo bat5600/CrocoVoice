@@ -241,9 +241,7 @@ async function initializeMediaRecorder() {
     };
 
     window.mediaRecorder.onstop = async () => {
-      console.log('[RENDERER] onstop fired, chunks=', window.audioChunks.length);
       const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
-      console.log('[RENDERER] blob.size=', blob.size);
 
       const shouldSend = !discardRecording;
       discardRecording = false;
@@ -277,7 +275,6 @@ async function initializeMediaRecorder() {
 }
 
 async function startRecording() {
-  console.log('[RENDERER] startRecording entered, state=', window.mediaRecorder?.state);
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     return;
   }
@@ -286,7 +283,6 @@ async function startRecording() {
 
   if (!mediaRecorder) {
     const initialized = await initializeMediaRecorder();
-    console.log('[RENDERER] initializeMediaRecorder ok?', initialized);
     if (!initialized) {
       isRecording = false;
       return;
@@ -296,7 +292,6 @@ async function startRecording() {
   audioChunks = [];
   window.audioChunks = [];
   discardRecording = false;
-  console.log('[RENDERER] about to start MediaRecorder, state=', mediaRecorder?.state);
   mediaRecorder.start(1000);
   startWaveform();
 }
@@ -309,7 +304,6 @@ function stopRecording() {
   isRecording = false;
 
   if (mediaRecorder && mediaRecorder.state === 'recording') {
-    console.log('[RENDERER] stopping recorder, state=', mediaRecorder?.state, 'chunks=', audioChunks?.length);
     try {
       mediaRecorder.requestData();
     } catch (error) {
@@ -328,20 +322,12 @@ function stopRecording() {
 }
 
 window.electronAPI.onStartRecording(() => {
-  console.log('[RENDERER] CMD_START received');
   startRecording();
 });
 
 window.electronAPI.onStopRecording(() => {
-  console.log('[RENDERER] CMD_STOP received');
-  console.log('[RENDERER] stop handler entered');
-  console.log('[RENDERER] mediaRecorder?', !!window.mediaRecorder, window.mediaRecorder?.state);
-  console.log('[RENDERER] chunks?', window.audioChunks?.length);
-
   try {
-    console.log('[RENDERER] about to stop, state=', window.mediaRecorder?.state);
     stopRecording();
-    console.log('[RENDERER] stopRecording() called');
   } catch (e) {
     console.error('[RENDERER] stop() crashed', e);
   }
