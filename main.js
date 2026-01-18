@@ -90,7 +90,7 @@ const OPENAI_MAX_BACKOFF_MS = 5000;
 let recordingDestination = 'clipboard';
 
 const compactWindowSize = { width: 220, height: 52 };
-const undoWindowSize = { width: 220, height: 110 };
+const undoWindowSize = { width: 420, height: 120 };
 const expandedWindowSize = { width: 360, height: 420 };
 let widgetExpanded = false;
 let widgetUndoVisible = false;

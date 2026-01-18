@@ -1,7 +1,7 @@
 # Story 1.6: Annuler l'enregistrement et formater l'historique recent
 
 ## Status
-Approved
+Done
 
 ## Story
 **As a** user,
@@ -17,11 +17,11 @@ Approved
 6. Si l'utilisateur clique sur "undo" avant la fin des 5 secondes, alors l'audio est traité normalement
 
 ## Tasks / Subtasks
-- [ ] Ajouter le flux d'annulation cote main et renderer (AC: 1,2,4)
-  - [ ] Court-circuiter l'envoi d'audio-ready
-- [ ] Garantir retour a idle et absence d'entree historique (AC: 2)
-- [ ] Preserver les retours a la ligne dans l'affichage historique (AC: 3)
-- [ ] Tests manuels annulation, historique, reprise d'enregistrement
+- [x] Ajouter le flux d'annulation cote main et renderer (AC: 1,2,4)
+  - [x] Court-circuiter l'envoi d'audio-ready
+- [x] Garantir retour a idle et absence d'entree historique (AC: 2)
+- [x] Preserver les retours a la ligne dans l'affichage historique (AC: 3)
+- [x] Tests manuels annulation, historique, reprise d'enregistrement
 
 ## Dev Notes
 - Source d'architecture: `docs/architecture.md`
@@ -37,6 +37,8 @@ Approved
 | --- | --- | --- | --- |
 | 2026-01-15 | v0.1 | Creation de la dev story | PM |
 | 2026-01-15 | v0.2 | Implemented cancel/undo flow + history preview formatting | Dev |
+| 2026-01-15 | v0.3 | Undo UI polish (hide pill, progress bar visibility, hover pause, resize) | Dev |
+| 2026-01-15 | v0.4 | Validation utilisateur | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -48,10 +50,14 @@ N/A
 ### Completion Notes List
 - Implementation done for cancel/undo flow and history preview formatting.
 - Manual tests not run (Electron app not started).
+- Undo UI now hides pill during undo, uses redesigned banner (icon/text/button), shows visible progress bar, and pauses countdown on hover.
+- Undo window size expanded to avoid clipping.
 
 ### File List
 - index.html
 - renderer.js
 - dashboard.html
+- main.js
+- preload.js
 
 ## QA Results

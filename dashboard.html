@@ -7,7 +7,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;550;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     :root {
@@ -37,6 +37,13 @@
       background: var(--bg-main);
       color: var(--text-main);
       overflow: hidden;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font-family: var(--font-main);
     }
 
     .custom-scroll::-webkit-scrollbar {
@@ -238,7 +245,7 @@
       border-radius: 14px;
       color: #94A3B8;
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 400;
       cursor: pointer;
       transition: all 0.2s ease;
     }
@@ -257,7 +264,7 @@
     .nav-item.active {
       color: #FFFFFF;
       background: rgba(255, 255, 255, 0.05);
-      font-weight: 600;
+      font-weight: 500;
     }
 
     .nav-item.active svg {
@@ -905,6 +912,44 @@
 
     .btn-primary:hover {
       background: #065F46;
+    }
+
+    .btn-primary.dictionary-add {
+      border-radius: 999px;
+      padding: 11px 18px;
+      background: linear-gradient(135deg, #10B981, #059669);
+      color: #F8FAFC;
+      text-shadow: 0 1px 2px rgba(2, 6, 23, 0.25);
+      box-shadow: 0 12px 18px rgba(16, 185, 129, 0.25);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: 0.01em;
+    }
+
+    .btn-primary.dictionary-add .btn-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .btn-primary.dictionary-add:hover {
+      background: linear-gradient(135deg, #34D399, #10B981);
+      color: #F1F5F9;
+      text-shadow: 0 1px 2px rgba(2, 6, 23, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary.dictionary-add:active {
+      transform: translateY(0);
+      box-shadow: 0 6px 12px rgba(16, 185, 129, 0.2);
     }
 
     .dictionary-card,
@@ -1730,7 +1775,10 @@
 
             <div class="dictionary-actions">
               <button id="dictionaryCancelButton" class="btn-secondary" type="button">Annuler</button>
-              <button id="dictionaryAddButton" class="btn-primary" type="button">Ajouter</button>
+              <button id="dictionaryAddButton" class="btn-primary dictionary-add" type="button">
+                <span class="btn-icon">+</span>
+                <span>Ajouter</span>
+              </button>
             </div>
           </div>
 

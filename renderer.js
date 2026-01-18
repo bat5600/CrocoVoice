@@ -27,6 +27,9 @@ let cancelUndoTimeoutId = null;
 let cancelUndoActive = false;
 let cancelPending = false;
 let pendingCancelPayload = null;
+let cancelUndoStartAt = null;
+let cancelUndoRemainingMs = 0;
+let cancelUndoPaused = false;
 let authGateEl = null;
 let authLoginButton = null;
 let authSignupButton = null;
@@ -37,6 +40,64 @@ let authEmailInput = null;
 let authPasswordInput = null;
 let authSubmitPending = false;
 let currentAuthState = null;
+let widgetContainer = null;
+
+const CANCEL_UNDO_DURATION_MS = 5000;
+
+function setUndoActive(active) {
+  if (!widgetContainer) {
+    return;
+  }
+  widgetContainer.classList.toggle('undo-active', active);
+  document.body.classList.toggle('undo-active', active);
+}
+
+function startCancelUndoTimer() {
+  if (!cancelUndoProgress || cancelUndoRemainingMs <= 0) {
+    clearCancelUndo();
+    return;
+  }
+  cancelUndoStartAt = Date.now();
+  cancelUndoProgress.style.transition = 'width 0s linear';
+  cancelUndoProgress.style.width = `${(cancelUndoRemainingMs / CANCEL_UNDO_DURATION_MS) * 100}%`;
+  requestAnimationFrame(() => {
+    if (!cancelUndoProgress) {
+      return;
+    }
+    cancelUndoProgress.style.transition = `width ${cancelUndoRemainingMs}ms linear`;
+    cancelUndoProgress.style.width = '0%';
+  });
+  cancelUndoTimeoutId = setTimeout(() => {
+    clearCancelUndo();
+  }, cancelUndoRemainingMs);
+}
+
+function pauseCancelUndoTimer() {
+  if (!cancelUndoActive || cancelUndoPaused) {
+    return;
+  }
+  cancelUndoPaused = true;
+  if (cancelUndoTimeoutId) {
+    clearTimeout(cancelUndoTimeoutId);
+    cancelUndoTimeoutId = null;
+  }
+  if (cancelUndoStartAt) {
+    const elapsed = Date.now() - cancelUndoStartAt;
+    cancelUndoRemainingMs = Math.max(0, cancelUndoRemainingMs - elapsed);
+  }
+  if (cancelUndoProgress) {
+    cancelUndoProgress.style.transition = 'none';
+    cancelUndoProgress.style.width = `${(cancelUndoRemainingMs / CANCEL_UNDO_DURATION_MS) * 100}%`;
+  }
+}
+
+function resumeCancelUndoTimer() {
+  if (!cancelUndoActive || !cancelUndoPaused) {
+    return;
+  }
+  cancelUndoPaused = false;
+  startCancelUndoTimer();
+}
 
 function updateWidgetState(state, message) {
   const widgetContainer = document.getElementById('widgetContainer');
@@ -71,6 +132,10 @@ function clearCancelUndo() {
   }
   pendingCancelPayload = null;
   cancelUndoActive = false;
+  cancelUndoPaused = false;
+  cancelUndoStartAt = null;
+  cancelUndoRemainingMs = 0;
+  setUndoActive(false);
   if (window.electronAPI?.setWidgetUndoVisible) {
     window.electronAPI.setWidgetUndoVisible(false);
   }
@@ -86,26 +151,16 @@ function clearCancelUndo() {
 function startCancelUndo(payload) {
   pendingCancelPayload = payload;
   cancelUndoActive = true;
+  cancelUndoPaused = false;
+  cancelUndoRemainingMs = CANCEL_UNDO_DURATION_MS;
+  setUndoActive(true);
   if (window.electronAPI?.setWidgetUndoVisible) {
     window.electronAPI.setWidgetUndoVisible(true);
   }
   if (cancelUndoEl) {
     cancelUndoEl.classList.add('active');
   }
-  if (cancelUndoProgress) {
-    cancelUndoProgress.style.transition = 'none';
-    cancelUndoProgress.style.width = '100%';
-    requestAnimationFrame(() => {
-      if (!cancelUndoProgress) {
-        return;
-      }
-      cancelUndoProgress.style.transition = 'width 5s linear';
-      cancelUndoProgress.style.width = '0%';
-    });
-  }
-  cancelUndoTimeoutId = setTimeout(() => {
-    clearCancelUndo();
-  }, 5000);
+  startCancelUndoTimer();
 }
 
 function updateShortcutLabel(shortcut) {
@@ -532,13 +587,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const widgetContainer = document.getElementById('widgetContainer');
+  widgetContainer = document.getElementById('widgetContainer');
   if (widgetContainer) {
     let isContextOpen = false;
     let isHovering = false;
     let hoverOutTimeout = null;
 
     const updateExpandedState = () => {
+      if (cancelUndoActive) {
+        if (window.electronAPI && window.electronAPI.setWidgetExpanded) {
+          window.electronAPI.setWidgetExpanded(false);
+        }
+        return;
+      }
       if (window.electronAPI && window.electronAPI.setWidgetExpanded) {
         window.electronAPI.setWidgetExpanded(isContextOpen || isHovering);
       }
@@ -651,6 +712,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const payload = pendingCancelPayload;
       clearCancelUndo();
       window.electronAPI.sendAudioReady(payload);
+    });
+  }
+
+  if (cancelUndoEl) {
+    cancelUndoEl.addEventListener('mouseenter', () => {
+      pauseCancelUndoTimer();
+    });
+    cancelUndoEl.addEventListener('mouseleave', () => {
+      resumeCancelUndoTimer();
     });
   }
 
