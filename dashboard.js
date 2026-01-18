@@ -41,6 +41,9 @@ const authOverlayPassword = document.getElementById('authOverlayPassword');
 const statDays = document.getElementById('statDays');
 const statWords = document.getElementById('statWords');
 const statTotal = document.getElementById('statTotal');
+const shortcutInput = document.getElementById('shortcutInput');
+const shortcutResetButton = document.getElementById('shortcutResetButton');
+const shortcutHelp = document.getElementById('shortcutHelp');
 
 let currentSettings = {};
 let dashboardData = null;
@@ -50,6 +53,10 @@ let historyData = [];
 let notesData = [];
 let noteCaptureActive = false;
 let modalResolver = null;
+let platform = 'win32';
+let shortcutCaptureActive = false;
+let shortcutBeforeCapture = '';
+let shortcutInvalidShown = false;
 const STYLE_PRESETS = ['Default', 'Casual', 'Formel'];
 const STYLE_EXAMPLES = {
   Default: {
@@ -208,6 +215,12 @@ function showToast(message, type = 'success') {
       setTimeout(() => toast.remove(), 300);
     }
   }, 4800);
+}
+
+function sanitizeSettingsForSave(value) {
+  const settings = { ...(value || {}) };
+  delete settings.apiKeyPresent;
+  return settings;
 }
 
 function setEmptyStateState(element, hasSearch) {
@@ -788,6 +801,9 @@ function handleSettingChange(event) {
   if (!setting) {
     return;
   }
+  if (setting === 'shortcut') {
+    return;
+  }
 
   let value = event.target.value;
   if (setting === 'postProcessEnabled') {
@@ -796,7 +812,133 @@ function handleSettingChange(event) {
 
   currentSettings = { ...currentSettings, [setting]: value };
   if (window.electronAPI?.saveSettings) {
-    window.electronAPI.saveSettings(currentSettings);
+    window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
+  }
+}
+
+function getDefaultShortcut() {
+  return platform === 'darwin' ? 'Command+Shift+R' : 'Ctrl+Shift+R';
+}
+
+function normalizeShortcutKey(key) {
+  if (!key) {
+    return '';
+  }
+  const map = {
+    ' ': 'Space',
+    Escape: 'Escape',
+    Tab: 'Tab',
+    Enter: 'Enter',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+  };
+  if (map[key]) {
+    return map[key];
+  }
+  if (/^F\d{1,2}$/i.test(key)) {
+    return key.toUpperCase();
+  }
+  if (key.length === 1) {
+    if (/[a-z0-9]/i.test(key)) {
+      return key.toUpperCase();
+    }
+    return '';
+  }
+  return '';
+}
+
+function buildAcceleratorFromEvent(event) {
+  const rawKey = event.key;
+  if (!rawKey || rawKey === 'Dead') {
+    return null;
+  }
+  const ignored = new Set(['Shift', 'Control', 'Alt', 'Meta']);
+  if (ignored.has(rawKey)) {
+    return null;
+  }
+
+  const key = normalizeShortcutKey(rawKey);
+  if (!key) {
+    return null;
+  }
+
+  const modifiers = [];
+  if (platform === 'darwin') {
+    if (event.metaKey) {
+      modifiers.push('Command');
+    }
+    if (event.ctrlKey) {
+      modifiers.push('Ctrl');
+    }
+    if (event.altKey) {
+      modifiers.push('Option');
+    }
+    if (event.shiftKey) {
+      modifiers.push('Shift');
+    }
+  } else {
+    if (event.ctrlKey) {
+      modifiers.push('Ctrl');
+    }
+    if (event.altKey) {
+      modifiers.push('Alt');
+    }
+    if (event.shiftKey) {
+      modifiers.push('Shift');
+    }
+  }
+
+  if (!modifiers.length) {
+    return null;
+  }
+  return [...modifiers, key].join('+');
+}
+
+function setShortcutCaptureState(active) {
+  shortcutCaptureActive = Boolean(active);
+  if (shortcutCaptureActive) {
+    shortcutInvalidShown = false;
+  }
+  if (shortcutInput) {
+    shortcutInput.classList.toggle('is-capturing', shortcutCaptureActive);
+  }
+  if (shortcutHelp) {
+    shortcutHelp.textContent = shortcutCaptureActive
+      ? 'Appuyez sur la combinaison (Esc pour annuler).'
+      : 'Cliquez dans le champ puis appuyez sur votre combinaison.';
+  }
+}
+
+async function saveShortcut(shortcut) {
+  if (!window.electronAPI?.saveSettings) {
+    return;
+  }
+  const previous = currentSettings.shortcut;
+  if (!shortcut || shortcut === previous) {
+    return;
+  }
+  if (shortcutInput) {
+    shortcutInput.disabled = true;
+  }
+  try {
+    const next = await window.electronAPI.saveSettings(sanitizeSettingsForSave({ ...currentSettings, shortcut }));
+    currentSettings = { ...currentSettings, ...(next || {}) };
+    renderSettings(currentSettings);
+    if (currentSettings.shortcut !== shortcut) {
+      showToast('Impossible d’enregistrer ce raccourci. L’ancien reste actif.', 'error');
+      return;
+    }
+    showToast('Raccourci mis à jour.');
+  } catch (error) {
+    currentSettings = { ...currentSettings, shortcut: previous };
+    renderSettings(currentSettings);
+    showToast(error?.message || 'Impossible de sauvegarder le raccourci.', 'error');
+  } finally {
+    if (shortcutInput) {
+      shortcutInput.disabled = false;
+    }
   }
 }
 
@@ -819,6 +961,8 @@ async function refreshDashboard() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  platform = window.electronAPI?.getPlatform ? window.electronAPI.getPlatform() : 'win32';
+
   if (modalBackdrop) {
     modalBackdrop.addEventListener('click', (event) => {
       if (event.target === modalBackdrop && modalResolver) {
@@ -898,6 +1042,62 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   settingsInputs.forEach((input) => input.addEventListener('change', handleSettingChange));
+
+  if (shortcutInput) {
+    shortcutInput.addEventListener('focus', () => {
+      shortcutBeforeCapture = shortcutInput.value || currentSettings.shortcut || '';
+      setShortcutCaptureState(true);
+      shortcutInput.value = 'Appuyez sur les touches...';
+    });
+    shortcutInput.addEventListener('blur', () => {
+      if (!shortcutCaptureActive) {
+        return;
+      }
+      setShortcutCaptureState(false);
+      renderSettings(currentSettings);
+    });
+    shortcutInput.addEventListener('keydown', async (event) => {
+      if (!shortcutCaptureActive) {
+        return;
+      }
+      if (event.repeat) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.key === 'Escape') {
+        setShortcutCaptureState(false);
+        shortcutInput.value = shortcutBeforeCapture;
+        shortcutInput.blur();
+        return;
+      }
+
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) {
+        return;
+      }
+
+      const accelerator = buildAcceleratorFromEvent(event);
+      if (!accelerator) {
+        if (!shortcutInvalidShown) {
+          showToast('Raccourci invalide. Utilisez au moins un modificateur.', 'error');
+          shortcutInvalidShown = true;
+        }
+        return;
+      }
+
+      setShortcutCaptureState(false);
+      shortcutInput.value = accelerator;
+      shortcutInput.blur();
+      await saveShortcut(accelerator);
+    });
+  }
+
+  if (shortcutResetButton) {
+    shortcutResetButton.addEventListener('click', async () => {
+      await saveShortcut(getDefaultShortcut());
+    });
+  }
 
   if (misspellingToggle) {
     misspellingToggle.addEventListener('change', (event) => {

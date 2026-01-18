@@ -784,6 +784,35 @@
       resize: none;
     }
 
+    .shortcut-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .shortcut-input {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    .shortcut-input.is-capturing {
+      border-color: var(--emerald-500);
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+      background: #FFFFFF;
+    }
+
+    .shortcut-reset {
+      padding: 11px 14px;
+      border-radius: 14px;
+      white-space: nowrap;
+    }
+
+    .shortcut-help {
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
     .note-actions {
       display: flex;
       justify-content: space-between;
@@ -1828,6 +1857,15 @@
               <div style="margin-top: 16px;">
                 <label class="form-label">Microphone</label>
                 <select id="microphoneSelect" class="input-select" data-setting="microphoneId"></select>
+              </div>
+
+              <div style="margin-top: 16px;">
+                <label class="form-label" for="shortcutInput">Raccourci de dictée</label>
+                <div class="shortcut-row">
+                  <input id="shortcutInput" class="input-field shortcut-input" type="text" data-setting="shortcut" autocomplete="off" spellcheck="false" readonly>
+                  <button id="shortcutResetButton" class="btn-secondary shortcut-reset" type="button">Reset</button>
+                </div>
+                <div class="shortcut-help" id="shortcutHelp">Cliquez dans le champ puis appuyez sur votre combinaison.</div>
               </div>
             </div>
 

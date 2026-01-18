@@ -1,7 +1,7 @@
 # Story 1.11: Configurer le raccourci de dictee dans le dashboard
 
 ## Status
-Draft
+Done
 
 ## Story
 **As a** utilisateur,
@@ -72,14 +72,24 @@ Draft
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-01-15 | v0.1 | Creation de la dev story | PM |
+| 2026-01-18 | v0.2 | Shortcut capture UI + safe rollback | Dev |
+| 2026-01-18 | v0.3 | Validation utilisateur | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
+GPT-5.2
 
 ### Debug Log References
+N/A
 
 ### Completion Notes List
+- Ajout d’un champ de raccourci dans le dashboard (capture clavier, reset, feedback via toast).
+- Sauvegarde robuste: si `globalShortcut.register` echoue, l’ancien raccourci reste actif et la valeur est revertie.
+- Tests manuels a effectuer: modifier le raccourci, verifier start/stop global, tester un raccourci invalide (sans modificateur) et un raccourci deja reserve par l’OS.
 
 ### File List
+- dashboard.html
+- dashboard.js
+- main.js
 
 ## QA Results

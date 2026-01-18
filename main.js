@@ -1342,12 +1342,20 @@ ipcMain.handle('recording:set-target', async (event, target) => {
 });
 
 ipcMain.handle('settings:save', async (event, nextSettings) => {
-  settings = await store.saveSettings(nextSettings || {});
-  const ok = registerGlobalShortcut(settings.shortcut);
-  if (!ok) {
-    setRecordingState(RecordingState.ERROR, 'Failed to register shortcut.');
-    setTimeout(() => setRecordingState(RecordingState.IDLE), 3000);
+  const payload = { ...(nextSettings || {}) };
+  delete payload.apiKeyPresent;
+  const candidate = { ...settings, ...payload };
+  if (candidate.shortcut !== settings.shortcut) {
+    const ok = registerGlobalShortcut(candidate.shortcut);
+    if (!ok) {
+      registerGlobalShortcut(settings.shortcut);
+      candidate.shortcut = settings.shortcut;
+      setRecordingState(RecordingState.ERROR, 'Raccourci invalide ou indisponible.');
+      scheduleReturnToIdle(3000);
+    }
   }
+
+  settings = await store.saveSettings(candidate);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('settings-updated', settings);
   }
