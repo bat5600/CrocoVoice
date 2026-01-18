@@ -309,6 +309,18 @@
       margin-top: 0;
     }
 
+    body.error-active .pill-button,
+    body.error-active .tooltip,
+    body.error-active .status-text,
+    body.error-active .cancel-undo {
+      display: none;
+    }
+
+    body.error-active .widget-error {
+      display: flex;
+      margin-top: 0;
+    }
+
     .cancel-undo-bar {
       flex: 1;
       height: 4px;
@@ -361,6 +373,51 @@
       font-weight: 600;
       color: #e5e7eb;
       white-space: nowrap;
+    }
+
+    .widget-error {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      padding: 10px 14px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #15171b 0%, #0b0c0f 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
+      color: #e5e7eb;
+      font-size: 12px;
+      line-height: 1.2;
+      max-width: 100%;
+    }
+
+    .widget-error.active {
+      display: flex;
+    }
+
+    .widget-error-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      border: 2px solid #f87171;
+      color: #f87171;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .widget-error-text {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e5e7eb;
+      white-space: normal;
+      line-height: 1.3;
+      flex: 1;
+      min-width: 0;
     }
 
     .widget-container.idle .waveform,
@@ -416,7 +473,8 @@
       text-align: center;
       line-height: 1.3;
       display: none;
-      pointer-events: none;
+      pointer-events: auto;
+      cursor: default;
     }
 
     .tooltip::after {
@@ -458,7 +516,8 @@
       opacity: 1;
     }
 
-    .widget-container:hover .tooltip {
+    .widget-container:hover .tooltip,
+    .tooltip:hover {
       display: block;
       transform: translate(-50%, 0);
     }
@@ -562,6 +621,10 @@
       </div>
 
       <div class="status-text" id="statusText" aria-live="polite">Prêt</div>
+      <div class="widget-error" id="widgetError" aria-live="polite">
+        <span class="widget-error-icon">i</span>
+        <span class="widget-error-text" id="widgetErrorText">Erreur</span>
+      </div>
       <div class="cancel-undo" id="cancelUndo" aria-live="polite">
         <span class="cancel-undo-icon">i</span>
         <span class="cancel-undo-text">Transcript cancelled</span>

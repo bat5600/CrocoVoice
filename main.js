@@ -78,6 +78,7 @@ const lastActionAt = {
 };
 let transitionLock = false;
 let processingTimeoutId = null;
+let idleResetTimeoutId = null;
 let pendingPasteBuffer = '';
 let typingTarget = null;
 let pendingSync = null;
@@ -89,11 +90,32 @@ const OPENAI_BASE_BACKOFF_MS = 800;
 const OPENAI_MAX_BACKOFF_MS = 5000;
 let recordingDestination = 'clipboard';
 
+const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
+
+function clearIdleResetTimeout() {
+  if (idleResetTimeoutId) {
+    clearTimeout(idleResetTimeoutId);
+    idleResetTimeoutId = null;
+  }
+}
+
+function scheduleReturnToIdle(delayMs = 3000) {
+  clearIdleResetTimeout();
+  idleResetTimeoutId = setTimeout(() => {
+    idleResetTimeoutId = null;
+    if (recordingState === RecordingState.ERROR) {
+      setRecordingState(RecordingState.IDLE);
+    }
+  }, delayMs);
+}
+
 const compactWindowSize = { width: 220, height: 52 };
 const undoWindowSize = { width: 420, height: 120 };
+const errorWindowSize = { width: 420, height: 120 };
 const expandedWindowSize = { width: 360, height: 420 };
 let widgetExpanded = false;
 let widgetUndoVisible = false;
+let widgetErrorVisible = false;
 
 const defaultSettings = {
   language: process.env.CROCOVOICE_LANGUAGE || 'fr',
@@ -118,7 +140,15 @@ function normalizeText(value) {
 function isNoAudioTranscription(text) {
   const normalized = normalizeText(text);
   const compact = normalized.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return compact === 'sous titres realises par la communaute d amara org';
+  const fragments = [
+    'sous titres realises par la communaute d amara org',
+    'sous titrage st 501',
+  ];
+  if (fragments.some((fragment) => compact === fragment || compact.includes(fragment))) {
+    return true;
+  }
+  const looksLikeSubtitleHallucination = compact.includes('amara') && compact.includes('sous') && compact.includes('titres');
+  return looksLikeSubtitleHallucination;
 }
 
 function sendStatus(state, message) {
@@ -325,7 +355,8 @@ function armProcessingTimeout() {
       return;
     }
     console.warn('Processing timeout: no audio received from renderer.');
-    setRecordingState(RecordingState.IDLE);
+    setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+    scheduleReturnToIdle(3000);
   }, 4000);
 }
 
@@ -718,7 +749,7 @@ function setMainWindowBounds(targetSize) {
 function updateWidgetBounds() {
   const targetSize = widgetUndoVisible
     ? undoWindowSize
-    : (widgetExpanded ? expandedWindowSize : compactWindowSize);
+    : (widgetErrorVisible ? errorWindowSize : (widgetExpanded ? expandedWindowSize : compactWindowSize));
   setMainWindowBounds(targetSize);
 }
 
@@ -944,6 +975,7 @@ function startRecording() {
   }
 
   transitionLock = true;
+  clearIdleResetTimeout();
   clearProcessingTimeout();
   recordingStartTime = Date.now();
   setRecordingState(RecordingState.RECORDING);
@@ -966,6 +998,7 @@ async function stopRecording() {
   }
 
   transitionLock = true;
+  clearIdleResetTimeout();
   await captureTypingTarget();
   const recordingDuration = recordingStartTime ? Date.now() - recordingStartTime : 0;
 
@@ -1175,6 +1208,7 @@ async function persistTranscription({ transcribedText, finalText, title }) {
 }
 
 async function handleAudioPayload(event, audioData) {
+  clearIdleResetTimeout();
   clearProcessingTimeout();
   const target = resolveRecordingTarget();
   try {
@@ -1189,7 +1223,8 @@ async function handleAudioPayload(event, audioData) {
 
     const pipelineResult = await runTranscriptionPipeline(buffer, mimeType);
     if (pipelineResult.skip) {
-      setRecordingState(RecordingState.IDLE);
+      setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+      scheduleReturnToIdle(3000);
       event.reply('transcription-success', '');
       return;
     }
@@ -1210,7 +1245,7 @@ async function handleAudioPayload(event, audioData) {
 
     if (warningMessage) {
       setRecordingState(RecordingState.ERROR, warningMessage);
-      setTimeout(() => setRecordingState(RecordingState.IDLE), 3000);
+      scheduleReturnToIdle(3000);
     } else {
       setRecordingState(RecordingState.IDLE);
     }
@@ -1235,7 +1270,7 @@ async function handleAudioPayload(event, audioData) {
       ? 'OPENAI_API_KEY manquante.'
       : defaultMessage;
     setRecordingState(RecordingState.ERROR, userMessage);
-    setTimeout(() => setRecordingState(RecordingState.IDLE), 3000);
+    scheduleReturnToIdle(3000);
 
     event.reply('transcription-error', userMessage);
     sendDashboardEvent('dashboard:transcription-error', userMessage);
@@ -1255,13 +1290,14 @@ ipcMain.on('recording-error', (event, error) => {
   recordingStartTime = null;
   clearProcessingTimeout();
   setRecordingState(RecordingState.ERROR, error);
-  setTimeout(() => setRecordingState(RecordingState.IDLE), 3000);
+  scheduleReturnToIdle(3000);
 });
 
 ipcMain.on('recording-empty', (event, reason) => {
   recordingStartTime = null;
   clearProcessingTimeout();
-  setRecordingState(RecordingState.IDLE);
+  setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+  scheduleReturnToIdle(3000);
 });
 
 ipcMain.on('cancel-recording', () => {
@@ -1291,6 +1327,11 @@ ipcMain.on('widget-expanded', (event, expanded) => {
 
 ipcMain.on('widget-undo-visibility', (event, visible) => {
   widgetUndoVisible = Boolean(visible);
+  updateWidgetBounds();
+});
+
+ipcMain.on('widget-error-visibility', (event, visible) => {
+  widgetErrorVisible = Boolean(visible);
   updateWidgetBounds();
 });
 

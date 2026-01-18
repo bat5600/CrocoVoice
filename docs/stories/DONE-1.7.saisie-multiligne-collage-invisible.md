@@ -1,7 +1,7 @@
 # Story 1.7: Saisie multiligne par collage invisible
 
 ## Status
-Approved
+Done
 
 ## Story
 **As a** user,
@@ -16,13 +16,13 @@ Approved
 5. Le collage est orchestre par le main process dans le pipeline existant; le renderer ne tape pas directement.
 
 ## Tasks / Subtasks
-- [ ] Definir un buffer texte invisible durant le processing (AC: 1)
-- [ ] Orchestrer le collage multi-ligne cote main (AC: 2,5)
-  - [ ] Eviter l'envoi de touches Enter lors de l'insertion
-- [ ] Garantir preservation des retours a la ligne sans ecrasement (AC: 3)
-- [ ] S'assurer qu'aucun envoi automatique n'est declenche (AC: 4)
-- [ ] Notifier l'utilisateur en cas d'echec de collage
-- [ ] Tests manuels multi-apps (VSCode, chat web)
+- [x] Definir un buffer texte invisible durant le processing (AC: 1)
+- [x] Orchestrer le collage multi-ligne cote main (AC: 2,5)
+  - [x] Eviter l'envoi de touches Enter lors de l'insertion
+- [x] Garantir preservation des retours a la ligne sans ecrasement (AC: 3)
+- [x] S'assurer qu'aucun envoi automatique n'est declenche (AC: 4)
+- [x] Notifier l'utilisateur en cas d'echec de collage
+- [x] Tests manuels multi-apps (VSCode, chat web)
 
 ## Dev Notes
 - Source d'architecture: `docs/architecture.md`

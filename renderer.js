@@ -21,6 +21,8 @@ let currentSettings = {};
 let cancelButton = null;
 let stopButton = null;
 let cancelUndoEl = null;
+let widgetErrorEl = null;
+let widgetErrorText = null;
 let undoCancelButton = null;
 let cancelUndoProgress = null;
 let cancelUndoTimeoutId = null;
@@ -30,6 +32,10 @@ let pendingCancelPayload = null;
 let cancelUndoStartAt = null;
 let cancelUndoRemainingMs = 0;
 let cancelUndoPaused = false;
+let recordingStartedAt = null;
+let audioRmsPeak = 0;
+let audioActiveMs = 0;
+let audioMetricsLastAt = null;
 let authGateEl = null;
 let authLoginButton = null;
 let authSignupButton = null;
@@ -41,8 +47,13 @@ let authPasswordInput = null;
 let authSubmitPending = false;
 let currentAuthState = null;
 let widgetContainer = null;
+let recordingTooltipEl = null;
 
 const CANCEL_UNDO_DURATION_MS = 5000;
+const AUDIO_RMS_ACTIVE_THRESHOLD = 0.018;
+const AUDIO_MIN_TOTAL_MS = 350;
+const AUDIO_MIN_ACTIVE_MS = 200;
+const AUDIO_MIN_PEAK_RMS = 0.012;
 
 function setUndoActive(active) {
   if (!widgetContainer) {
@@ -50,6 +61,46 @@ function setUndoActive(active) {
   }
   widgetContainer.classList.toggle('undo-active', active);
   document.body.classList.toggle('undo-active', active);
+}
+
+function resetAudioMetrics() {
+  audioRmsPeak = 0;
+  audioActiveMs = 0;
+  audioMetricsLastAt = null;
+}
+
+function trackAudioMetrics(rms, frameTimeMs) {
+  if (!Number.isFinite(rms)) {
+    return;
+  }
+  audioRmsPeak = Math.max(audioRmsPeak, rms);
+
+  if (!Number.isFinite(frameTimeMs)) {
+    return;
+  }
+  if (audioMetricsLastAt === null) {
+    audioMetricsLastAt = frameTimeMs;
+    return;
+  }
+  const dt = Math.max(0, frameTimeMs - audioMetricsLastAt);
+  audioMetricsLastAt = frameTimeMs;
+  if (rms >= AUDIO_RMS_ACTIVE_THRESHOLD) {
+    audioActiveMs += dt;
+  }
+}
+
+function shouldTreatAsNoAudio() {
+  const durationMs = recordingStartedAt ? (Date.now() - recordingStartedAt) : 0;
+  if (durationMs > 0 && durationMs < AUDIO_MIN_TOTAL_MS) {
+    return true;
+  }
+  if (audioRmsPeak < AUDIO_MIN_PEAK_RMS) {
+    return true;
+  }
+  if (audioActiveMs < AUDIO_MIN_ACTIVE_MS && audioRmsPeak < (AUDIO_RMS_ACTIVE_THRESHOLD * 1.3)) {
+    return true;
+  }
+  return false;
 }
 
 function startCancelUndoTimer() {
@@ -121,6 +172,27 @@ function updateWidgetState(state, message) {
       statusTextEl.textContent = message || 'Erreur';
     } else {
       statusTextEl.textContent = 'Prêt';
+    }
+  }
+
+  if (state === 'error') {
+    if (widgetErrorText) {
+      widgetErrorText.textContent = message || 'Erreur';
+    }
+    if (widgetErrorEl) {
+      widgetErrorEl.classList.add('active');
+    }
+    document.body.classList.add('error-active');
+    if (window.electronAPI?.setWidgetErrorVisible) {
+      window.electronAPI.setWidgetErrorVisible(true);
+    }
+  } else {
+    if (widgetErrorEl) {
+      widgetErrorEl.classList.remove('active');
+    }
+    document.body.classList.remove('error-active');
+    if (window.electronAPI?.setWidgetErrorVisible) {
+      window.electronAPI.setWidgetErrorVisible(false);
     }
   }
 }
@@ -279,13 +351,14 @@ async function setupWaveform(stream) {
   source.connect(analyserNode);
 }
 
-function drawWaveform() {
+function drawWaveform(frameTimeMs) {
   if (!analyserNode || !waveformCtx || !waveformCanvas || !waveformData) {
     return;
   }
 
   analyserNode.getByteTimeDomainData(waveformData);
 
+  let rmsSum = 0;
   const { width, height } = waveformCanvas;
   waveformCtx.clearRect(0, 0, width, height);
   waveformCtx.lineWidth = 2;
@@ -297,8 +370,9 @@ function drawWaveform() {
   let x = 0;
 
   for (let i = 0; i < waveformData.length; i += 1) {
-    const v = waveformData[i] / 128.0;
-    const y = (v * height) / 2;
+    const centered = (waveformData[i] - 128) / 128.0;
+    const y = (centered + 1) * (height / 2);
+    rmsSum += centered * centered;
 
     if (i === 0) {
       waveformCtx.moveTo(x, y);
@@ -310,6 +384,9 @@ function drawWaveform() {
   }
 
   waveformCtx.stroke();
+
+  const rms = Math.sqrt(rmsSum / waveformData.length);
+  trackAudioMetrics(rms, frameTimeMs);
 }
 
 function startWaveform() {
@@ -321,12 +398,12 @@ function startWaveform() {
     cancelAnimationFrame(waveformAnimationId);
   }
 
-  const render = () => {
-    drawWaveform();
+  const render = (frameTimeMs) => {
+    drawWaveform(frameTimeMs);
     waveformAnimationId = requestAnimationFrame(render);
   };
 
-  render();
+  requestAnimationFrame(render);
 }
 
 function stopWaveform() {
@@ -384,6 +461,8 @@ async function initializeMediaRecorder() {
       if (cancelPending) {
         cancelPending = false;
         startCancelUndo(payload);
+      } else if (shouldTreatAsNoAudio()) {
+        window.electronAPI.sendRecordingEmpty('no_audio');
       } else {
         window.electronAPI.sendAudioReady(payload);
       }
@@ -421,6 +500,8 @@ async function startRecording() {
   }
 
   isRecording = true;
+  recordingStartedAt = Date.now();
+  resetAudioMetrics();
 
   if (!mediaRecorder) {
     const initialized = await initializeMediaRecorder();
@@ -442,6 +523,7 @@ function stopRecording() {
   }
 
   isRecording = false;
+  recordingStartedAt = null;
 
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     try {
@@ -487,6 +569,9 @@ window.electronAPI.onTranscriptionError(() => {});
 document.addEventListener('DOMContentLoaded', () => {
   waveformCanvas = document.getElementById('waveformCanvas');
   statusTextEl = document.getElementById('statusText');
+  widgetErrorEl = document.getElementById('widgetError');
+  widgetErrorText = document.getElementById('widgetErrorText');
+  recordingTooltipEl = document.getElementById('recordingTooltip');
   shortcutLabelEl = document.getElementById('shortcutLabel');
   cancelButton = document.getElementById('cancelRecordingButton');
   stopButton = document.getElementById('stopRecordingButton');
@@ -685,6 +770,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updateExpandedState();
+  }
+
+  if (recordingTooltipEl) {
+    recordingTooltipEl.addEventListener('mousedown', (event) => {
+      event.stopPropagation();
+    });
+    recordingTooltipEl.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
   }
 
   if (cancelButton) {
