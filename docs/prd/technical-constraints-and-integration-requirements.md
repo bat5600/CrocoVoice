@@ -1,32 +1,31 @@
 # Technical Constraints and Integration Requirements
 
 ## Existing Technology Stack
-**Languages**: JavaScript (Node.js)  
-**Frameworks**: Electron  
-**Database**: SQLite local (`flow.sqlite`), Supabase (Postgres) en remote  
-**Infrastructure**: Desktop app (tray + renderer windows), OS permissions (micro/keyboard)  
-**External Dependencies**: OpenAI SDK/Whisper, Supabase SDK, @nut-tree-fork/nut-js (robotjs fallback)
+**Languages**: JavaScript (ES standard)  
+**Frameworks**: Electron ^35.7.5 (main/renderer + IPC)  
+**Database**: SQLite (sqlite3 ^5.1.7)  
+**Infrastructure**: Local Electron runtime (npm start / npm run dev)  
+**External Dependencies**: Supabase JS (auth/sync), OpenAI SDK, @nut-tree-fork/nut-js  
 
 ## Integration Approach
-**Database Integration Strategy**: SQLite reste la source locale principale (settings/history/styles/dictionary) avec purge historique; Supabase sync optionnelle non bloquante.  
-**API Integration Strategy**: OpenAI Whisper pour transcription + OpenAI chat completions pour post-process; gestion des erreurs et timeouts.  
-**Frontend Integration Strategy**: IPC main/renderer pour etats, settings et actions; widget minimaliste et dashboard separes.  
-**Testing Integration Strategy**: Pas de harness existant; prioriser tests manuels + scenarios de non-regression, et ajouter tests unitaires si un harness est introduit.
+**Database Integration Strategy**: Eviter toute migration SQLite; stocker les quotas ailleurs (Supabase ou fichier local).  
+**API Integration Strategy**: Utiliser Supabase auth pour reset password et eventuellement functions pour quotas.  
+**Frontend Integration Strategy**: Integrer les etats paywall dans `docs/signup.html` et dans la surface d'upsell choisie.  
+**Testing Integration Strategy**: Tests manuels (signup/login/reset, quota, upgrade) sur plusieurs scenarii.  
 
 ## Code Organization and Standards
-**File Structure Approach**: Respect de la separation main/renderer/preload (main.js, renderer.js, preload.js) + modules services (store.js, sync.js).  
-**Naming Conventions**: style JavaScript existant (camelCase, fichiers en lower-case).  
-**Coding Standards**: Non formalises; conserver le style actuel, ajouter standards progressifs si necessaire.  
-**Documentation Standards**: README + PRD; ajouter notes techniques si dette critique identifiee.
+**File Structure Approach**: Reutiliser les fichiers existants (pas de nouveaux frameworks).  
+**Naming Conventions**: camelCase JS, ID HTML existants.  
+**Coding Standards**: Suivre `docs/architecture/coding-standards.md`.  
+**Documentation Standards**: Mettre a jour `docs/brainstorming-session-results.md` si besoin.  
 
 ## Deployment and Operations
-**Build Process Integration**: npm scripts (`npm start`, `npm run dev`); pas de pipeline de build/package visible.  
-**Deployment Strategy**: Run local Electron; packaging a definir si distribution requise.  
-**Monitoring and Logging**: console logs; pas de telemetrie.  
-**Configuration Management**: .env pour OpenAI/Supabase + settings SQLite pour options utilisateur.
+**Build Process Integration**: Pas de changement de pipeline.  
+**Deployment Strategy**: Update app standard; services externes via Supabase/Stripe.  
+**Monitoring and Logging**: Logs client minimalistes; pas de secrets en clair.  
 
 ## Risk Assessment and Mitigation
-**Technical Risks**: permissions micro/clavier, echec OpenAI, timeouts/quota/429, format audio non supporte, libs clavier indisponibles (nut-js/robotjs), echec silencieux de la saisie clavier.  
-**Integration Risks**: incoherence d'etats entre main/renderer, IPC fragile, evenements doubles (raccourci + widget) provoquant start/stop multiples, sync Supabase partielle ou conflit de versions.  
-**Deployment Risks**: variations OS (macOS/Windows/Linux) sur raccourcis globaux et acces accesibilite, fenetre cible qui change pendant le processing (texte tape au mauvais endroit).  
-**Mitigation Strategies**: etat machine robuste, debouncing/locking des actions start/stop, retries limites, backoff sur erreurs OpenAI, fallback locaux, messages d'erreur explicites, detection d'echec de saisie, tests manuels multi-OS, mode offline stable.
+**Technical Risks**: Enforcement du quota uniquement cote client => contournable.  
+**Integration Risks**: Stripe + Supabase peuvent requerir des fonctions serveur.  
+**Deployment Risks**: Incoherence entre statut d'abonnement et acces reel.  
+**Mitigation Strategies**: Centraliser l'entitlement cote serveur (Supabase), verifier au demarrage, fallback lisible.  

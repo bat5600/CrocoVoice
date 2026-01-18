@@ -5,10 +5,10 @@
 ### Existing Project Overview
 
 #### Analysis Source
-IDE-based fresh analysis (docs: `docs/architecture.md`, `docs/architecture/tech-stack.md`, `docs/architecture/source-tree.md`, `docs/architecture/coding-standards.md`, `docs/front-end-spec.md`).
+IDE-based fresh analysis: `docs/architecture.md`, `docs/architecture/tech-stack.md`, `docs/architecture/source-tree.md`, `docs/architecture/coding-standards.md`, `docs/front-end-spec.md`, `docs/brainstorming-session-results.md`.
 
 #### Current Project State
-CrocoVoice is an Electron desktop dictation app: MediaRecorder -> Whisper -> optional post-process -> keyboard typing, with a tray widget and a dashboard for settings/history/dictionary/sync. Main/renderer split via IPC; local SQLite storage with optional Supabase sync.
+CrocoVoice est une app Electron de dictee: MediaRecorder -> Whisper -> post-process -> auto-typing, avec widget + dashboard. Auth/sync via Supabase (optionnel), SQLite local comme source de verite.
 
 ### Available Documentation Analysis
 
@@ -25,9 +25,9 @@ CrocoVoice is an Electron desktop dictation app: MediaRecorder -> Whisper -> opt
 ### Enhancement Scope Definition
 
 #### Enhancement Type
-- [ ] New Feature Addition
+- [x] New Feature Addition
 - [ ] Major Feature Modification
-- [ ] Integration with New Systems
+- [x] Integration with New Systems
 - [ ] Performance/Scalability Improvements
 - [x] UI/UX Overhaul
 - [ ] Technology Stack Upgrade
@@ -35,166 +35,176 @@ CrocoVoice is an Electron desktop dictation app: MediaRecorder -> Whisper -> opt
 - [ ] Other: 
 
 #### Enhancement Description
-Modernize the entire main application interface (dashboard window with dictionary/history/settings/etc.) to feel SaaS premium, improving visual design, layout, and interaction polish while preserving existing functionality and flows.
+Ajouter un paywall et une logique d'abonnement: plan FREE (quota hebdo ~2000 mots) + plan PRO (illimite a 9.90 EUR/mois), avec flow "mot de passe oublie", affichage de consommation, et gestion d'abonnement (ex: Stripe Checkout/portal).
 
 #### Impact Assessment
 - [ ] Minimal Impact (isolated additions)
-- [ ] Moderate Impact (some existing code changes)
-- [x] Significant Impact (substantial existing code changes)
+- [x] Moderate Impact (some existing code changes)
+- [ ] Significant Impact (substantial existing code changes)
 - [ ] Major Impact (architectural changes required)
 
 ### Goals and Background Context
 
 #### Goals
-- Modern, premium visual language aligned with a SaaS product
-- Clearer navigation and hierarchy across dashboard sections
-- Consistent components, typography, spacing, and states
-- Improved perceived quality without breaking existing flows
-- Maintain current performance and reliability
+- Activer une offre FREE/PRO claire avec quota hebdo
+- Declencher l'upgrade PRO via paywall au bon moment
+- Afficher la consommation et le reset de quota
+- Ajouter/reset password fonctionnel
+- Preparer la gestion d'abonnement (checkout + portail)
 
 #### Background Context
-The current UI is functional but does not convey a premium, modern SaaS feel. This enhancement aims to raise perceived quality and trust without altering core dictation workflows or integration points, building on the existing UX spec.
+Le signup/login minimal existe deja. Il manque un flux "mot de passe oublie" et un vrai modele d'acces (FREE limite + PRO illimite) pour monetiser. L'objectif est de rendre l'experience claire et actionnable sans casser l'existant.
 
 ### Change Log
 | Change | Date | Version | Description | Author |
 | --- | --- | --- | --- | --- |
-| Initial draft | 2026-01-15 | v0.1 | Brownfield PRD draft (UX overhaul) | PM |
+| PRD update | 2026-01-15 | v0.2 | Paywall + Auth scope | PM |
 
 ## Requirements
-These requirements are based on the existing system analysis. Please review carefully and confirm they align with the current project reality.
+These requirements are based on my understanding of the existing system. Please review carefully and confirm they align with your project's reality.
 
 ### Functional
-1. FR1: The dashboard (settings, history, dictionary, sync views) is visually modernized to a premium SaaS look without altering core workflows.
-2. FR2: Navigation between dashboard sections remains clear and consistent, with improved hierarchy and affordances.
-3. FR3: All existing data views (history list, dictionary entries, styles, sync/auth) remain available and functional after the UI redesign.
-4. FR4: The dashboard supports OS-standard window behaviors (resize, maximize, minimize, close) without breaking layout.
-5. FR5: Visual states (loading, empty, error) are redesigned to feel premium while preserving current information.
+1. FR1: Le flow "mot de passe oublie" envoie un email de reset via Supabase et permet un retour au login.
+2. FR2: Le plan FREE applique un quota hebdomadaire de mots dictes (ex: 2000 mots/sem) avec une date de reset claire.
+3. FR3: L'UI affiche le nombre de mots restants et la date/heure de reset.
+4. FR4: Au depassement du quota, un paywall est affiche avec CTA d'upgrade (soft/hard limit a definir).
+5. FR5: Le plan PRO debloque un acces illimite a la dictee apres achat d'abonnement.
+6. FR6: L'utilisateur peut gerer son abonnement (upgrade/downgrade, factures) via un portail client.
+7. FR7: Le statut d'abonnement et les quotas sont lisibles cote client pour adapter l'UI (badge plan, acces).
+8. FR8: Les flows signup/login existants restent fonctionnels, hors ajout du reset/paywall.
 
 ### Non Functional
-1. NFR1: The redesign must maintain or improve dashboard load time (target: under 2 seconds on typical hardware).
-2. NFR2: UI changes must not introduce new runtime dependencies or require a framework change.
-3. NFR3: Accessibility remains WCAG 2.1 AA compliant (focus states, contrast, keyboard navigation).
-4. NFR4: Animations remain subtle and do not exceed 60 FPS; reduced-motion is respected.
+1. NFR1: Aucun nouveau framework front; rester en HTML/CSS/JS existants.
+2. NFR2: Les actions auth/paywall ont un temps de reponse percu < 2s en conditions normales.
+3. NFR3: Aucune cle privee n'est exposee cote client; usage des cles publiques uniquement.
+4. NFR4: En cas d'erreur reseau/Stripe/Supabase, l'UI affiche un message clair et un etat stable.
+5. NFR5: Les evenements cles (signup, reset, paywall, upgrade) sont tracables.
 
 ### Compatibility Requirements
-1. CR1: IPC channels and payload shapes between main/renderer must remain unchanged.
-2. CR2: SQLite schema and data remain fully backward compatible (no destructive changes).
-3. CR3: UI behaviors for settings/history/dictionary/sync remain consistent with existing flows.
-4. CR4: Integration with Electron window configuration (frameless dashboard, preload isolation) remains intact.
+1. CR1: Les flows signup/login existants continuent de fonctionner sans regression.
+2. CR2: La base locale SQLite reste compatible (pas de migration destructive).
+3. CR3: Les patterns UI de `docs/signup.html` restent coherents avec le design existant.
+4. CR4: L'integration Supabase actuelle reste compatible; aucune rupture d'API cote client.
 
 ## User Interface Enhancement Goals
 
 ### Integration with Existing UI
-Align the redesign with the existing `docs/front-end-spec.md` (state clarity, minimal footprint, keyboard-first, fail gracefully). Keep the dashboard’s functional layout intact but elevate visual hierarchy, spacing, typography, and component polish. Use the established brand palette and typography as a base, updated to a more premium expression.
+Aligner les ajouts (paywall, quota, reset password) avec le style et les composants existants de `docs/signup.html`. Garder la structure HTML/JS actuelle, en ajoutant uniquement les etats necessaires (forgot/reset, quota, CTA upgrade).
 
 ### Modified/New Screens and Views
-- Dashboard shell (window chrome/header, navigation)
-- Settings view
-- History view
-- Dictionary view
-- Sync/Auth view
+- `docs/signup.html` (forgot password + messages de reset)
+- Surfaces d'upsell/paywall (modal ou blocage au moment du quota)
+- Affichage de quota restant (signup/dashboard ou autre surface existante)
+- Lien "Gerer mon abonnement" vers portail client
 
 ### UI Consistency Requirements
-- Preserve existing navigation structure and view names.
-- Maintain consistent component styling across all dashboard sections.
-- Ensure window controls, focus states, and error/empty states follow platform conventions.
-- Keep performance and interaction feedback consistent with current UX principles.
+- Conserver la palette, typo, et systeme de boutons existants.
+- Etats d'erreur et succes clairs et coherents.
+- CTA upgrade visible mais non intrusif avant le blocage.
 
 ## Technical Constraints and Integration Requirements
 
 ### Existing Technology Stack
-**Languages**: JavaScript (ES standard)
-**Frameworks**: Electron ^35.7.5 (main/renderer + IPC)
-**Database**: SQLite (sqlite3 ^5.1.7)
-**Infrastructure**: Local Electron runtime (npm start / npm run dev)
-**External Dependencies**: OpenAI SDK (Whisper + Chat), @nut-tree-fork/nut-js (robotjs fallback), Supabase JS (optional sync)
+**Languages**: JavaScript (ES standard)  
+**Frameworks**: Electron ^35.7.5 (main/renderer + IPC)  
+**Database**: SQLite (sqlite3 ^5.1.7)  
+**Infrastructure**: Local Electron runtime (npm start / npm run dev)  
+**External Dependencies**: Supabase JS (auth/sync), OpenAI SDK, @nut-tree-fork/nut-js  
 
 ### Integration Approach
-**Database Integration Strategy**: No schema changes; continue using SQLite as local source of truth; sync remains optional/non-blocking.
-**API Integration Strategy**: Preserve existing IPC channels and payload shapes; no new external APIs required.
-**Frontend Integration Strategy**: Keep HTML/CSS/JS structure in `dashboard.html` + `dashboard.js`, modernize styles and layout without framework changes.
-**Testing Integration Strategy**: Manual UI regression checks; no automated harness added.
+**Database Integration Strategy**: Eviter toute migration SQLite; stocker les quotas ailleurs (Supabase ou fichier local).  
+**API Integration Strategy**: Utiliser Supabase auth pour reset password et eventuellement functions pour quotas.  
+**Frontend Integration Strategy**: Integrer les etats paywall dans `docs/signup.html` et dans la surface d'upsell choisie.  
+**Testing Integration Strategy**: Tests manuels (signup/login/reset, quota, upgrade) sur plusieurs scenarii.  
 
 ### Code Organization and Standards
-**File Structure Approach**: Maintain flat root layout; update existing `dashboard.html`, `dashboard.js`, shared styles if any.
-**Naming Conventions**: Keep camelCase JS and existing naming patterns.
-**Coding Standards**: Follow `docs/architecture/coding-standards.md` (plain JS, minimal comments, consistent patterns).
-**Documentation Standards**: Update UX specs or inline notes if necessary.
+**File Structure Approach**: Reutiliser les fichiers existants (pas de nouveaux frameworks).  
+**Naming Conventions**: camelCase JS, ID HTML existants.  
+**Coding Standards**: Suivre `docs/architecture/coding-standards.md`.  
+**Documentation Standards**: Mettre a jour `docs/brainstorming-session-results.md` si besoin.  
 
 ### Deployment and Operations
-**Build Process Integration**: No changes; continue Electron local run/build flows.
-**Deployment Strategy**: Standard app update; no new services.
-**Monitoring and Logging**: Keep console logging minimal; avoid secrets.
+**Build Process Integration**: Pas de changement de pipeline.  
+**Deployment Strategy**: Update app standard; services externes via Supabase/Stripe.  
+**Monitoring and Logging**: Logs client minimalistes; pas de secrets en clair.  
 
 ### Risk Assessment and Mitigation
-**Technical Risks**: UI overhaul could introduce layout regressions or accessibility issues.
-**Integration Risks**: Frameless window controls and resize behavior might break across OSes.
-**Deployment Risks**: None beyond standard UI regressions.
-**Mitigation Strategies**: Manual cross-platform QA, incremental styling changes, fallback to native window controls if custom header is unstable.
+**Technical Risks**: Enforcement du quota uniquement cote client => contournable.  
+**Integration Risks**: Stripe + Supabase peuvent requerir des fonctions serveur.  
+**Deployment Risks**: Incoherence entre statut d'abonnement et acces reel.  
+**Mitigation Strategies**: Centraliser l'entitlement cote serveur (Supabase), verifier au demarrage, fallback lisible.  
 
 ## Epic and Story Structure
-Based on the existing project analysis, this enhancement should be structured as a single epic because the scope is a cohesive UI/UX overhaul within one surface (dashboard) and shares the same integration points and constraints.
+This enhancement is placed as Epic 3 in the overall roadmap, covering auth + paywall + quota as a cohesive scope sharing the same integration points.
 
-**Epic Structure Decision**: Single epic focused on premium dashboard UX modernization.
+**Epic Structure Decision**: Epic 3 focused on paywall and authentication flows.
 
-## Epic 1: Dashboard UX Premium Modernization
+## Epic 3: Paywall, Quota, and Auth Flows
 
-**Epic Goal**: Deliver a premium, modern SaaS-style dashboard UI while preserving existing functionality, performance, and integration behavior.
+**Epic Goal**: Activer une offre FREE/PRO avec quotas, reset password, paywall et gestion d'abonnement sans casser l'existant.
 
-**Integration Requirements**: Preserve IPC flows, database schema, and renderer/main boundaries; keep functional parity across all dashboard sections.
+**Integration Requirements**: Preserver Supabase auth existant, ne pas casser SQLite ou IPC Electron, garder `docs/signup.html` coherent.
 
-### Story 1.1 Premium dashboard shell and navigation
-As a user,
-I want a premium dashboard shell with clearer hierarchy and navigation,
-so that the app feels modern and easier to use.
-
-#### Acceptance Criteria
-1. The dashboard header and navigation are visually refreshed (spacing, typography, contrast) without changing routes or labels.
-2. Window controls (close/minimize/maximize) are present and behave consistently with OS conventions.
-3. Layout scales correctly on resize without overlapping or clipping.
-4. Existing navigation actions (settings/history/dictionary/sync) remain functional.
-
-#### Integration Verification
-1. IV1: Existing dashboard views render without errors after shell changes.
-2. IV2: IPC channels used by dashboard remain unchanged.
-3. IV3: Resize and window controls do not impact widget or tray behavior.
-
-### Story 1.2 Premium styling for settings and history
-As a user,
-I want settings and history views to look polished and consistent,
-so that the app feels high quality and professional.
+### Story 3.1 Forgot password flow
+As a user,  
+I want to reset my password by email,  
+so that I can regain access without support.
 
 #### Acceptance Criteria
-1. Settings form fields, labels, and buttons adopt the new premium visual system.
-2. History list items use improved spacing, typography, and states (hover/selected).
-3. Empty, loading, and error states are redesigned with clear, premium visuals.
-4. All existing settings actions and history operations behave as before.
+1. Un lien "mot de passe oublie" declenche un formulaire email.
+2. L'email de reset est envoye via Supabase.
+3. L'UI affiche un message de succes et propose un retour au login.
+4. Les flows login/signup existants restent inchanges.
 
 #### Integration Verification
-1. IV1: Settings save and history list APIs behave unchanged.
-2. IV2: No regression in keyboard navigation and focus handling.
-3. IV3: Performance remains comparable to current dashboard load time.
+1. IV1: Supabase auth login/signup fonctionnent apres ajout du reset.
+2. IV2: Aucun changement requis cote SQLite.
+3. IV3: Erreurs reseau affichees clairement.
 
-### Story 1.3 Premium styling for dictionary and sync/auth
-As a user,
-I want dictionary and sync/auth views to feel premium and cohesive,
-so that the entire dashboard experience is consistent.
+### Story 3.2 Quota tracking and UI display
+As a user,  
+I want to see my weekly word quota and remaining words,  
+so that I understand my usage on FREE.
 
 #### Acceptance Criteria
-1. Dictionary list and edit actions match the updated visual language.
-2. Sync/auth states (logged in/out, syncing, error) are visually consistent and clear.
-3. Error messages remain actionable and non-blocking.
-4. All existing dictionary and sync/auth flows work without change.
+1. Le quota hebdo (ex: 2000 mots) est defini avec un reset clair.
+2. L'UI affiche mots restants + date/heure de reset.
+3. Le compteur se met a jour apres chaque dictee.
+4. L'UI reste stable en cas d'erreur de lecture du quota.
 
 #### Integration Verification
-1. IV1: Dictionary CRUD and sync/auth IPC flows remain intact.
-2. IV2: No regressions in data rendering or list performance.
-3. IV3: Visual states align with accessibility requirements (contrast, focus).
+1. IV1: La dictee existante fonctionne avec le compteur actif.
+2. IV2: L'affichage quota ne casse pas les flows login/signup.
+3. IV3: Aucun impact sur les IPC ou la perf de base.
 
-## Story Manager Handoff
-Please develop detailed user stories for this brownfield epic. Key considerations:
-- This is an enhancement to an existing system running Electron (main/renderer + IPC), JavaScript, and SQLite.
-- Integration points: `dashboard.html`, `dashboard.js`, Electron window creation in `main.js`, IPC via `preload.js`.
-- Existing patterns to follow: `docs/front-end-spec.md` UX principles and current navigation structure.
-- Critical compatibility requirements: preserve IPC channels, database schema, and functional flows.
-- Each story must include verification that existing functionality remains intact.
+### Story 3.3 Paywall enforcement and upgrade CTA
+As a user,  
+I want a clear paywall when I reach my quota,  
+so that I can choose to upgrade.
+
+#### Acceptance Criteria
+1. Au seuil, un paywall apparait (soft/hard limit a definir).
+2. Le CTA d'upgrade est present et fonctionnel.
+3. Les etats "presque a limite" sont visibles avant le blocage.
+4. L'utilisateur FREE reste connecte et peut consulter ses donnees.
+
+#### Integration Verification
+1. IV1: Aucune regression sur les flows de dictee quand quota non atteint.
+2. IV2: Le paywall n'empeche pas les autres vues non liees.
+3. IV3: Les messages d'erreur restent coherents.
+
+### Story 3.4 Subscription purchase and portal access
+As a user,  
+I want to subscribe to PRO and manage my subscription,  
+so that I can access unlimited dictation and control billing.
+
+#### Acceptance Criteria
+1. Un flow d'achat PRO est disponible (ex: Stripe Checkout).
+2. Une fois l'achat valide, l'acces PRO est applique immediatement.
+3. Un lien "Gerer mon abonnement" ouvre un portail client.
+4. Le statut d'abonnement est affiche dans l'UI.
+
+#### Integration Verification
+1. IV1: Le statut PRO est respecte apres redemarrage.
+2. IV2: Les erreurs de paiement sont affichees clairement.
+3. IV3: Les flows login/signup/reset restent fonctionnels.

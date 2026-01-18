@@ -1,7 +1,7 @@
 # Story 2.5: Créer la landing page « Créer un compte »
 
 ## Status
-Ready for Review
+Done
 
 ## Story
 **As a** CrocoVoice prospect,
@@ -19,7 +19,7 @@ Ready for Review
 - [x] Ajouter un court paragraphe “Pourquoi s’inscrire” incluant sync historique/dictionnaire + mention anonymisation/sécurité.
 - [x] Valider que le login ouvre cette page (mettre à jour `renderer.js` ou le flux Supabase) et documenter la logique.
 - [x] Documenter dans la story comment mettre à jour le lien vers Supabase si l’on déploie la landing ailleurs.
-- [ ] Tests manuels : ouvrir l’URL, vérifier CTA, lien Supabase fonctionnel, design cohérent.
+- [x] Tests manuels : ouvrir l’URL, vérifier CTA, lien Supabase fonctionnel, design cohérent.
 
 ## Dev Notes
 - La landing est auto-hébergée dans le repo (`docs/` ou `assets/`) pour faciliter les tests avant que le marketing fournisse une URL définitive.

@@ -1,4 +1,4 @@
 # Epic and Story Structure
+This enhancement is placed as Epic 3 in the overall roadmap, covering auth + paywall + quota as a cohesive scope sharing the same integration points.
 
-## Epic Approach
-**Epic Structure Decision**: Deux epics coherents et complementaires.\n\n- Epic 1: Stabilisation/structuration transversale du flux existant (record -> transcribe -> post-process -> type).\n- Epic 2: Modernisation UX premium du dashboard (settings/history/dictionary/sync) sans changement fonctionnel.\n\nCette structure separe les risques techniques de stabilisation et l'effort de refonte UI, tout en gardant des scopes clairs et testables. Does this align with your understanding of the work required?
+**Epic Structure Decision**: Epic 3 focused on paywall and authentication flows.

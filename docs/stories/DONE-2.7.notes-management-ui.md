@@ -1,7 +1,7 @@
 # Story 2.7: Déployer une vue Notes autonome
 
 ## Status
-Ready for Review
+Done
 
 ## Story
 **As a** user who préfère composer quelques idées à la main,  

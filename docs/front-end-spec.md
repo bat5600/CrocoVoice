@@ -11,10 +11,11 @@ This document defines the updated user experience goals, information architectur
 - **Power User:** Demands speed, keyboard shortcuts, and zero friction.
 
 #### Design Principles (The "Whaouh Effect")
-1. **Visual sophistication** - Depth, glassmorphism, and subtle mesh gradients create a living interface.
-2. **Hierarchy by contrast** - Content on a bright canvas, anchored by a dark, fixed navigation.
-3. **Reactive micro-interactions** - Hover and click responses feel satisfying and intentional.
-4. **Less is more** - Secondary actions appear only on hover to reduce noise.
+1. **Cinematic split contrast** - Dark, atmospheric surfaces for hero/branding; luminous light canvas for actions.
+2. **Tactile depth** - Soft shadows, inner glow, and glass panels create a premium, layered feel.
+3. **Emerald as a signal** - Green accents guide attention (focus rings, CTAs, badges, system status).
+4. **Clean, confident typography** - Spacious layouts with bold headings and precise microcopy.
+5. **Delight through texture** - Noise overlays and soft gradients add richness without clutter.
 
 ### Change Log
 
@@ -26,8 +27,8 @@ This document defines the updated user experience goals, information architectur
 ## Information Architecture (IA)
 
 ### Layout Structure: Split View
-- **Sidebar (Fixed, Left, Dark):** Logo with glow, primary navigation, user profile anchored at bottom.
-- **Main Content (Scrollable, Right, Light):** Operational content with a sticky glass header.
+- **Brand/Hero Panel (Left, Dark):** Deep teal canvas with glow gradients, noise texture, and a premium highlight card.
+- **Action Panel (Right, Light):** Soft off-white background with crisp form cards and elevated CTAs.
 
 ### Navigation Structure
 - **Primary Navigation:** Sidebar items (Dashboard, Dictionary, Style, Settings).
@@ -36,8 +37,10 @@ This document defines the updated user experience goals, information architectur
 
 ### Dashboard Implementation Notes
 - **Reference file:** `dashboard.html`.
-- **Structure:** Fixed dark sidebar, glass sticky header, and a scrollable light content column.
-- **Key components:** Stats Cards with hover lift, Mesh Gradient Banner, Smart List Rows with ghost actions, and a blurred modal.
+- **Structure:** Keep the cinematic split contrast from signup: dark left navigation + light action canvas.
+- **Lighting:** Use subtle emerald/teal glow accents on dark surfaces; avoid heavy gradients on the light canvas.
+- **Type & spacing:** Bold, confident headers (Plus Jakarta Sans) with generous vertical rhythm.
+- **Key components:** Stats Cards with hover lift, glass sticky header, Smart List Rows with ghost actions, and a soft-glow modal.
 
 ## User Flows
 
@@ -62,57 +65,94 @@ This document defines the updated user experience goals, information architectur
 ### Core Components
 
 #### Stats Card
-**Design:** White card with thin border, large number (Inter 800), label, and icon in a pale-green square.  
-**Hover Lift:** translateY(-5px), stronger green-tinted shadow, icon turns emerald with slight rotation.
+**Design:** White card, rounded-xl, subtle border, large number (Plus Jakarta Sans 700), label, and icon in a pale-green square.  
+**Hover Lift:** translateY(-5px), stronger emerald-tinted shadow, icon shifts to Accent Emerald.
 
 #### Mesh Gradient Banner
 **Usage:** Highlights such as "Year in Review".  
-**Design:** White base with radial gradients (emerald, lime, teal) for a "nature-tech" feel.  
-**Button:** Outline style, white fill, transparent border, green text.
+**Design:** Light canvas with subtle emerald/teal radial gradients. Keep saturation low.  
+**Button:** Solid dark-emerald CTA or white outline (avoid lime dominance).
 
 #### Smart List Row
 **Problem Solved:** Avoid spreadsheet density.  
-**Design:** Spaced rows with individually rounded corners.  
-**Ghost Actions:** Hidden by default, fade in on hover; row pops out with shadow.
+**Design:** Spaced rows with individually rounded corners and a soft border.  
+**Ghost Actions:** Hidden by default, fade in on hover; row pops out with a light emerald shadow.
 
 #### Modal
-**Design:** Centered white modal, 24px radius.  
-**Backdrop:** Deep Swamp blur (blur(8px)) to isolate focus.
+**Design:** Centered white modal, 24px radius, subtle shadow.  
+**Backdrop:** Deep teal blur (blur(8px)) with slight emerald tint.
 
 ## Branding & Style Guide
 
-### Color Palette ("Modern Croco")
+### Color Palette ("CrocoVoice Emerald")
 
 | Token | Hex | Usage |
 | --- | --- | --- |
-| Primary | #1E9E6A | Primary actions, active states |
-| Primary Surface | #E6F7F0 | Badges, light hovers |
-| Background Body | #F8FAFC | Global background |
-| Background Sidebar | #051B15 | Sidebar background ("Deep Swamp") |
-| Text Main | #064E3B | Titles, primary data |
+| Primary | #0F2D28 | Primary CTA base (deep emerald) |
+| Primary Hover | #0B3A34 | CTA hover |
+| Accent Emerald | #10B981 | Focus rings, badges, highlights |
+| Accent Teal | #2DD4BF | Gradient pair for headings |
+| Surface Light | #F8FAFC | Main content background |
+| Surface White | #FFFFFF | Cards, inputs |
+| Surface Dark | #042F2E | Hero/branding panel |
+| Text Main | #0F172A | Primary text on light |
 | Text Muted | #64748B | Secondary metadata |
-| Text On Dark | #ECFDF5 | Sidebar text |
-| Accent Lime | #84CC16 | Gradient highlights |
+| Text On Dark | #ECFDF5 | Text on dark surfaces |
+| Stroke Light | #E2E8F0 | Subtle borders |
 
 ### Typography
 
 #### Font Families
-- **Primary:** Inter
-- **Secondary:** Plus Jakarta Sans
+- **Primary:** Plus Jakarta Sans
+- **Secondary:** Inter (fallback for system areas if needed)
 
 #### Type Scale
 
 | Element | Size | Weight | Line Height |
 | --- | --- | --- | --- |
-| H1 (Display) | 32px | 800 | 40px |
-| H2 (Section) | 18px | 700 | 26px |
-| Body | 14px | 500 | 22px |
-| Small | 12px | 400 | 18px |
+| H1 (Display) | 36-48px | 700-800 | 1.1-1.2 |
+| H2 (Section) | 20-24px | 700 | 1.25 |
+| Body | 14-16px | 500-600 | 1.5 |
+| Small | 12px | 500 | 1.4 |
+
+### Spacing, Radius, and Shadow Tokens
+
+#### Spacing Scale
+| Token | Value | Usage |
+| --- | --- | --- |
+| xs | 4px | Micro gaps, icon padding |
+| sm | 8px | Compact spacing |
+| md | 12px | Form element padding |
+| lg | 16px | Card padding |
+| xl | 24px | Section spacing |
+| 2xl | 32px | Page gutters |
+| 3xl | 48px | Hero spacing |
+
+#### Radius Scale
+| Token | Value | Usage |
+| --- | --- | --- |
+| sm | 8px | Buttons, small chips |
+| md | 12px | Inputs, badges |
+| lg | 16px | Cards |
+| xl | 20px | Feature cards |
+| 2xl | 24px | Modals |
+
+#### Shadow Tokens
+| Token | Value | Usage |
+| --- | --- | --- |
+| sm | 0 1px 2px rgba(15, 23, 42, 0.06) | Inputs, chips |
+| md | 0 8px 20px rgba(15, 23, 42, 0.08) | Cards |
+| lg | 0 20px 35px rgba(15, 23, 42, 0.12) | Modals |
+| glow | 0 0 24px rgba(16, 185, 129, 0.18) | Active states, hero accents |
 
 ### Depth System
-- **Glassmorphism:** backdrop-filter: blur(12px) with 85% white background for sticky header.
-- **Shadow Float:** 0 20px 25px -5px rgba(0, 50, 20, 0.05) on hover cards.
-- **Glow:** box-shadow: 0 0 15px rgba(30, 158, 106, 0.4) for logo and active elements.
+- **Glassmorphism:** Frosted panels with blur(12px) on dark surfaces for cards and badges.
+- **Shadow Float:** Soft elevation on light cards (shadow-lg, emerald tint at 10%).
+- **Glow:** Subtle emerald glow on active elements and hero gradients.
+
+### Texture & Backgrounds
+- **Hero Panel:** Gradient glows (emerald + teal) + noise overlay at 15-20% opacity.
+- **Light Panel:** Flat off-white with minimal noise; keep readability high.
 
 ## Accessibility Requirements
 
@@ -135,15 +175,36 @@ This document defines the updated user experience goals, information architectur
 - **Hover lift:** Cards and list rows lift by 5px with soft shadow.
 - **Ghost actions:** Opacity 0 to 1 on hover (150ms).
 - **Modal scale-in:** 0.95 to 1.0 over 200ms with ease-out.
+ - **CTA press:** Active scale to 0.99 with a fast ease-out.
 
 ## Performance Considerations
-- Keep mesh gradients efficient; prefer CSS radial gradients over heavy images.
+- Keep gradients efficient; prefer CSS radial gradients and a single noise texture.
 - Limit blur layers to avoid GPU spikes on scroll.
 
 ## Implementation Checklist
-1. Configure CSS root variables with the Modern Croco palette.
-2. Build the split grid: 270px fixed sidebar + flex main content.
-3. Implement glassmorphism for the sticky header.
-4. Add hover effects for Stats Cards and Smart List Rows.
-5. Load Inter (400-800) and Plus Jakarta Sans.
-6. Verify mesh gradients are performant on target hardware.
+1. Configure CSS root variables with the CrocoVoice Emerald palette.
+2. Implement split layout with dark brand panel + light action panel.
+3. Load Plus Jakarta Sans (300-700) and set as primary font.
+4. Add emerald focus rings for all inputs and CTAs.
+5. Apply glow gradients + noise on dark surfaces only.
+6. Verify blur and gradients are performant on target hardware.
+#### Hero Panel (Signup)
+**Design:** Full-height dark surface (#042F2E) with layered glow gradients and noise.  
+**Content:** Logo badge, product promise heading with gradient text, social proof card.  
+**Texture:** Subtle grain overlay to avoid flat color.
+
+#### Primary CTA Button
+**Design:** Solid emerald/forest fill, bold label, slight scale on active.  
+**States:** Hover darkens, focus ring emerald, shadow soft but noticeable.
+
+#### Form Input Group
+**Design:** White card input with rounded-xl, icon prefix, focus ring emerald 20% and border emerald.  
+**Behavior:** Inline validation helper; error state uses red text only (no heavy borders).
+
+#### Social Login Buttons
+**Design:** White surface, muted border, subtle hover tint to emerald, gentle shadow.  
+**Icon:** Simple monochrome SVG or brand color with small size.
+
+#### Badge Chip
+**Design:** Uppercase microcopy, emerald outline on dark background, slight glow.  
+**Use:** Feature label like "Voice Intelligence 2.0".
