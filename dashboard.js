@@ -57,6 +57,7 @@ let platform = 'win32';
 let shortcutCaptureActive = false;
 let shortcutBeforeCapture = '';
 let shortcutInvalidShown = false;
+let historyLoadError = false;
 const STYLE_PRESETS = ['Default', 'Casual', 'Formel'];
 const STYLE_EXAMPLES = {
   Default: {
@@ -223,6 +224,24 @@ function sanitizeSettingsForSave(value) {
   return settings;
 }
 
+function setEmptyStateMessage(element, title, body, showAction = true) {
+  if (!element) {
+    return;
+  }
+  const titleEl = element.querySelector('.empty-title');
+  const bodyEl = element.querySelector('.empty-body');
+  const actionEl = element.querySelector('.empty-action');
+  if (titleEl) {
+    titleEl.textContent = title || '';
+  }
+  if (bodyEl) {
+    bodyEl.textContent = body || '';
+  }
+  if (actionEl) {
+    actionEl.style.display = showAction ? 'inline-flex' : 'none';
+  }
+}
+
 function setEmptyStateState(element, hasSearch) {
   if (!element) {
     return;
@@ -241,6 +260,54 @@ function setEmptyStateState(element, hasSearch) {
   if (actionEl) {
     actionEl.style.display = hasSearch ? 'none' : 'inline-flex';
   }
+}
+
+function renderHistoryLoading() {
+  if (!historyList || !historyEmpty) {
+    return;
+  }
+  historyLoadError = false;
+  historyEmpty.style.display = 'none';
+  historyList.innerHTML = `
+    <div class="history-skeleton">
+      <div class="history-skeleton-row">
+        <div class="history-skeleton-icon"></div>
+        <div class="history-skeleton-lines">
+          <div class="history-skeleton-line short"></div>
+          <div class="history-skeleton-line"></div>
+        </div>
+      </div>
+      <div class="history-skeleton-row">
+        <div class="history-skeleton-icon"></div>
+        <div class="history-skeleton-lines">
+          <div class="history-skeleton-line short"></div>
+          <div class="history-skeleton-line"></div>
+        </div>
+      </div>
+      <div class="history-skeleton-row">
+        <div class="history-skeleton-icon"></div>
+        <div class="history-skeleton-lines">
+          <div class="history-skeleton-line short"></div>
+          <div class="history-skeleton-line"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHistoryError(message) {
+  if (!historyList || !historyEmpty) {
+    return;
+  }
+  historyLoadError = true;
+  historyList.innerHTML = '';
+  historyEmpty.style.display = 'flex';
+  setEmptyStateMessage(
+    historyEmpty,
+    historyEmpty.dataset.errorTitle || 'Impossible de charger l’historique',
+    message || historyEmpty.dataset.errorBody || 'Veuillez réessayer.',
+    false,
+  );
 }
 
 function insertMarkdown(syntax) {
@@ -342,6 +409,9 @@ function buildEntryRow(entry, type) {
 
 function renderHistoryList() {
   if (!historyList || !historyEmpty) {
+    return;
+  }
+  if (historyLoadError) {
     return;
   }
   const filtered = filterEntries(historyData, searchTerm);
@@ -946,7 +1016,14 @@ async function refreshDashboard() {
   if (!window.electronAPI) {
     return;
   }
-  dashboardData = await window.electronAPI.getDashboardData();
+  renderHistoryLoading();
+  try {
+    dashboardData = await window.electronAPI.getDashboardData();
+  } catch (error) {
+    renderHistoryError('Erreur de chargement. Réessayez.');
+    showToast('Impossible de charger le dashboard.', 'error');
+    return;
+  }
   currentSettings = dashboardData.settings || {};
 
   renderStats(dashboardData.stats);

@@ -604,6 +604,7 @@
       min-height: 200px;
       display: flex;
       flex-direction: column;
+      position: relative;
     }
 
     .entry-row {
@@ -707,6 +708,62 @@
       background: #FEF2F2;
       border-color: #FECACA;
       color: #DC2626;
+    }
+
+    .history-skeleton {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 18px;
+    }
+
+    .history-skeleton-row {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid #F1F5F9;
+      background: #FFFFFF;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .history-skeleton-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      background: linear-gradient(90deg, #F1F5F9, #E2E8F0, #F1F5F9);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    .history-skeleton-lines {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .history-skeleton-line {
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #F1F5F9, #E2E8F0, #F1F5F9);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s ease-in-out infinite;
+    }
+
+    .history-skeleton-line.short {
+      width: 60%;
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: 200% 0;
+      }
+      100% {
+        background-position: -200% 0;
+      }
     }
 
     .empty-state {
@@ -1710,7 +1767,7 @@
 
           <div class="list-panel">
             <div id="historyList"></div>
-            <div id="historyEmpty" class="empty-state" data-empty-title="C'est bien calme ici" data-empty-body="Votre historique est vide. Commencez par lancer une note pour voir apparaître vos sessions." data-search-title="Aucun résultat" data-search-body="Nous n'avons rien trouvé pour cette recherche.">
+            <div id="historyEmpty" class="empty-state" data-empty-title="C'est bien calme ici" data-empty-body="Votre historique est vide. Commencez par lancer une note pour voir apparaître vos sessions." data-search-title="Aucun résultat" data-search-body="Nous n'avons rien trouvé pour cette recherche." data-error-title="Impossible de charger l'historique" data-error-body="Vérifiez votre connexion et réessayez.">
               <div class="empty-illustration">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
               </div>
