@@ -478,14 +478,10 @@
       <div class="auth-title">Connexion requise</div>
       <p class="auth-subtitle">Connectez-vous pour accéder à CrocoVoice et synchroniser vos données.</p>
       <div class="auth-status" id="authStatusText" aria-live="polite"></div>
-      <form class="auth-form" id="authForm">
-        <input id="authEmailInput" type="email" placeholder="Email" autocomplete="email" />
-        <input id="authPasswordInput" type="password" placeholder="Mot de passe" autocomplete="current-password" />
-        <button class="auth-primary" type="submit" id="authSubmitButton">Se connecter</button>
-      </form>
+      <button class="auth-primary" type="button" id="authLoginButton">Se connecter</button>
       <div class="auth-actions">
+        <button class="secondary" type="button" id="authSignupButton">S'inscrire</button>
         <button class="secondary" type="button" id="authRetryButton">Réessayer</button>
-        <button type="button" id="authSignupButton">Créer un compte</button>
       </div>
     </div>
   </div>

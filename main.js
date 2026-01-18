@@ -1540,8 +1540,19 @@ ipcMain.handle('auth:get-config', () => {
   return getAuthConfig();
 });
 
-ipcMain.handle('auth:open-signup-url', () => {
-  const url = getAuthConfig().signupUrl;
+ipcMain.handle('auth:open-signup-url', (event, mode) => {
+  const baseUrl = getAuthConfig().signupUrl;
+  let url = baseUrl;
+  if (mode === 'login' || mode === 'signup') {
+    try {
+      const parsed = new URL(baseUrl);
+      parsed.searchParams.set('mode', mode);
+      url = parsed.toString();
+    } catch {
+      const joiner = baseUrl.includes('?') ? '&' : '?';
+      url = `${baseUrl}${joiner}mode=${mode}`;
+    }
+  }
   shell.openExternal(url);
   return { url };
 });

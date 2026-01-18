@@ -4,129 +4,213 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Creer un compte CrocoVoice</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
-      background: radial-gradient(circle at top, #f8fafc, #e2e8f0);
-      color: #0f172a;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-
-    .card {
-      width: 100%;
-      max-width: 420px;
-      background: #ffffff;
-      border-radius: 20px;
-      border: 1px solid rgba(15, 23, 42, 0.08);
-      box-shadow: 0 24px 50px rgba(15, 23, 42, 0.18);
-      padding: 28px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    h1 {
-      font-size: 24px;
-      font-weight: 700;
-    }
-
-    p {
-      font-size: 14px;
-      color: #475569;
-      line-height: 1.5;
-    }
-
-    .cta {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: none;
-      border-radius: 12px;
-      padding: 12px 16px;
-      background: linear-gradient(135deg, #36d96f, #22c55e);
-      color: #0b0c0f;
-      font-weight: 700;
-      text-decoration: none;
-      cursor: pointer;
-    }
-
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .field label {
-      font-size: 12px;
-      color: #64748b;
-    }
-
-    .field input {
-      border: 1px solid rgba(15, 23, 42, 0.12);
-      border-radius: 12px;
-      padding: 12px;
-      font-size: 14px;
-      color: #0f172a;
-      background: #f8fafc;
-    }
-
-    .status {
-      min-height: 18px;
-      font-size: 12px;
-      color: #64748b;
-    }
-
-    .details {
-      font-size: 12px;
-      color: #64748b;
-      background: #f1f5f9;
-      padding: 10px 12px;
-      border-radius: 10px;
-      word-break: break-all;
-    }
-
-    .muted {
-      font-size: 12px;
-      color: #94a3b8;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
   </style>
 </head>
-<body>
-  <div class="card">
-    <h1>Creer un compte CrocoVoice</h1>
-    <p>Inscrivez-vous pour synchroniser vos donnees entre vos appareils.</p>
-    <form id="signupForm">
-      <div class="field">
-        <label for="signupEmail">Email</label>
-        <input id="signupEmail" type="email" placeholder="email@exemple.com" autocomplete="email" />
-      </div>
-      <div class="field">
-        <label for="signupPassword">Mot de passe</label>
-        <input id="signupPassword" type="password" placeholder="8 caracteres minimum" autocomplete="new-password" />
-      </div>
-      <div class="field">
-        <label for="signupPasswordConfirm">Confirmer le mot de passe</label>
-        <input id="signupPasswordConfirm" type="password" placeholder="Confirmez le mot de passe" autocomplete="new-password" />
-      </div>
-      <div class="status" id="signupStatus"></div>
-      <button class="cta" type="submit" id="signupSubmit">Creer un compte</button>
-    </form>
-    <div class="status" id="signupSuccess" style="display:none;"></div>
-    <a class="muted" id="signupBackLink" href="/" style="display:none;text-decoration:none;">Revenir en arriere</a>
-    <div class="details">
-      Pensez a configurer SUPABASE_URL et SUPABASE_ANON_KEY dans ce fichier.
+<body class="min-h-screen flex font-['Plus_Jakarta_Sans',sans-serif] text-slate-900 bg-white selection:bg-emerald-100 selection:text-emerald-900">
+  <div class="hidden lg:flex lg:w-[45%] relative bg-[#042f2e] flex-col justify-between p-12 lg:p-16 text-white overflow-hidden">
+    <div class="absolute top-0 left-0 w-full h-full z-0">
+      <div class="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-emerald-600/20 rounded-full blur-[120px]"></div>
+      <div class="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[100px]"></div>
+      <div class="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
     </div>
-    <p class="muted">Deja un compte ? Connectez-vous directement dans l'app.</p>
+
+    <div class="relative z-10 flex items-center gap-3">
+      <div class="w-10 h-10 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center backdrop-blur-md shadow-inner">
+        <svg class="w-5 h-5 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+          <line x1="12" y1="19" x2="12" y2="23" />
+          <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+      </div>
+      <span class="text-xl font-bold tracking-tight text-white">CrocoVoice</span>
+    </div>
+
+    <div class="relative z-10 max-w-md">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold uppercase tracking-wide mb-8">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l2.5 5L20 10l-4 4 .9 5-4.9-2.7L7 19l.9-5-4-4 5.5-2L12 3z" />
+        </svg>
+        <span>Voice Intelligence 2.0</span>
+      </div>
+
+      <h2 class="text-4xl lg:text-5xl font-bold tracking-tight mb-6 leading-[1.15]">
+        Votre voix devient <br>
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-teal-200">votre super-pouvoir.</span>
+      </h2>
+
+      <p class="text-emerald-100/70 text-lg leading-relaxed font-medium">
+        Transformez vos reunions, idees et notes vocales en plans d'action structures.
+        L'outil ultime pour ceux qui pensent plus vite qu'ils ne tapent.
+      </p>
+    </div>
+
+    <div class="relative z-10">
+      <div class="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-2xl">
+        <div class="flex gap-1 mb-4">
+          <svg class="w-4 h-4 text-emerald-400 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z" /></svg>
+          <svg class="w-4 h-4 text-emerald-400 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z" /></svg>
+          <svg class="w-4 h-4 text-emerald-400 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z" /></svg>
+          <svg class="w-4 h-4 text-emerald-400 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z" /></svg>
+          <svg class="w-4 h-4 text-emerald-400 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z" /></svg>
+        </div>
+        <p class="text-emerald-50 text-sm font-medium mb-4">
+          "Enfin une IA de dictee qui comprend le contexte business. Je gagne environ 2h par jour sur mes comptes-rendus."
+        </p>
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white text-xs font-bold shadow-lg ring-2 ring-white/10">JL</div>
+          <div>
+            <div class="text-xs font-bold text-white">Julie L.</div>
+            <div class="text-[10px] text-emerald-200/60 uppercase tracking-wider font-semibold">VP Sales @ Qonto</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="w-full lg:w-[55%] flex flex-col justify-center items-center p-8 sm:p-20 lg:p-32 bg-[#F8FAFC] relative">
+    <div class="w-full max-w-[420px] mx-auto">
+      <div class="lg:hidden mb-12 flex items-center gap-2">
+        <div class="w-10 h-10 bg-emerald-900 rounded-xl flex items-center justify-center">
+          <svg class="w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z" />
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+        </div>
+        <span class="font-bold text-slate-900 text-xl">CrocoVoice</span>
+      </div>
+
+      <div class="mb-10">
+        <h1 id="formTitle" class="text-3xl font-bold tracking-tight text-slate-900 mb-2">Créer un compte</h1>
+        <p id="formSubtitle" class="text-slate-500 font-medium">Demarrez votre essai de 14 jours. Sans engagement.</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 mb-8">
+        <button class="flex items-center justify-center gap-2.5 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-200 hover:bg-emerald-50/50 hover:text-emerald-700 transition-all text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-100 focus:ring-offset-1 shadow-sm" type="button">
+          <svg viewBox="0 0 24 24" class="w-4 h-4">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          </svg>
+          Google
+        </button>
+        <button class="flex items-center justify-center gap-2.5 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-200 hover:bg-emerald-50/50 hover:text-emerald-700 transition-all text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-100 focus:ring-offset-1 shadow-sm" type="button">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77 5.44 5.44 0 0 0 3.5 8.5c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+          </svg>
+          Github
+        </button>
+      </div>
+
+      <div class="relative mb-8">
+        <div class="absolute inset-0 flex items-center">
+          <div class="w-full border-t border-slate-200"></div>
+        </div>
+        <div class="relative flex justify-center text-xs uppercase tracking-wider font-bold text-slate-400">
+          <span class="px-3 bg-[#F8FAFC]">Ou continuer avec</span>
+        </div>
+      </div>
+
+      <form id="signupForm" class="space-y-5">
+        <div id="nameField" class="space-y-1.5">
+          <label class="block text-sm font-semibold text-slate-700">Nom complet</label>
+          <div class="relative group transition-all duration-200 bg-white rounded-xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+              <svg class="h-4 w-4 text-slate-400 group-focus-within:text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </div>
+            <input id="signupName" type="text" name="name" required class="block w-full pl-10 pr-3 py-3 rounded-xl text-sm font-medium placeholder:text-slate-400 focus:outline-none bg-transparent" placeholder="Jean Dupont" />
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-sm font-semibold text-slate-700">Email professionnel</label>
+          <div class="relative group transition-all duration-200 bg-white rounded-xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+              <svg class="h-4 w-4 text-slate-400 group-focus-within:text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16v16H4z" />
+                <polyline points="22,6 12,13 2,6" />
+              </svg>
+            </div>
+            <input id="signupEmail" type="email" name="email" required class="block w-full pl-10 pr-3 py-3 rounded-xl text-sm font-medium placeholder:text-slate-400 focus:outline-none bg-transparent" placeholder="nom@entreprise.com" />
+          </div>
+          <p id="emailError" class="text-xs text-red-500 hidden">Adresse email invalide</p>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="block text-sm font-semibold text-slate-700">Mot de passe</label>
+            <a id="forgotLink" href="#" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 hidden">Mot de passe oublie ?</a>
+          </div>
+          <div class="relative group transition-all duration-200 bg-white rounded-xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+              <svg class="h-4 w-4 text-slate-400 group-focus-within:text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+            <input id="signupPassword" type="password" name="password" required class="block w-full pl-10 pr-10 py-3 rounded-xl text-sm font-medium placeholder:text-slate-400 focus:outline-none bg-transparent" placeholder="••••••••••••" />
+            <button id="togglePassword" type="button" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+              <svg id="eyeIcon" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg id="eyeOffIcon" class="h-4 w-4 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.44 21.44 0 0 1 5.06-5.94" />
+                <path d="M1 1l22 22" />
+                <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.42 21.42 0 0 1-4.7 5.53" />
+                <path d="M14.12 14.12a3 3 0 0 1-4.24-4.24" />
+              </svg>
+            </button>
+          </div>
+          <div id="passwordStrength" class="flex items-center gap-2 mt-2 px-1">
+            <div class="h-1.5 flex-1 bg-slate-200 rounded-full overflow-hidden">
+              <div id="strengthBar" class="h-full w-0 transition-all duration-500 ease-out"></div>
+            </div>
+            <span class="text-xs text-slate-400 font-semibold">Force</span>
+          </div>
+          <p id="passwordError" class="text-xs text-red-500 hidden">Le mot de passe doit faire au moins 8 caracteres</p>
+        </div>
+
+        <div id="formStatus" class="text-xs text-slate-500"></div>
+        <button id="submitButton" type="submit" class="w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-transparent rounded-xl shadow-lg shadow-emerald-900/10 text-sm font-bold text-white bg-emerald-900 hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-900 transition-all active:scale-[0.99] mt-6">
+          <span id="submitLabel">Commencer gratuitement</span>
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+        </button>
+      </form>
+
+      <p class="mt-8 text-center text-sm text-slate-500 font-medium">
+        <span id="togglePrefix">Vous avez deja un compte ?</span>
+        <button id="toggleMode" class="font-bold text-emerald-700 hover:text-emerald-800 transition-colors focus:outline-none hover:underline decoration-2 underline-offset-2" type="button">Se connecter</button>
+      </p>
+
+      <p id="legalText" class="text-xs text-center text-slate-400 mt-6 px-4">
+        En cliquant sur "Creer mon compte", vous acceptez nos <a href="#" class="underline hover:text-slate-600">Conditions d'utilisation</a>
+        et notre <a href="#" class="underline hover:text-slate-600">Politique de confidentialite</a>.
+      </p>
+
+      <div class="mt-12 flex justify-center items-center gap-6 text-xs text-slate-400 font-bold tracking-wide">
+        <div class="flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2l7 4v6c0 5-3.5 9-7 10-3.5-1-7-5-7-10V6l7-4z" />
+            <path d="M9 12l2 2 4-4" />
+          </svg>
+          <span>SOC2 COMPLIANT</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span>SYSTEMS NORMAL</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -135,40 +219,108 @@
       const SUPABASE_URL = 'https://wkoqeffrwrlfvfcvqhee.supabase.co';
       const SUPABASE_ANON_KEY = 'sb_publishable_4sRfQi2qDooCe722JUQwqQ_gF1NXLbu';
 
-      const form = document.getElementById('signupForm');
-      const emailInput = document.getElementById('signupEmail');
-      const passwordInput = document.getElementById('signupPassword');
-      const passwordConfirmInput = document.getElementById('signupPasswordConfirm');
-      const statusEl = document.getElementById('signupStatus');
-      const successEl = document.getElementById('signupSuccess');
-      const backLinkEl = document.getElementById('signupBackLink');
-      const submitButton = document.getElementById('signupSubmit');
+      const formTitle = document.getElementById('formTitle');
+      const formSubtitle = document.getElementById('formSubtitle');
+      const togglePrefix = document.getElementById('togglePrefix');
+      const toggleMode = document.getElementById('toggleMode');
+      const submitLabel = document.getElementById('submitLabel');
+      const submitButton = document.getElementById('submitButton');
+      const formStatus = document.getElementById('formStatus');
+      const nameField = document.getElementById('nameField');
+      const signupName = document.getElementById('signupName');
+      const signupEmail = document.getElementById('signupEmail');
+      const signupPassword = document.getElementById('signupPassword');
+      const emailError = document.getElementById('emailError');
+      const passwordError = document.getElementById('passwordError');
+      const togglePassword = document.getElementById('togglePassword');
+      const eyeIcon = document.getElementById('eyeIcon');
+      const eyeOffIcon = document.getElementById('eyeOffIcon');
+      const forgotLink = document.getElementById('forgotLink');
+      const legalText = document.getElementById('legalText');
+      const passwordStrength = document.getElementById('passwordStrength');
+      const strengthBar = document.getElementById('strengthBar');
+
+      let isLogin = false;
+      let showPassword = false;
+      let client = null;
+
+      function setMode(nextIsLogin) {
+        isLogin = nextIsLogin;
+        formTitle.textContent = isLogin ? 'Bon retour parmi nous' : 'Créer un compte';
+        formSubtitle.textContent = isLogin
+          ? 'Entrez vos identifiants pour acceder a votre espace.'
+          : 'Demarrez votre essai de 14 jours. Sans engagement.';
+        togglePrefix.textContent = isLogin ? 'Pas encore de compte ?' : 'Vous avez deja un compte ?';
+        toggleMode.textContent = isLogin ? "S'inscrire" : 'Se connecter';
+        submitLabel.textContent = isLogin ? 'Se connecter' : 'Commencer gratuitement';
+        nameField.classList.toggle('hidden', isLogin);
+        forgotLink.classList.toggle('hidden', !isLogin);
+        legalText.classList.toggle('hidden', isLogin);
+        passwordStrength.classList.toggle('hidden', isLogin);
+      }
+
+      function setPasswordVisibility(nextShow) {
+        showPassword = nextShow;
+        signupPassword.type = showPassword ? 'text' : 'password';
+        eyeIcon.classList.toggle('hidden', showPassword);
+        eyeOffIcon.classList.toggle('hidden', !showPassword);
+      }
+
+      function validateEmail() {
+        const email = signupEmail.value.trim();
+        const isValid = !email || /\S+@\S+\.\S+/.test(email);
+        emailError.classList.toggle('hidden', isValid);
+        return isValid;
+      }
+
+      function validatePassword() {
+        const value = signupPassword.value;
+        const isValid = !value || value.length >= 8;
+        passwordError.classList.toggle('hidden', isValid);
+        return isValid;
+      }
 
       function setStatus(message, isError) {
-        statusEl.textContent = message || '';
-        statusEl.style.color = isError ? '#dc2626' : '#16a34a';
+        formStatus.textContent = message || '';
+        formStatus.classList.toggle('text-red-500', Boolean(isError));
+        formStatus.classList.toggle('text-emerald-600', Boolean(message && !isError));
       }
 
-      function showSuccess(message) {
-        form.style.display = 'none';
-        statusEl.textContent = '';
-        successEl.textContent = message || 'Verifiez votre boite mail pour confirmer la creation du compte.';
-        successEl.style.display = 'block';
-        successEl.style.color = '#16a34a';
-        backLinkEl.style.display = 'inline-flex';
-      }
-
-      function maybeHandleConfirmation() {
-        const hash = window.location.hash || '';
-        if (!hash.includes('type=signup')) {
-          return;
+      function updateStrength() {
+        const value = signupPassword.value.length;
+        let width = 0;
+        let className = '';
+        if (value > 0 && value < 8) {
+          width = 50;
+          className = 'bg-amber-400';
+        } else if (value >= 8) {
+          width = 100;
+          className = 'bg-emerald-500';
         }
-        showSuccess('Email confirme. Vous pouvez vous connecter dans l\'app.');
+        strengthBar.style.width = width ? `${width}%` : '0%';
+        strengthBar.className = `h-full transition-all duration-500 ease-out ${className}`;
       }
 
       function isConfigured() {
         return SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('your-');
       }
+
+      toggleMode.addEventListener('click', () => {
+        setMode(!isLogin);
+        emailError.classList.add('hidden');
+        passwordError.classList.add('hidden');
+        setStatus('');
+      });
+
+      togglePassword.addEventListener('click', () => {
+        setPasswordVisibility(!showPassword);
+      });
+
+      signupEmail.addEventListener('input', validateEmail);
+      signupPassword.addEventListener('input', () => {
+        validatePassword();
+        updateStrength();
+      });
 
       if (!window.supabase || !window.supabase.createClient) {
         setStatus('SDK Supabase indisponible.', true);
@@ -182,40 +334,41 @@
         return;
       }
 
-      const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      maybeHandleConfirmation();
+      client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-      form.addEventListener('submit', async (event) => {
+      document.getElementById('signupForm').addEventListener('submit', async (event) => {
         event.preventDefault();
-        const email = (emailInput.value || '').trim();
-        const password = passwordInput.value || '';
-        const passwordConfirm = passwordConfirmInput.value || '';
-
-        if (!email || !email.includes('@')) {
-          setStatus('Email invalide.', true);
-          return;
-        }
-        if (password.length < 8) {
-          setStatus('Mot de passe trop court (8 caracteres min).', true);
-          return;
-        }
-        if (password !== passwordConfirm) {
-          setStatus('Les mots de passe ne correspondent pas.', true);
+        const emailOk = validateEmail();
+        const passwordOk = validatePassword();
+        if (!emailOk || !passwordOk) {
+          setStatus('Veuillez corriger les champs en erreur.', true);
           return;
         }
 
         submitButton.disabled = true;
-        setStatus('Creation du compte...', false);
+        setStatus(isLogin ? 'Connexion en cours...' : 'Creation du compte...', false);
         try {
-          const { data, error } = await client.auth.signUp({ email, password });
-          if (error) {
-            throw error;
-          }
-          form.reset();
-          if (data && data.session) {
-            showSuccess('Compte cree. Vous pouvez vous connecter dans l\'app.');
+          if (isLogin) {
+            const { error } = await client.auth.signInWithPassword({
+              email: signupEmail.value.trim(),
+              password: signupPassword.value,
+            });
+            if (error) {
+              throw error;
+            }
+            setStatus('Connexion reussie. Vous pouvez revenir dans l’app.', false);
           } else {
-            showSuccess('Verifiez votre boite mail pour confirmer la creation du compte.');
+            const { error } = await client.auth.signUp({
+              email: signupEmail.value.trim(),
+              password: signupPassword.value,
+              options: {
+                data: { name: signupName.value.trim() || undefined },
+              },
+            });
+            if (error) {
+              throw error;
+            }
+            setStatus('Compte cree. Verifiez votre boite mail.', false);
           }
         } catch (error) {
           setStatus(error?.message || 'Echec de creation du compte.', true);
@@ -223,6 +376,18 @@
           submitButton.disabled = false;
         }
       });
+
+      setMode(false);
+      setPasswordVisibility(false);
+      updateStrength();
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      if (mode === 'login') {
+        setMode(true);
+      }
+      if (mode === 'signup') {
+        setMode(false);
+      }
     })();
   </script>
 </body>

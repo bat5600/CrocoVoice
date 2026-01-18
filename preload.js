@@ -74,7 +74,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   authRetry: () => ipcRenderer.invoke('auth:retry'),
   getAuthConfig: () => ipcRenderer.invoke('auth:get-config'),
   getSignupUrl: () => ipcRenderer.invoke('auth:get-signup-url'),
-  openSignupUrl: () => ipcRenderer.invoke('auth:open-signup-url'),
+  openSignupUrl: (mode) => ipcRenderer.invoke('auth:open-signup-url', mode),
   syncNow: () => ipcRenderer.invoke('sync:now'),
   pasteLatestTranscription: () => ipcRenderer.send('history:paste-latest'),
   hideWidgetOneHour: () => ipcRenderer.send('widget:hide-1h'),

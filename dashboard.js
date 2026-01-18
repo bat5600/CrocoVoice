@@ -30,9 +30,7 @@ const noteFormStatus = document.getElementById('noteFormStatus');
 const searchInput = document.getElementById('dashboardSearchInput');
 const authOverlay = document.getElementById('authOverlay');
 const authOverlayStatus = document.getElementById('authOverlayStatus');
-const authOverlayEmail = document.getElementById('authOverlayEmail');
-const authOverlayPassword = document.getElementById('authOverlayPassword');
-const authOverlaySubmit = document.getElementById('authOverlaySubmit');
+const authOverlayLogin = document.getElementById('authOverlayLogin');
 const authOverlayRetry = document.getElementById('authOverlayRetry');
 const authOverlaySignup = document.getElementById('authOverlaySignup');
 
@@ -538,34 +536,28 @@ function renderAuth(auth, syncReady) {
   }
   authPanel.innerHTML = `
     <div class="form-row">
-      <input id="authEmail" type="email" placeholder="Email" />
-      <input id="authPassword" type="password" placeholder="Password" />
-      <div class="auth-actions">
-        <button class="ghost-button" id="signInButton" type="button">Sign in</button>
-        <button class="ghost-button" id="signUpButton" type="button">Sign up</button>
-      </div>
+      <button class="ghost-button" id="authLoginButton" type="button">Se connecter</button>
+      <button class="ghost-button" id="authSignupButton" type="button">S'inscrire</button>
     </div>
   `;
-  const emailInput = document.getElementById('authEmail');
-  const passwordInput = document.getElementById('authPassword');
-  const signInButton = document.getElementById('signInButton');
-  const signUpButton = document.getElementById('signUpButton');
-  signInButton.addEventListener('click', async () => {
-    try {
-      await window.electronAPI.authSignIn(emailInput.value, passwordInput.value);
-      await refreshDashboard();
-    } catch (error) {
-      window.alert(error.message || 'Sign in failed');
-    }
-  });
-  signUpButton.addEventListener('click', async () => {
-    try {
-      await window.electronAPI.authSignUp(emailInput.value, passwordInput.value);
-      await refreshDashboard();
-    } catch (error) {
-      window.alert(error.message || 'Sign up failed');
-    }
-  });
+  const authLoginButton = document.getElementById('authLoginButton');
+  const authSignupButton = document.getElementById('authSignupButton');
+  if (authLoginButton) {
+    authLoginButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.openSignupUrl) {
+        return;
+      }
+      await window.electronAPI.openSignupUrl('login');
+    });
+  }
+  if (authSignupButton) {
+    authSignupButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.openSignupUrl) {
+        return;
+      }
+      await window.electronAPI.openSignupUrl('signup');
+    });
+  }
 }
 
 let currentAuthState = null;
@@ -600,22 +592,16 @@ function applyAuthState(state) {
   }
 
   const disableForm = status === 'checking' || status === 'not_configured';
-  if (authOverlayEmail) {
-    authOverlayEmail.disabled = disableForm;
+  if (authOverlayLogin) {
+    authOverlayLogin.disabled = disableForm;
   }
-  if (authOverlayPassword) {
-    authOverlayPassword.disabled = disableForm;
-  }
-  if (authOverlaySubmit) {
-    authOverlaySubmit.disabled = disableForm;
+  if (authOverlaySignup) {
+    authOverlaySignup.disabled = disableForm;
+    authOverlaySignup.style.display = status === 'unauthenticated' ? 'inline-flex' : 'none';
   }
   if (authOverlayRetry) {
     authOverlayRetry.disabled = status === 'checking' || status === 'not_configured';
     authOverlayRetry.style.display = currentAuthState.retryable ? 'inline-flex' : 'none';
-  }
-  if (authOverlaySignup) {
-    authOverlaySignup.disabled = status === 'checking' || status === 'not_configured';
-    authOverlaySignup.style.display = status === 'unauthenticated' ? 'inline-flex' : 'none';
   }
 }
 
@@ -734,23 +720,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (authOverlaySubmit) {
-    authOverlaySubmit.addEventListener('click', async () => {
-      if (!window.electronAPI?.authSignIn) {
+  if (authOverlayLogin) {
+    authOverlayLogin.addEventListener('click', async () => {
+      if (!window.electronAPI?.openSignupUrl) {
         return;
       }
-      const email = authOverlayEmail?.value.trim();
-      const password = authOverlayPassword?.value || '';
-      if (!email || !password) {
-        setOverlayStatus('Email et mot de passe requis.', true);
+      await window.electronAPI.openSignupUrl('login');
+    });
+  }
+  if (authOverlaySignup) {
+    authOverlaySignup.addEventListener('click', async () => {
+      if (!window.electronAPI?.openSignupUrl) {
         return;
       }
-      setOverlayStatus('Connexion en cours...', false);
-      try {
-        await window.electronAPI.authSignIn(email, password);
-      } catch (error) {
-        setOverlayStatus(error?.message || 'Echec de connexion.', true);
-      }
+      await window.electronAPI.openSignupUrl('signup');
     });
   }
 
@@ -768,14 +751,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (authOverlaySignup) {
-    authOverlaySignup.addEventListener('click', async () => {
-      if (!window.electronAPI?.openSignupUrl) {
-        return;
-      }
-      await window.electronAPI.openSignupUrl();
-    });
-  }
 
   if (captureNoteButton) {
     captureNoteButton.addEventListener('click', () => {

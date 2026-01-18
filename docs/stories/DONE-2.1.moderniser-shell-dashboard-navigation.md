@@ -1,7 +1,7 @@
 # Story 2.1: Moderniser le shell du dashboard et la navigation
 
 ## Status
-Ready for Review
+DONE
 
 ## Story
 **As a** user,

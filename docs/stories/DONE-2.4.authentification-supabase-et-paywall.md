@@ -1,7 +1,7 @@
 # Story 2.4: Authentification Supabase et paywall
 
 ## Status
-Ready for Review
+Done
 
 ## Story
 **As a** CrocoVoice user,

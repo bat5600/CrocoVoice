@@ -130,3 +130,6 @@ Top 3 priorites (proposees):
   - Quels criteres exacts pour dire qu'une feature est "stable" ?
   - Quel niveau de latence acceptable pour V1 ?
   - Quel canal de distribution pour les updates (auto-update vs manuel) ?
+
+## Pour plus tard
+- TODO: Ouvrir l'app via deep link depuis le login web (a faire apres packaging).

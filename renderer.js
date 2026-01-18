@@ -22,13 +22,10 @@ let discardRecording = false;
 let cancelButton = null;
 let stopButton = null;
 let authGateEl = null;
-let authForm = null;
-let authEmailInput = null;
-let authPasswordInput = null;
-let authStatusText = null;
-let authSubmitButton = null;
-let authRetryButton = null;
+let authLoginButton = null;
 let authSignupButton = null;
+let authStatusText = null;
+let authRetryButton = null;
 let currentAuthState = null;
 
 function updateWidgetState(state, message) {
@@ -97,22 +94,16 @@ function applyAuthState(state) {
   }
 
   const disableForm = status === 'checking' || status === 'not_configured';
-  if (authEmailInput) {
-    authEmailInput.disabled = disableForm;
+  if (authLoginButton) {
+    authLoginButton.disabled = disableForm;
   }
-  if (authPasswordInput) {
-    authPasswordInput.disabled = disableForm;
-  }
-  if (authSubmitButton) {
-    authSubmitButton.disabled = disableForm;
+  if (authSignupButton) {
+    authSignupButton.disabled = disableForm;
+    authSignupButton.style.display = status === 'unauthenticated' ? 'inline-flex' : 'none';
   }
   if (authRetryButton) {
     authRetryButton.disabled = status === 'checking' || status === 'not_configured';
     authRetryButton.style.display = currentAuthState.retryable ? 'inline-flex' : 'none';
-  }
-  if (authSignupButton) {
-    authSignupButton.disabled = status === 'checking' || status === 'not_configured';
-    authSignupButton.style.display = status === 'unauthenticated' ? 'inline-flex' : 'none';
   }
 }
 
@@ -353,13 +344,10 @@ document.addEventListener('DOMContentLoaded', () => {
   cancelButton = document.getElementById('cancelRecordingButton');
   stopButton = document.getElementById('stopRecordingButton');
   authGateEl = document.getElementById('authGate');
-  authForm = document.getElementById('authForm');
-  authEmailInput = document.getElementById('authEmailInput');
-  authPasswordInput = document.getElementById('authPasswordInput');
-  authStatusText = document.getElementById('authStatusText');
-  authSubmitButton = document.getElementById('authSubmitButton');
-  authRetryButton = document.getElementById('authRetryButton');
+  authLoginButton = document.getElementById('authLoginButton');
   authSignupButton = document.getElementById('authSignupButton');
+  authStatusText = document.getElementById('authStatusText');
+  authRetryButton = document.getElementById('authRetryButton');
   updateWidgetState('idle');
 
   if (window.electronAPI?.getAuthState) {
@@ -382,24 +370,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (authForm) {
-    authForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      if (!window.electronAPI?.authSignIn) {
+  if (authLoginButton) {
+    authLoginButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.openSignupUrl) {
         return;
       }
-      const email = authEmailInput?.value.trim();
-      const password = authPasswordInput?.value || '';
-      if (!email || !password) {
-        setAuthStatus('Email et mot de passe requis.', true);
+      await window.electronAPI.openSignupUrl('login');
+    });
+  }
+
+  if (authSignupButton) {
+    authSignupButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.openSignupUrl) {
         return;
       }
-      setAuthStatus('Connexion en cours...', false);
-      try {
-        await window.electronAPI.authSignIn(email, password);
-      } catch (error) {
-        setAuthStatus(error?.message || 'Echec de connexion.', true);
-      }
+      await window.electronAPI.openSignupUrl('signup');
     });
   }
 
@@ -417,14 +402,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (authSignupButton) {
-    authSignupButton.addEventListener('click', async () => {
-      if (!window.electronAPI?.openSignupUrl) {
-        return;
-      }
-      await window.electronAPI.openSignupUrl();
-    });
-  }
 
   if (window.electronAPI.getSettings) {
     window.electronAPI.getSettings().then((settings) => {
