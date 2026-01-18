@@ -37,6 +37,7 @@ Done
 | --- | --- | --- | --- |
 | 2026-01-15 | v0.1 | Creation de la dev story | PM |
 | 2026-01-16 | v0.2 | Renforcement serialisation SQLite, retention documentee, sync deferree en enregistrement. | Dev |
+| 2026-02-XX | v0.3 | Rafraichissement dashboard apres login pour appliquer la sync immediate. | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -49,6 +50,7 @@ N/A
 - Serialisation SQLite renforcee via mode serialize + queue existante.
 - Politique de retention documentee et loggee avant purge locale/sync.
 - Sync Supabase differee pendant l'enregistrement pour eviter tout blocage.
+- Rafraichissement UI apres login pour charger notes/historiques sans redemarrage.
 - Tests manuels executes (CRUD, offline, sync non bloquante).
 
 ### File List

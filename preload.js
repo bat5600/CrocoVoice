@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setWidgetExpanded: (expanded) => {
     ipcRenderer.send('widget-expanded', expanded);
   },
+  setWidgetUndoVisible: (visible) => {
+    ipcRenderer.send('widget-undo-visibility', visible);
+  },
   setRecordingTarget: (target) => ipcRenderer.invoke('recording:set-target', target),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),

@@ -47,6 +47,7 @@ Done
 | --- | --- | --- | --- |
 | 2026-02-XX | v0.1 | Crée la story d’auth Supabase et paywall | PM |
 | 2026-02-XX | v0.2 | Implémentation auth + paywall et tests manuels | dev |
+| 2026-02-XX | v0.3 | Ajout du formulaire de login in-app | dev |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -61,6 +62,7 @@ N/A
 - La deconnexion purge les donnees sensibles locales avant retour au login.
 - Le bouton "Creer un compte" ouvre directement l'URL Supabase configuree.
 - La page `docs/signup.html` est une landing web autonome a publier.
+- Ajout d'un formulaire de login in-app (widget + dashboard) pour authentifier via `auth:sign-in`.
 - Tests manuels realises (login/signup/logout/sync).
 
 ### File List

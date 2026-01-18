@@ -90,7 +90,10 @@ const OPENAI_MAX_BACKOFF_MS = 5000;
 let recordingDestination = 'clipboard';
 
 const compactWindowSize = { width: 220, height: 52 };
+const undoWindowSize = { width: 220, height: 110 };
 const expandedWindowSize = { width: 360, height: 420 };
+let widgetExpanded = false;
+let widgetUndoVisible = false;
 
 const defaultSettings = {
   language: process.env.CROCOVOICE_LANGUAGE || 'fr',
@@ -639,6 +642,7 @@ async function ensureDefaultStyle() {
         'Supprimer les "euh", hesitations et repetitions.',
         'Supprimer les guillemets parasites.',
         'Corriger la ponctuation (virgules, points, questions).',
+        'Corriger l orthographe, la grammaire et la syntaxe.',
         'Ajouter des retours a la ligne naturels.',
         'Preserver strictement le sens original.',
         'Ne pas resumer, ne pas ajouter de contenu.',
@@ -648,9 +652,10 @@ async function ensureDefaultStyle() {
       name: 'Casual',
       prompt: [
         'Style naturel, simple, conversationnel.',
-        'Phrases courtes et directes.',
         'Ponctuation legere.',
-        'Preserver le sens sans ajouter de contenu.',
+        'Preserver strictement le sens original.',
+        'Ne pas resumer, ne pas ajouter de contenu.',
+
       ].join(' '),
     },
     {
@@ -660,6 +665,17 @@ async function ensureDefaultStyle() {
         'Phrases completes, ponctuation soignee.',
         'Vocabulaire precis, ton poli.',
         'Preserver strictement le sens original.',
+        'Ne pas resumer, ne pas ajouter de contenu.',
+
+      ].join(' '),
+    },
+    {
+      name: 'Croco',
+      prompt: [
+        'Style naturel, simple, conversationnel.',
+        'Metaphores fun & audacieuses et analogies contre-intuitives dans le style de Rory Sutherland.',
+        'Preserver strictement le sens original.',
+        'Ne pas resumer, ne pas ajouter de contenu.',
       ].join(' '),
     },
   ];
@@ -697,6 +713,13 @@ function setMainWindowBounds(targetSize) {
   const x = Math.floor((width - targetSize.width) / 2);
   const y = height - targetSize.height - 16;
   mainWindow.setBounds({ x, y, width: targetSize.width, height: targetSize.height });
+}
+
+function updateWidgetBounds() {
+  const targetSize = widgetUndoVisible
+    ? undoWindowSize
+    : (widgetExpanded ? expandedWindowSize : compactWindowSize);
+  setMainWindowBounds(targetSize);
 }
 
 function ensureDashboardWindow() {
@@ -742,7 +765,7 @@ function createMainWindow() {
   mainWindow.loadFile('index.html');
   mainWindow.setBackgroundColor('#00000000');
 
-  setMainWindowBounds(compactWindowSize);
+  updateWidgetBounds();
 
   mainWindow.webContents.on('did-finish-load', () => {
     broadcastAuthState();
@@ -1262,8 +1285,13 @@ ipcMain.on('toggle-recording', () => {
 });
 
 ipcMain.on('widget-expanded', (event, expanded) => {
-  const targetSize = expanded ? expandedWindowSize : compactWindowSize;
-  setMainWindowBounds(targetSize);
+  widgetExpanded = Boolean(expanded);
+  updateWidgetBounds();
+});
+
+ipcMain.on('widget-undo-visibility', (event, visible) => {
+  widgetUndoVisible = Boolean(visible);
+  updateWidgetBounds();
 });
 
 ipcMain.handle('settings:get', async () => ({ ...settings, apiKeyPresent: Boolean(OPENAI_API_KEY) }));
@@ -1454,6 +1482,7 @@ ipcMain.handle('auth:sign-in', async (event, email, password) => {
     authErrorCount = 0;
     clearAuthRetry();
     await requestSync({ refreshSettings: true });
+    sendDashboardEvent('dashboard:data-updated');
     setAuthState({
       status: 'authenticated',
       message: '',
@@ -1490,6 +1519,7 @@ ipcMain.handle('auth:sign-up', async (event, email, password) => {
     authErrorCount = 0;
     clearAuthRetry();
     await requestSync({ refreshSettings: true });
+    sendDashboardEvent('dashboard:data-updated');
     setAuthState({
       status: 'authenticated',
       message: '',

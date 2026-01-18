@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CrocoVoiceGG</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * {
       margin: 0;
@@ -58,6 +61,7 @@
       justify-content: center;
       padding: 20px;
       color: var(--pill-text);
+      font-family: "Plus Jakarta Sans", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
     }
 
     body.auth-gated .auth-gate {
@@ -101,6 +105,14 @@
       gap: 10px;
     }
 
+    .auth-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--pill-muted);
+      font-weight: 600;
+    }
+
     .auth-form input {
       width: 100%;
       padding: 10px 12px;
@@ -123,6 +135,7 @@
       color: #0b0c0f;
       font-weight: 700;
       cursor: pointer;
+      width: 100%;
     }
 
     .auth-actions {
@@ -254,6 +267,51 @@
       background: #ffffff;
       border-radius: 2px;
       display: inline-block;
+    }
+
+    .cancel-undo {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 12px;
+      background: rgba(17, 24, 39, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(243, 244, 246, 0.9);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .cancel-undo.active {
+      display: flex;
+    }
+
+    .cancel-undo-bar {
+      flex: 1;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .cancel-undo-progress {
+      height: 100%;
+      width: 100%;
+      background: var(--croco-green);
+      border-radius: 999px;
+      transition: width 5s linear;
+    }
+
+    .cancel-undo button {
+      border: none;
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
     }
 
     .widget-container.idle .waveform,
@@ -450,6 +508,13 @@
       </div>
 
       <div class="status-text" id="statusText" aria-live="polite">Prêt</div>
+      <div class="cancel-undo" id="cancelUndo" aria-live="polite">
+        <span>Annulation...</span>
+        <div class="cancel-undo-bar">
+          <div class="cancel-undo-progress" id="cancelUndoProgress"></div>
+        </div>
+        <button type="button" id="undoCancelButton">Undo</button>
+      </div>
 
       <div class="context-menu" role="menu" aria-hidden="true">
         <button type="button" role="menuitem" data-action="hide-1h">Masquer pendant 1 heure</button>
@@ -478,7 +543,13 @@
       <div class="auth-title">Connexion requise</div>
       <p class="auth-subtitle">Connectez-vous pour accéder à CrocoVoice et synchroniser vos données.</p>
       <div class="auth-status" id="authStatusText" aria-live="polite"></div>
-      <button class="auth-primary" type="button" id="authLoginButton">Se connecter</button>
+      <form class="auth-form" id="authLoginForm">
+        <label class="auth-label" for="authEmail">Adresse email</label>
+        <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="vous@exemple.com" required>
+        <label class="auth-label" for="authPassword">Mot de passe</label>
+        <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" required>
+        <button class="auth-primary" type="submit" id="authLoginButton">Se connecter</button>
+      </form>
       <div class="auth-actions">
         <button class="secondary" type="button" id="authSignupButton">S'inscrire</button>
         <button class="secondary" type="button" id="authRetryButton">Réessayer</button>

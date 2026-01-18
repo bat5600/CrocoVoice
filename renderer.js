@@ -18,14 +18,24 @@ let waveformAnimationId = null;
 let statusTextEl = null;
 let shortcutLabelEl = null;
 let currentSettings = {};
-let discardRecording = false;
 let cancelButton = null;
 let stopButton = null;
+let cancelUndoEl = null;
+let undoCancelButton = null;
+let cancelUndoProgress = null;
+let cancelUndoTimeoutId = null;
+let cancelUndoActive = false;
+let cancelPending = false;
+let pendingCancelPayload = null;
 let authGateEl = null;
 let authLoginButton = null;
 let authSignupButton = null;
 let authStatusText = null;
 let authRetryButton = null;
+let authLoginForm = null;
+let authEmailInput = null;
+let authPasswordInput = null;
+let authSubmitPending = false;
 let currentAuthState = null;
 
 function updateWidgetState(state, message) {
@@ -52,6 +62,50 @@ function updateWidgetState(state, message) {
       statusTextEl.textContent = 'Prêt';
     }
   }
+}
+
+function clearCancelUndo() {
+  if (cancelUndoTimeoutId) {
+    clearTimeout(cancelUndoTimeoutId);
+    cancelUndoTimeoutId = null;
+  }
+  pendingCancelPayload = null;
+  cancelUndoActive = false;
+  if (window.electronAPI?.setWidgetUndoVisible) {
+    window.electronAPI.setWidgetUndoVisible(false);
+  }
+  if (cancelUndoEl) {
+    cancelUndoEl.classList.remove('active');
+  }
+  if (cancelUndoProgress) {
+    cancelUndoProgress.style.transition = 'none';
+    cancelUndoProgress.style.width = '100%';
+  }
+}
+
+function startCancelUndo(payload) {
+  pendingCancelPayload = payload;
+  cancelUndoActive = true;
+  if (window.electronAPI?.setWidgetUndoVisible) {
+    window.electronAPI.setWidgetUndoVisible(true);
+  }
+  if (cancelUndoEl) {
+    cancelUndoEl.classList.add('active');
+  }
+  if (cancelUndoProgress) {
+    cancelUndoProgress.style.transition = 'none';
+    cancelUndoProgress.style.width = '100%';
+    requestAnimationFrame(() => {
+      if (!cancelUndoProgress) {
+        return;
+      }
+      cancelUndoProgress.style.transition = 'width 5s linear';
+      cancelUndoProgress.style.width = '0%';
+    });
+  }
+  cancelUndoTimeoutId = setTimeout(() => {
+    clearCancelUndo();
+  }, 5000);
 }
 
 function updateShortcutLabel(shortcut) {
@@ -93,9 +147,15 @@ function applyAuthState(state) {
     setAuthStatus('');
   }
 
-  const disableForm = status === 'checking' || status === 'not_configured';
+  const disableForm = status === 'checking' || status === 'not_configured' || authSubmitPending;
   if (authLoginButton) {
     authLoginButton.disabled = disableForm;
+  }
+  if (authEmailInput) {
+    authEmailInput.disabled = disableForm;
+  }
+  if (authPasswordInput) {
+    authPasswordInput.disabled = disableForm;
   }
   if (authSignupButton) {
     authSignupButton.disabled = disableForm;
@@ -104,6 +164,34 @@ function applyAuthState(state) {
   if (authRetryButton) {
     authRetryButton.disabled = status === 'checking' || status === 'not_configured';
     authRetryButton.style.display = currentAuthState.retryable ? 'inline-flex' : 'none';
+  }
+}
+
+async function submitAuthLogin() {
+  if (!window.electronAPI?.authSignIn) {
+    setAuthStatus('Connexion indisponible.', true);
+    return;
+  }
+  const email = authEmailInput?.value.trim();
+  const password = authPasswordInput?.value || '';
+  if (!email || !password) {
+    setAuthStatus('Veuillez saisir email et mot de passe.', true);
+    return;
+  }
+
+  authSubmitPending = true;
+  applyAuthState(currentAuthState);
+  setAuthStatus('Connexion en cours...', false);
+  try {
+    await window.electronAPI.authSignIn(email, password);
+    if (authPasswordInput) {
+      authPasswordInput.value = '';
+    }
+  } catch (error) {
+    setAuthStatus(error?.message || 'Echec de connexion.', true);
+  } finally {
+    authSubmitPending = false;
+    applyAuthState(currentAuthState);
   }
 }
 
@@ -235,12 +323,14 @@ async function initializeMediaRecorder() {
 
     window.mediaRecorder.onstop = async () => {
       const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
+      const ab = await blob.arrayBuffer();
+      const payload = { buffer: Array.from(new Uint8Array(ab)), mimeType: blob.type };
 
-      const shouldSend = !discardRecording;
-      discardRecording = false;
-      if (shouldSend) {
-        const ab = await blob.arrayBuffer();
-        window.electronAPI.sendAudioReady({ buffer: Array.from(new Uint8Array(ab)), mimeType: blob.type });
+      if (cancelPending) {
+        cancelPending = false;
+        startCancelUndo(payload);
+      } else {
+        window.electronAPI.sendAudioReady(payload);
       }
 
       window.audioChunks = [];
@@ -271,6 +361,9 @@ async function startRecording() {
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     return;
   }
+  if (cancelUndoActive) {
+    return;
+  }
 
   isRecording = true;
 
@@ -284,7 +377,6 @@ async function startRecording() {
 
   audioChunks = [];
   window.audioChunks = [];
-  discardRecording = false;
   mediaRecorder.start(1000);
   startWaveform();
 }
@@ -343,7 +435,13 @@ document.addEventListener('DOMContentLoaded', () => {
   shortcutLabelEl = document.getElementById('shortcutLabel');
   cancelButton = document.getElementById('cancelRecordingButton');
   stopButton = document.getElementById('stopRecordingButton');
+  cancelUndoEl = document.getElementById('cancelUndo');
+  undoCancelButton = document.getElementById('undoCancelButton');
+  cancelUndoProgress = document.getElementById('cancelUndoProgress');
   authGateEl = document.getElementById('authGate');
+  authLoginForm = document.getElementById('authLoginForm');
+  authEmailInput = document.getElementById('authEmail');
+  authPasswordInput = document.getElementById('authPassword');
   authLoginButton = document.getElementById('authLoginButton');
   authSignupButton = document.getElementById('authSignupButton');
   authStatusText = document.getElementById('authStatusText');
@@ -370,12 +468,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (authLoginButton) {
-    authLoginButton.addEventListener('click', async () => {
-      if (!window.electronAPI?.openSignupUrl) {
-        return;
-      }
-      await window.electronAPI.openSignupUrl('login');
+  if (authLoginForm) {
+    authLoginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await submitAuthLogin();
     });
   }
 
@@ -536,10 +632,25 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!isRecording) {
         return;
       }
-      discardRecording = true;
+      if (cancelPending || cancelUndoActive) {
+        return;
+      }
+      cancelPending = true;
       if (window.electronAPI.cancelRecording) {
         window.electronAPI.cancelRecording();
       }
+    });
+  }
+
+  if (undoCancelButton) {
+    undoCancelButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (!pendingCancelPayload) {
+        return;
+      }
+      const payload = pendingCancelPayload;
+      clearCancelUndo();
+      window.electronAPI.sendAudioReady(payload);
     });
   }
 

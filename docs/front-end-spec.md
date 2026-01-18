@@ -23,6 +23,7 @@ This document defines the updated user experience goals, information architectur
 | --- | --- | --- | --- |
 | 2026-01-15 | v0.1 | Initial UX spec draft | UX Expert |
 | 2026-02-01 | v0.2 | Premium SaaS redesign direction | UX Expert |
+| 2026-02-XX | v0.3 | Toasts, empty states illustrés, editeur Markdown, feedback micro & preview styles | UX Expert |
 
 ## Information Architecture (IA)
 
@@ -77,6 +78,27 @@ This document defines the updated user experience goals, information architectur
 **Problem Solved:** Avoid spreadsheet density.  
 **Design:** Spaced rows with individually rounded corners and a soft border.  
 **Ghost Actions:** Hidden by default, fade in on hover; row pops out with a light emerald shadow.
+
+#### Toast Notification
+**Design:** Floating card bottom-right with icon + title + message.  
+**Behavior:** Slides in from the right with spring easing, auto-dismiss 4-5s, click to close.  
+**Usage:** Replace inline status text for note creation, dictation errors, and delete/copy actions.
+
+#### Empty State
+**Design:** Centered illustration (SVG), short title, supportive message, single CTA.  
+**Behavior:** Action focuses the primary input or switches to the relevant view.
+
+#### Markdown Editor (Hybrid)
+**Design:** Title input + toolbar (Bold/Italic/List) + textarea.  
+**Behavior:** Toolbar wraps selection with markdown tokens; list inserts "- " on new line.
+
+#### Recording Feedback
+**Design:** Dictation button with pulse ring + animated audio bars badge.  
+**Behavior:** Only visible while recording; toggles off on stop/error.
+
+#### Style Preview
+**Design:** Before/After box inside style cards; "Avant" in muted tone, "Après" emphasized.  
+**Behavior:** Uses presets when available, fallback examples otherwise.
 
 #### Modal
 **Design:** Centered white modal, 24px radius, subtle shadow.  

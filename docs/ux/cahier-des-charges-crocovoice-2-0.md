@@ -30,12 +30,12 @@ L'identite "Croco" est reinterpretee de maniere moderne : exit le vert plat, pla
 | Accent Lime | #84CC16 | Utilise dans les degrades (mesh gradients) pour la lumiere. |
 
 ### Typographie
-- **Famille** : Inter (Google Fonts).
-- **Pourquoi** : Standard de l'industrie SaaS pour sa lisibilite sur ecran et son look neutre et moderne.
+- **Famille** : Plus Jakarta Sans (fallback Inter).
+- **Pourquoi** : Moderne, precise, plus premium et alignee au branding CrocoVoice.
 - **Echelle** :
-  - H1 (Display) : 32px, ExtraBold (800).
-  - H2 (Section) : 18px, Bold (700).
-  - Body : 14px, Medium (500) pour la lisibilite.
+  - H1 (Display) : 36-44px, ExtraBold (800).
+  - H2 (Section) : 20-22px, Bold (700).
+  - Body : 14-16px, Medium (500) pour la lisibilite.
   - Small : 12px, Regular (400) pour les metadonnees.
 
 ### Effets & Ombres (Depth System)
@@ -84,6 +84,27 @@ L'ecran est divise en deux zones distinctes pour ancrer la navigation.
 ### D. Modales
 - **Style** : Centrees, fond blanc pur, coins tres arrondis (24px).
 - **Backdrop** : Fond "Deep Swamp" floute (blur(8px)) pour isoler l'attention sur la tache en cours.
+
+### E. Toasts (Notifications Flottantes)
+- **Design** : Cartes flottantes en bas a droite, icone + titre + message.
+- **Comportement** : Slide-in avec easing doux, auto-dismiss 4-5s, click pour fermer.
+- **Usage** : Remplace les messages d'etat inline (creation, suppression, erreurs).
+
+### F. Empty States
+- **Design** : Illustration SVG, titre court, message d'aide, CTA unique.
+- **Comportement** : Le CTA focus l'action principale (creer une note, ajouter un terme).
+
+### G. Editeur Hybride (Markdown)
+- **Design** : Barre d'outils minimaliste (Gras, Italique, Liste) + textarea.
+- **Comportement** : Applique des tokens Markdown autour de la selection.
+
+### H. Feedback Dictée
+- **Design** : Pulse autour du bouton dictée + barres audio animees.
+- **Comportement** : Visible uniquement pendant l'enregistrement.
+
+### I. Preview Styles
+- **Design** : Bloc "Avant / Apres" dans chaque carte de style.
+- **Comportement** : Exemple concret pour faciliter le choix.
 
 ## 5. Experience Utilisateur (UX Flows)
 ### Flow : Navigation & Recherche

@@ -38,6 +38,8 @@ DONE
 | --- | --- | --- | --- |
 | 2026-01-15 | v0.1 | Creation de la dev story | PM |
 | 2026-01-16 | v0.2 | Modernisation du shell, navigation premium et controles fenetre custom | James |
+| 2026-01-18 | v0.3 | Alignement du dashboard avec le nouveau style premium fourni | James |
+| 2026-02-XX | v0.4 | Feedback dictée, toasts, empty states illustres, editeur Markdown, previews styles | James |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -49,11 +51,15 @@ DONE
 ### Completion Notes List
 - Rebuilt the dashboard shell around a premium header, horizontal navigation, and refreshed workspace frame to clarify the hierarchy without altering routes.
 - Added window-control buttons that emit `dashboard:window-control` IPC actions, cleaned up the layout CSS, and scoped the workspace flex structure to avoid clipping on resize; manual dashboard tests still need to run in the UI context.
+- Updated the dashboard layout/CSS to match the new visual guidelines (sidebar, header, cards, modal, auth overlay) while keeping the existing JS wiring intact.
+- Ajout du feedback visuel dictée (pulse + barres audio), d'un editeur Markdown avec toolbar, de toasts flottants, d'empty states illustres et d'exemples Avant/Apres pour les styles.
 
 ### File List
 - dashboard.html
 - dashboard.js
-- docs/stories/2.1.moderniser-shell-dashboard-navigation.md
+- docs/front-end-spec.md
+- docs/ux/cahier-des-charges-crocovoice-2-0.md
+- docs/stories/DONE-2.1.moderniser-shell-dashboard-navigation.md
 
 ## QA Results
 - Manual dashboard interactions (resize, controls, navigation) still need to be run inside the UI shell.

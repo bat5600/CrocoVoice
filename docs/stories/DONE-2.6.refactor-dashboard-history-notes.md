@@ -1,7 +1,7 @@
 # Story 2.6: Refactoriser l'historique et les notes du dashboard
 
 ## Status
-In Progress
+Done
 
 ## Story
 **As a** speech-to-text user,  
@@ -24,7 +24,7 @@ In Progress
 - [x] Implémenter les actions Copy/ Delete (presse-papier, confirmation suppression) pour les deux onglets et alimenter le champ search des résultats combinés (AC: 3,4).  
 - [x] Corriger l’affichage du dictionnaire : espacer les termes et supprimer les répétitions inutiles sur les misspellings (AC: 6,7).  
 - [x] Ajouter ou mettre à jour les spécifications front/back (docs/front-end-spec.md, architecture) pour refléter la nouvelle navigation notes/history et les comportements d’IA/Storage (AC: 1-7).  
-- [ ] Tester manuellement la navigation tab, la recherche, le copy/delete, les titres IA, et la section dictionnaire (AC: 1-7).
+- [x] Tester manuellement la navigation tab, la recherche, le copy/delete, les titres IA, et la section dictionnaire (AC: 1-7).
 
 ## Dev Notes
 - Source d’architecture : `docs/architecture.md`

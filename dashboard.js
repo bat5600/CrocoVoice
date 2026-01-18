@@ -26,14 +26,18 @@ const noteTitleInput = document.getElementById('noteTitleInput');
 const noteBodyInput = document.getElementById('noteBodyInput');
 const createNoteButton = document.getElementById('createNoteButton');
 const captureNoteButton = document.getElementById('captureNoteButton');
-const noteFormStatus = document.getElementById('noteFormStatus');
+const recordingFeedback = document.getElementById('recordingFeedback');
+const micPulse = document.getElementById('micPulse');
+const toastContainer = document.getElementById('toastContainer');
 const searchInput = document.getElementById('dashboardSearchInput');
 const authOverlay = document.getElementById('authOverlay');
 const authOverlayStatus = document.getElementById('authOverlayStatus');
 const authOverlayLogin = document.getElementById('authOverlayLogin');
 const authOverlayRetry = document.getElementById('authOverlayRetry');
 const authOverlaySignup = document.getElementById('authOverlaySignup');
-
+const authOverlayForm = document.getElementById('authOverlayForm');
+const authOverlayEmail = document.getElementById('authOverlayEmail');
+const authOverlayPassword = document.getElementById('authOverlayPassword');
 const statDays = document.getElementById('statDays');
 const statWords = document.getElementById('statWords');
 const statTotal = document.getElementById('statTotal');
@@ -47,55 +51,92 @@ let notesData = [];
 let noteCaptureActive = false;
 let modalResolver = null;
 const STYLE_PRESETS = ['Default', 'Casual', 'Formel'];
+const STYLE_EXAMPLES = {
+  Default: {
+    before: "Je vais, euh, manger une pomme.",
+    after: "Je vais manger une pomme.",
+  },
+  Casual: {
+    before: "Nous devons impérativement finaliser ce dossier.",
+    after: "Faut qu'on boucle ce dossier rapidos !",
+  },
+  Formel: {
+    before: "C'est pas bon, on refait.",
+    after: "Cette proposition est insatisfaisante, une révision est nécessaire.",
+  },
+};
+const STYLE_DESCRIPTIONS = {
+  Default: 'Style par défaut, neutre et clair.',
+  Casual: 'Ton décontracté, idéal pour les réseaux.',
+  Formel: 'Langage soutenu et professionnel.',
+};
+const STYLE_LABELS = {
+  Default: 'Standard',
+  Casual: 'Casual',
+  Formel: 'Formel',
+};
 
 function openModal({ title, fields, confirmText }) {
   if (!modalBackdrop || !modalBody || !modalTitle || !modalCancel || !modalConfirm) {
     return Promise.resolve(null);
   }
+
   modalTitle.textContent = title;
-  modalConfirm.textContent = confirmText || 'Save';
+  modalConfirm.textContent = confirmText || 'Sauvegarder';
   modalBody.innerHTML = '';
   const inputs = {};
 
   fields.forEach((field, index) => {
     const wrapper = document.createElement('div');
     const label = document.createElement('label');
+    label.className = 'form-label';
     label.textContent = field.label;
-    const input = field.multiline ? document.createElement('textarea') : document.createElement('input');
+
+    let input;
+    if (field.multiline) {
+      input = document.createElement('textarea');
+      input.rows = 4;
+      input.className = 'input-textarea';
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'input-field';
+    }
+
     input.value = field.value || '';
     input.placeholder = field.placeholder || '';
     input.dataset.key = field.key;
+
     wrapper.appendChild(label);
     wrapper.appendChild(input);
     modalBody.appendChild(wrapper);
     inputs[field.key] = input;
+
     if (index === 0) {
       setTimeout(() => input.focus(), 0);
     }
   });
 
-  modalBackdrop.classList.add('active');
+  modalBackdrop.classList.add('is-visible');
   modalBackdrop.setAttribute('aria-hidden', 'false');
 
   return new Promise((resolve) => {
     modalResolver = resolve;
 
-    modalCancel.onclick = () => {
-      modalBackdrop.classList.remove('active');
+    const closeModal = (value) => {
+      modalBackdrop.classList.remove('is-visible');
       modalBackdrop.setAttribute('aria-hidden', 'true');
       modalResolver = null;
-      resolve(null);
+      resolve(value);
     };
 
+    modalCancel.onclick = () => closeModal(null);
     modalConfirm.onclick = () => {
       const values = {};
       Object.keys(inputs).forEach((key) => {
         values[key] = inputs[key].value.trim();
       });
-      modalBackdrop.classList.remove('active');
-      modalBackdrop.setAttribute('aria-hidden', 'true');
-      modalResolver = null;
-      resolve(values);
+      closeModal(values);
     };
   });
 }
@@ -118,24 +159,12 @@ function formatTime(iso) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function renderStats(stats) {
-  if (!stats) {
-    return;
-  }
-  statDays.textContent = `${stats.daysActive} days`;
-  statWords.textContent = `${stats.words} words`;
-  statTotal.textContent = `${stats.total} notes`;
-}
-
 function formatDateLabel(value) {
   if (!value) {
     return '';
   }
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function filterEntries(entries, query) {
@@ -143,73 +172,136 @@ function filterEntries(entries, query) {
     return entries || [];
   }
   const lower = query.toLowerCase();
-  return (entries || []).filter((entry) => {
-    const haystack = [
-      entry.title,
-      entry.text,
-      entry.raw_text,
-    ].filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(lower);
+  return (entries || []).filter((entry) => [entry.title, entry.text, entry.raw_text]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(lower));
+}
+
+function showToast(message, type = 'success') {
+  if (!toastContainer) {
+    return;
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast ${type === 'error' ? 'error' : ''}`;
+  toast.innerHTML = `
+    <div class="toast-icon">
+      ${type === 'error'
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"></path></svg>'}
+    </div>
+    <div>
+      <div class="toast-title">${type === 'error' ? 'Erreur' : 'Succès'}</div>
+      <div class="toast-message">${message}</div>
+    </div>
+  `;
+  toast.addEventListener('click', () => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
   });
+  toastContainer.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    if (toast.isConnected) {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 4800);
+}
+
+function setEmptyStateState(element, hasSearch) {
+  if (!element) {
+    return;
+  }
+  const titleEl = element.querySelector('.empty-title');
+  const bodyEl = element.querySelector('.empty-body');
+  const actionEl = element.querySelector('.empty-action');
+  const title = hasSearch ? element.dataset.searchTitle : element.dataset.emptyTitle;
+  const body = hasSearch ? element.dataset.searchBody : element.dataset.emptyBody;
+  if (titleEl) {
+    titleEl.textContent = title || '';
+  }
+  if (bodyEl) {
+    bodyEl.textContent = body || '';
+  }
+  if (actionEl) {
+    actionEl.style.display = hasSearch ? 'none' : 'inline-flex';
+  }
+}
+
+function insertMarkdown(syntax) {
+  if (!noteBodyInput) {
+    return;
+  }
+  const start = noteBodyInput.selectionStart || 0;
+  const end = noteBodyInput.selectionEnd || 0;
+  const value = noteBodyInput.value || '';
+  const before = value.slice(0, start);
+  const selection = value.slice(start, end);
+  const after = value.slice(end);
+  if (syntax === '- ') {
+    noteBodyInput.value = `${before}\n${syntax}${selection}${after}`;
+    noteBodyInput.selectionStart = noteBodyInput.selectionEnd = end + syntax.length + 1;
+  } else {
+    noteBodyInput.value = `${before}${syntax}${selection}${syntax}${after}`;
+    noteBodyInput.selectionStart = start + syntax.length;
+    noteBodyInput.selectionEnd = end + syntax.length;
+  }
+  noteBodyInput.focus();
 }
 
 function buildEntryRow(entry, type) {
   const row = document.createElement('div');
-  row.className = 'list-row';
+  row.className = 'entry-row';
 
   const icon = document.createElement('div');
-  icon.className = 'file-icon';
-  icon.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+  icon.className = 'entry-icon';
+  icon.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>';
 
   const main = document.createElement('div');
-  main.className = 'row-main';
-  const dateLabel = document.createElement('div');
-  dateLabel.className = 'row-date';
+  main.className = 'entry-main';
+
+  const metaDiv = document.createElement('div');
+  metaDiv.className = 'entry-meta';
   const timePart = entry.created_at ? formatTime(entry.created_at) : '';
   const datePart = formatDateLabel(entry.created_at);
-  dateLabel.textContent = [timePart, datePart].filter(Boolean).join(' · ');
+  metaDiv.textContent = [timePart, datePart].filter(Boolean).join(' · ');
+
   const title = document.createElement('div');
-  title.className = 'row-title';
-  title.textContent = entry.title || entry.text?.split(/\r?\n/)[0] || 'Untitled entry';
+  title.className = 'entry-title';
+  title.textContent = entry.title || entry.text?.split(/\r?\n/)[0] || 'Sans titre';
+
   const preview = document.createElement('div');
-  preview.className = 'row-preview';
+  preview.className = 'entry-preview';
   preview.textContent = entry.text || entry.raw_text || '';
-  main.appendChild(dateLabel);
+
+  main.appendChild(metaDiv);
   main.appendChild(title);
   main.appendChild(preview);
 
   const actions = document.createElement('div');
-  actions.className = 'row-actions';
+  actions.className = 'entry-actions';
+
   const copyBtn = document.createElement('button');
-  copyBtn.className = 'action-btn copy';
+  copyBtn.className = 'entry-action copy';
   copyBtn.type = 'button';
-  copyBtn.textContent = 'Copy';
+  copyBtn.textContent = 'Copier';
   copyBtn.addEventListener('click', async (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const textToCopy = entry.text || entry.raw_text || '';
-    if (!textToCopy) {
+    const text = entry.text || entry.raw_text || '';
+    if (!text || !navigator.clipboard) {
       return;
     }
-    try {
-      if (!navigator.clipboard) {
-        return;
-      }
-      await navigator.clipboard.writeText(textToCopy);
-      const original = copyBtn.textContent;
-      copyBtn.textContent = 'Copied';
-      setTimeout(() => {
-        copyBtn.textContent = original;
-      }, 1200);
-    } catch (error) {
-      console.error('Clipboard failed', error);
-    }
+    await navigator.clipboard.writeText(text);
+    showToast('Texte copié.');
   });
 
   const deleteBtn = document.createElement('button');
-  deleteBtn.className = 'action-btn delete';
+  deleteBtn.className = 'entry-action delete';
   deleteBtn.type = 'button';
-  deleteBtn.textContent = 'Delete';
+  deleteBtn.textContent = 'Supprimer';
   deleteBtn.addEventListener('click', async (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -221,6 +313,7 @@ function buildEntryRow(entry, type) {
       return;
     }
     await method(entry.id);
+    showToast(type === 'notes' ? 'Note supprimée.' : 'Entrée supprimée.');
     await refreshDashboard();
   });
 
@@ -230,6 +323,7 @@ function buildEntryRow(entry, type) {
   row.appendChild(icon);
   row.appendChild(main);
   row.appendChild(actions);
+
   return row;
 }
 
@@ -240,10 +334,8 @@ function renderHistoryList() {
   const filtered = filterEntries(historyData, searchTerm);
   historyList.innerHTML = '';
   if (!filtered.length) {
-    historyEmpty.textContent = searchTerm
-      ? 'Aucune correspondance trouvee.'
-      : 'Aucun historique disponible pour le moment.';
-    historyEmpty.style.display = 'block';
+    historyEmpty.style.display = 'flex';
+    setEmptyStateState(historyEmpty, Boolean(searchTerm));
     return;
   }
   historyEmpty.style.display = 'none';
@@ -259,10 +351,8 @@ function renderNotesList() {
   const filtered = filterEntries(notesData, searchTerm);
   notesList.innerHTML = '';
   if (!filtered.length) {
-    notesEmpty.textContent = searchTerm
-      ? 'Aucune correspondance trouvee.'
-      : 'Aucune note créée pour le moment.';
-    notesEmpty.style.display = 'block';
+    notesEmpty.style.display = 'flex';
+    setEmptyStateState(notesEmpty, Boolean(searchTerm));
     return;
   }
   notesEmpty.style.display = 'none';
@@ -274,32 +364,39 @@ function renderNotesList() {
 function refreshActiveList() {
   if (currentView === 'notes') {
     renderNotesList();
-  } else {
-    renderHistoryList();
-  }
-}
-
-function setNoteStatus(message, isError = false) {
-  if (!noteFormStatus) {
     return;
   }
-  noteFormStatus.textContent = message;
-  noteFormStatus.style.color = isError ? '#EF4444' : '#059669';
+  renderHistoryList();
+}
+
+function toggleRecordingVisuals(active) {
+  noteCaptureActive = active;
+  if (recordingFeedback) {
+    recordingFeedback.classList.toggle('active', active);
+  }
+  if (micPulse) {
+    micPulse.classList.toggle('active', active);
+  }
+  if (captureNoteButton) {
+    captureNoteButton.classList.toggle('is-recording', active);
+  }
 }
 
 async function handleNoteDictation() {
   if (!noteBodyInput) {
     return;
   }
-  noteCaptureActive = true;
-  setNoteStatus('Enregistrement vocal activé…');
+  if (noteCaptureActive) {
+    toggleRecordingVisuals(false);
+    if (window.electronAPI?.toggleRecording) {
+      window.electronAPI.toggleRecording();
+    }
+    return;
+  }
+  toggleRecordingVisuals(true);
   noteBodyInput.focus();
   if (window.electronAPI?.setRecordingTarget) {
-    try {
-      await window.electronAPI.setRecordingTarget('notes');
-    } catch (error) {
-      console.warn('Failed to set recording target:', error);
-    }
+    await window.electronAPI.setRecordingTarget('notes');
   }
   if (window.electronAPI?.toggleRecording) {
     window.electronAPI.toggleRecording();
@@ -312,44 +409,52 @@ async function handleCreateNote() {
   }
   const content = noteBodyInput.value.trim();
   if (!content) {
-    setNoteStatus('Complète le contenu.', true);
+    showToast('La note est vide.', 'error');
     return;
   }
-  const payload = {
-    text: content,
-    metadata: { source: 'manual' },
-  };
-  const providedTitle = noteTitleInput?.value.trim();
-  if (providedTitle) {
-    payload.title = providedTitle;
+
+  const payload = { text: content, metadata: { source: 'manual' } };
+  if (noteTitleInput?.value.trim()) {
+    payload.title = noteTitleInput.value.trim();
   }
-  setNoteStatus('Création en cours…');
+
   if (createNoteButton) {
     createNoteButton.disabled = true;
   }
+
   try {
     if (!window.electronAPI?.addNote) {
-      throw new Error('Fonctionnalité non disponible.');
+      throw new Error('API indisponible');
     }
     await window.electronAPI.addNote(payload);
     if (noteTitleInput) {
       noteTitleInput.value = '';
     }
     noteBodyInput.value = '';
-    setNoteStatus('Note enregistrée.');
+    showToast('Note sauvegardée.');
     await refreshDashboard();
   } catch (error) {
-    console.error('Note creation failed', error);
-    setNoteStatus(error?.message || 'Échec de la création.', true);
+    console.error(error);
+    showToast('Erreur sauvegarde.', 'error');
   } finally {
     if (createNoteButton) {
       createNoteButton.disabled = false;
     }
-    setTimeout(() => {
-      if (noteFormStatus && noteFormStatus.textContent?.includes('Note')) {
-        noteFormStatus.textContent = '';
-      }
-    }, 2400);
+  }
+}
+
+function renderStats(stats) {
+  if (!stats) {
+    return;
+  }
+  if (statDays) {
+    statDays.textContent = stats.daysActive;
+  }
+  if (statWords) {
+    statWords.textContent = stats.words;
+  }
+  if (statTotal) {
+    statTotal.textContent = stats.total;
   }
 }
 
@@ -359,77 +464,75 @@ function renderDictionary(dictionary) {
   }
   dictionaryList.innerHTML = '';
   if (!dictionary || dictionary.length === 0) {
-    dictionaryEmpty.style.display = 'block';
+    dictionaryEmpty.style.display = 'flex';
+    setEmptyStateState(dictionaryEmpty, false);
     return;
   }
   dictionaryEmpty.style.display = 'none';
+
   dictionary.forEach((entry) => {
-    const item = document.createElement('div');
-    item.className = 'dictionary-item';
-    const textWrap = document.createElement('div');
-    textWrap.className = 'dictionary-term';
-    const fromText = document.createElement('span');
-    fromText.style.fontWeight = '600';
-    fromText.textContent = entry.from_text;
-    if (!entry.to_text || entry.to_text === entry.from_text) {
-      textWrap.appendChild(fromText);
-    } else {
+    const row = document.createElement('div');
+    row.className = 'dictionary-row';
+
+    const content = document.createElement('div');
+    content.className = 'dictionary-term';
+    const from = document.createElement('span');
+    from.textContent = entry.from_text;
+    content.appendChild(from);
+
+    if (entry.to_text && entry.to_text !== entry.from_text) {
       const arrow = document.createElement('span');
-      arrow.className = 'dictionary-arrow';
+      arrow.className = 'arrow';
       arrow.textContent = '→';
-      const toText = document.createElement('span');
-      toText.textContent = entry.to_text;
-      textWrap.appendChild(fromText);
-      textWrap.appendChild(arrow);
-      textWrap.appendChild(toText);
+      const to = document.createElement('span');
+      to.style.color = '#059669';
+      to.textContent = entry.to_text;
+      content.appendChild(arrow);
+      content.appendChild(to);
     }
 
     const actions = document.createElement('div');
     actions.className = 'dictionary-actions';
+
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
-    editBtn.dataset.action = 'edit';
-    editBtn.dataset.id = entry.id;
     editBtn.textContent = 'Edit';
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.dataset.action = 'delete';
-    deleteBtn.dataset.id = entry.id;
-    deleteBtn.textContent = 'Delete';
-    editBtn.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const result = await openModal({
-        title: 'Edit dictionary entry',
-        confirmText: 'Save',
+    editBtn.addEventListener('click', async () => {
+      const res = await openModal({
+        title: 'Éditer le terme',
+        confirmText: 'Mettre à jour',
         fields: [
-          { key: 'from_text', label: 'Replace (from)', value: entry.from_text },
-          { key: 'to_text', label: 'Replace with (to)', value: entry.to_text },
+          { key: 'from_text', label: 'Remplacer (De)', value: entry.from_text },
+          { key: 'to_text', label: 'Par (Vers)', value: entry.to_text },
         ],
       });
-      if (!result || !result.from_text || !result.to_text) {
-        return;
+      if (res && res.from_text && res.to_text) {
+        await window.electronAPI.upsertDictionary({
+          id: entry.id,
+          from_text: res.from_text,
+          to_text: res.to_text,
+          created_at: entry.created_at,
+        });
+        showToast('Terme mis à jour.');
+        await refreshDashboard();
       }
-      await window.electronAPI.upsertDictionary({
-        id: entry.id,
-        from_text: result.from_text,
-        to_text: result.to_text,
-        created_at: entry.created_at,
-      });
-      await refreshDashboard();
     });
-    deleteBtn.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = 'Supprimer';
+    deleteBtn.addEventListener('click', async () => {
       await window.electronAPI.deleteDictionary(entry.id);
+      showToast('Terme supprimé.');
       await refreshDashboard();
     });
+
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
 
-    item.appendChild(textWrap);
-    item.appendChild(actions);
-    dictionaryList.appendChild(item);
+    row.appendChild(content);
+    row.appendChild(actions);
+    dictionaryList.appendChild(row);
   });
 }
 
@@ -440,42 +543,63 @@ function renderStyles(styles) {
   styleList.innerHTML = '';
   const filtered = (styles || []).filter((style) => STYLE_PRESETS.includes(style.name));
   const ordered = STYLE_PRESETS.map((name) => filtered.find((style) => style.name === name)).filter(Boolean);
-  if (!ordered || ordered.length === 0) {
-    styleEmpty.style.display = 'block';
+
+  if (!ordered.length) {
+    styleEmpty.style.display = 'flex';
+    setEmptyStateState(styleEmpty, false);
     return;
   }
   styleEmpty.style.display = 'none';
+
   ordered.forEach((style) => {
     const card = document.createElement('div');
     card.className = 'style-card';
-    const title = document.createElement('h3');
-    title.textContent = style.name;
     if (style.id === currentSettings.activeStyleId) {
-      const tag = document.createElement('span');
-      tag.className = 'tag';
-      tag.textContent = 'Active';
-      title.appendChild(tag);
+      card.classList.add('active');
     }
 
-    const promptEl = document.createElement('p');
-    promptEl.className = 'muted';
-    promptEl.textContent = style.prompt;
+    const title = document.createElement('h3');
+    title.textContent = STYLE_LABELS[style.name] || style.name;
+    if (style.id === currentSettings.activeStyleId) {
+      const badge = document.createElement('span');
+      badge.className = 'style-badge';
+      badge.textContent = 'Actif';
+      title.appendChild(badge);
+    }
 
-    const useBtn = document.createElement('button');
-    useBtn.type = 'button';
-    useBtn.dataset.action = 'activate';
-    useBtn.dataset.id = style.id;
-    useBtn.textContent = 'Use';
-    useBtn.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      await window.electronAPI.activateStyle(style.id);
-      await refreshDashboard();
-    });
+    const desc = document.createElement('p');
+    desc.textContent = STYLE_DESCRIPTIONS[style.name] || style.prompt || '';
+
+    const preview = document.createElement('div');
+    preview.className = 'style-preview';
+    const example = STYLE_EXAMPLES[style.name] || {};
+    const beforeText = style.exampleBefore || example.before || 'Je... euh... je pense que c\'est bon.';
+    const afterText = style.exampleAfter || example.after || 'Je confirme que c\'est valide.';
+    preview.innerHTML = `
+      <div class="style-preview-row">
+        <span class="style-preview-label">Avant</span>
+        <span class="style-preview-text">"${beforeText}"</span>
+      </div>
+      <div class="style-preview-row style-preview-after">
+        <span class="style-preview-label">Après</span>
+        <span class="style-preview-text">"${afterText}"</span>
+      </div>
+    `;
+
+    const btn = document.createElement('button');
+    btn.textContent = style.id === currentSettings.activeStyleId ? 'Style actuel' : 'Utiliser ce style';
+    if (style.id !== currentSettings.activeStyleId) {
+      btn.addEventListener('click', async () => {
+        await window.electronAPI.activateStyle(style.id);
+        showToast(`Style "${style.name}" activé.`);
+        await refreshDashboard();
+      });
+    }
 
     card.appendChild(title);
-    card.appendChild(promptEl);
-    card.appendChild(useBtn);
+    card.appendChild(desc);
+    card.appendChild(preview);
+    card.appendChild(btn);
     styleList.appendChild(card);
   });
 }
@@ -483,18 +607,21 @@ function renderStyles(styles) {
 function renderSettings(settings) {
   settingsInputs.forEach((input) => {
     const key = input.dataset.setting;
-    if (key && typeof settings[key] !== 'undefined') {
-      if (input.tagName.toLowerCase() === 'select' && key === 'postProcessEnabled') {
-        input.value = settings[key] ? 'true' : 'false';
-      } else {
-        input.value = settings[key];
-      }
+    if (!key || typeof settings[key] === 'undefined') {
+      return;
+    }
+    if (key === 'postProcessEnabled') {
+      input.value = settings[key] ? 'true' : 'false';
+    } else {
+      input.value = settings[key];
     }
   });
+
   if (apiKeyStatus) {
-    apiKeyStatus.textContent = settings.apiKeyPresent
-      ? 'API OpenAI: configuree'
-      : 'API OpenAI: manquante (OPENAI_API_KEY)';
+    apiKeyStatus.innerHTML = settings.apiKeyPresent
+      ? '<span style="width:8px;height:8px;border-radius:999px;background:#10B981;"></span> API OpenAI connectée'
+      : '<span style="width:8px;height:8px;border-radius:999px;background:#EF4444;"></span> API manquante';
+    apiKeyStatus.style.color = settings.apiKeyPresent ? '#059669' : '#EF4444';
   }
 }
 
@@ -502,106 +629,135 @@ function renderAuth(auth, syncReady) {
   if (!authPanel) {
     return;
   }
-  authPanel.innerHTML = '';
-  const syncNowButton = document.getElementById('syncNowButton');
+
+  const syncBtn = document.getElementById('syncNowButton');
   if (!syncReady) {
-    authPanel.innerHTML = '<p class="muted">Supabase non configure.</p>';
-    if (syncNowButton) {
-      syncNowButton.disabled = true;
+    authPanel.innerHTML = '<span style="color:#EF4444;font-weight:600;">Erreur de configuration serveur.</span>';
+    if (syncBtn) {
+      syncBtn.disabled = true;
     }
     return;
   }
+
   if (auth) {
-    if (syncNowButton) {
-      syncNowButton.disabled = false;
+    if (syncBtn) {
+      syncBtn.disabled = false;
     }
     authPanel.innerHTML = `
-      <div class="form-row">
-        <strong>${auth.email}</strong>
-        <div class="auth-actions">
-          <button class="ghost-button" id="signOutButton" type="button">Sign out</button>
-        </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#F8FAFC;padding:12px 14px;border-radius:14px;border:1px solid #F1F5F9;">
+        <span style="font-weight:700;color:#1F2937;">${auth.email}</span>
+        <button id="signOutButton" type="button" style="font-size:12px;font-weight:700;color:#EF4444;background:transparent;border:none;cursor:pointer;">Déconnexion</button>
       </div>
     `;
-    const signOutButton = document.getElementById('signOutButton');
-    signOutButton.addEventListener('click', async () => {
+    document.getElementById('signOutButton')?.addEventListener('click', async () => {
       await window.electronAPI.authSignOut();
       await refreshDashboard();
     });
     return;
   }
 
-  if (syncNowButton) {
-    syncNowButton.disabled = true;
+  if (syncBtn) {
+    syncBtn.disabled = true;
   }
   authPanel.innerHTML = `
-    <div class="form-row">
-      <button class="ghost-button" id="authLoginButton" type="button">Se connecter</button>
-      <button class="ghost-button" id="authSignupButton" type="button">S'inscrire</button>
+    <div style="display:flex;gap:10px;">
+      <button id="authLoginButton" type="button" style="flex:1;padding:10px;border-radius:12px;border:1px solid #E2E8F0;background:#FFFFFF;font-weight:600;color:#64748B;">Se connecter</button>
+      <button id="authSignupButton" type="button" style="flex:1;padding:10px;border-radius:12px;border:none;background:#059669;color:#FFFFFF;font-weight:600;">Créer compte</button>
     </div>
   `;
-  const authLoginButton = document.getElementById('authLoginButton');
-  const authSignupButton = document.getElementById('authSignupButton');
-  if (authLoginButton) {
-    authLoginButton.addEventListener('click', async () => {
-      if (!window.electronAPI?.openSignupUrl) {
-        return;
-      }
+  document.getElementById('authLoginButton')?.addEventListener('click', async () => {
+    if (window.electronAPI?.openSignupUrl) {
       await window.electronAPI.openSignupUrl('login');
-    });
-  }
-  if (authSignupButton) {
-    authSignupButton.addEventListener('click', async () => {
-      if (!window.electronAPI?.openSignupUrl) {
-        return;
-      }
+    }
+  });
+  document.getElementById('authSignupButton')?.addEventListener('click', async () => {
+    if (window.electronAPI?.openSignupUrl) {
       await window.electronAPI.openSignupUrl('signup');
-    });
-  }
+    }
+  });
 }
 
 let currentAuthState = null;
+let authSubmitPending = false;
 
 function setOverlayStatus(message, isError) {
   if (!authOverlayStatus) {
     return;
   }
   authOverlayStatus.textContent = message || '';
-  authOverlayStatus.style.color = isError ? '#DC2626' : '#64748B';
+  authOverlayStatus.classList.remove('status-ok', 'status-error');
+  authOverlayStatus.classList.add(isError ? 'status-error' : 'status-ok');
 }
 
 function applyAuthState(state) {
   currentAuthState = state || {};
   const status = currentAuthState.status || 'checking';
   const authed = status === 'authenticated';
+
   document.body.classList.toggle('auth-locked', !authed);
   if (authOverlay) {
     authOverlay.setAttribute('aria-hidden', authed ? 'true' : 'false');
   }
 
+  let msg = '';
+  let isErr = false;
   if (status === 'checking') {
-    setOverlayStatus(currentAuthState.message || 'Verification de session...', false);
+    msg = 'Vérification...';
   } else if (status === 'error') {
-    setOverlayStatus(currentAuthState.message || 'Connexion indisponible.', true);
+    msg = 'Connexion indisponible';
+    isErr = true;
   } else if (status === 'not_configured') {
-    setOverlayStatus(currentAuthState.message || 'Supabase non configure.', true);
-  } else if (status === 'unauthenticated') {
-    setOverlayStatus(currentAuthState.message || 'Connexion requise.', false);
-  } else {
-    setOverlayStatus('');
+    msg = 'Supabase non configuré.';
+    isErr = true;
   }
 
-  const disableForm = status === 'checking' || status === 'not_configured';
+  setOverlayStatus(currentAuthState.message || msg, isErr);
+
+  const disabled = status === 'checking' || status === 'not_configured' || authSubmitPending;
   if (authOverlayLogin) {
-    authOverlayLogin.disabled = disableForm;
+    authOverlayLogin.disabled = disabled;
+  }
+  if (authOverlayEmail) {
+    authOverlayEmail.disabled = disabled;
+  }
+  if (authOverlayPassword) {
+    authOverlayPassword.disabled = disabled;
   }
   if (authOverlaySignup) {
-    authOverlaySignup.disabled = disableForm;
+    authOverlaySignup.disabled = disabled;
     authOverlaySignup.style.display = status === 'unauthenticated' ? 'inline-flex' : 'none';
   }
   if (authOverlayRetry) {
-    authOverlayRetry.disabled = status === 'checking' || status === 'not_configured';
     authOverlayRetry.style.display = currentAuthState.retryable ? 'inline-flex' : 'none';
+    authOverlayRetry.disabled = disabled;
+  }
+}
+
+async function submitAuthLogin() {
+  if (!window.electronAPI?.authSignIn) {
+    setOverlayStatus('Connexion indisponible.', true);
+    return;
+  }
+  const email = authOverlayEmail?.value.trim();
+  const password = authOverlayPassword?.value || '';
+  if (!email || !password) {
+    setOverlayStatus('Veuillez saisir email et mot de passe.', true);
+    return;
+  }
+
+  authSubmitPending = true;
+  applyAuthState(currentAuthState);
+  setOverlayStatus('Connexion en cours...', false);
+  try {
+    await window.electronAPI.authSignIn(email, password);
+    if (authOverlayPassword) {
+      authOverlayPassword.value = '';
+    }
+  } catch (error) {
+    setOverlayStatus(error?.message || 'Echec de connexion.', true);
+  } finally {
+    authSubmitPending = false;
+    applyAuthState(currentAuthState);
   }
 }
 
@@ -612,15 +768,11 @@ async function populateMicrophones() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const mics = devices.filter((device) => device.kind === 'audioinput');
-    microphoneSelect.innerHTML = '';
-    const emptyOption = document.createElement('option');
-    emptyOption.value = '';
-    emptyOption.textContent = 'Default microphone';
-    microphoneSelect.appendChild(emptyOption);
+    microphoneSelect.innerHTML = '<option value="">Défaut système</option>';
     mics.forEach((mic) => {
       const option = document.createElement('option');
       option.value = mic.deviceId;
-      option.textContent = mic.label || `Microphone ${mic.deviceId.slice(0, 6)}`;
+      option.textContent = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
       microphoneSelect.appendChild(option);
     });
     if (currentSettings.microphoneId) {
@@ -631,37 +783,30 @@ async function populateMicrophones() {
   }
 }
 
-function normalizeSettingsValue(setting, value) {
-  if (setting === 'postProcessEnabled') {
-    return value === 'true';
-  }
-  return value;
-}
-
 function handleSettingChange(event) {
   const { setting } = event.target.dataset;
   if (!setting) {
     return;
   }
 
-  const value = normalizeSettingsValue(setting, event.target.value);
-  const nextSettings = { ...currentSettings, [setting]: value };
-
-  if (!window.electronAPI || !window.electronAPI.saveSettings) {
-    currentSettings = nextSettings;
-    return;
+  let value = event.target.value;
+  if (setting === 'postProcessEnabled') {
+    value = value === 'true';
   }
 
-  window.electronAPI.saveSettings(nextSettings).then((saved) => {
-    currentSettings = saved;
-  }).catch((error) => {
-    console.error('Failed to save settings:', error);
-  });
+  currentSettings = { ...currentSettings, [setting]: value };
+  if (window.electronAPI?.saveSettings) {
+    window.electronAPI.saveSettings(currentSettings);
+  }
 }
 
 async function refreshDashboard() {
+  if (!window.electronAPI) {
+    return;
+  }
   dashboardData = await window.electronAPI.getDashboardData();
   currentSettings = dashboardData.settings || {};
+
   renderStats(dashboardData.stats);
   historyData = dashboardData.history || [];
   notesData = dashboardData.notes || [];
@@ -673,7 +818,7 @@ async function refreshDashboard() {
   await populateMicrophones();
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+window.addEventListener('DOMContentLoaded', () => {
   if (modalBackdrop) {
     modalBackdrop.addEventListener('click', (event) => {
       if (event.target === modalBackdrop && modalResolver) {
@@ -700,164 +845,92 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (window.electronAPI?.getAuthState) {
-    window.electronAPI.getAuthState().then((state) => {
-      applyAuthState(state);
-    }).catch(() => {
-      applyAuthState({ status: 'error', message: 'Etat auth indisponible.', retryable: true });
-    });
-  }
-
-  if (window.electronAPI?.onAuthState) {
-    window.electronAPI.onAuthState((state) => {
-      applyAuthState(state);
-    });
-  }
-
-  if (window.electronAPI?.onAuthRequired) {
-    window.electronAPI.onAuthRequired((message) => {
-      applyAuthState({ ...(currentAuthState || {}), status: 'unauthenticated', message: message || 'Connexion requise.' });
-    });
-  }
-
-  if (authOverlayLogin) {
-    authOverlayLogin.addEventListener('click', async () => {
-      if (!window.electronAPI?.openSignupUrl) {
-        return;
-      }
-      await window.electronAPI.openSignupUrl('login');
-    });
-  }
-  if (authOverlaySignup) {
-    authOverlaySignup.addEventListener('click', async () => {
-      if (!window.electronAPI?.openSignupUrl) {
-        return;
-      }
-      await window.electronAPI.openSignupUrl('signup');
-    });
-  }
-
-  if (authOverlayRetry) {
-    authOverlayRetry.addEventListener('click', async () => {
-      if (!window.electronAPI?.authRetry) {
-        return;
-      }
-      setOverlayStatus('Nouvelle tentative...', false);
-      try {
-        await window.electronAPI.authRetry();
-      } catch (error) {
-        setOverlayStatus(error?.message || 'Retry indisponible.', true);
-      }
-    });
-  }
-
-
   if (captureNoteButton) {
-    captureNoteButton.addEventListener('click', () => {
-      handleNoteDictation();
-    });
+    captureNoteButton.addEventListener('click', handleNoteDictation);
   }
 
-  if (window.electronAPI?.onDashboardTranscription) {
-    window.electronAPI.onDashboardTranscription((text, target) => {
-      if (!noteCaptureActive || !noteBodyInput || target !== 'notes') {
-        return;
+  document.querySelectorAll('.editor-tool').forEach((button) => {
+    button.addEventListener('click', () => {
+      const md = button.dataset.md;
+      if (md) {
+        insertMarkdown(md);
       }
-      const addition = (text || '').trim();
-      if (!addition) {
-        noteCaptureActive = false;
-        return;
-      }
-      const existing = noteBodyInput.value.trim();
-      noteBodyInput.value = existing ? `${existing}\n${addition}` : addition;
-      noteBodyInput.focus();
-      setNoteStatus('Transcription intégrée.');
-      noteCaptureActive = false;
     });
-  }
+  });
 
-  if (window.electronAPI?.onDashboardTranscriptionError) {
-    window.electronAPI.onDashboardTranscriptionError((error) => {
-      if (!noteCaptureActive) {
+  document.querySelectorAll('[data-empty-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.emptyAction;
+      if (action === 'notes') {
+        setActiveView('notes');
         return;
       }
-      setNoteStatus(error?.message || 'La dictée a échoué.', true);
-      noteCaptureActive = false;
+      if (action === 'note-editor') {
+        setActiveView('notes');
+        noteTitleInput?.focus();
+        return;
+      }
+      if (action === 'dictionary') {
+        setActiveView('dictionary');
+        dictionaryWordInput?.focus();
+        return;
+      }
+      if (action === 'styles') {
+        refreshDashboard();
+      }
     });
-  }
+  });
 
   if (createNoteButton) {
-    createNoteButton.addEventListener('click', () => {
-      handleCreateNote();
-    });
+    createNoteButton.addEventListener('click', handleCreateNote);
   }
 
-  const windowControls = document.querySelectorAll('.window-control, .win-control');
-  windowControls.forEach((control) => {
+  document.querySelectorAll('.win-control').forEach((control) => {
+    const action = control.dataset.windowControl;
+    if (!action) {
+      return;
+    }
     control.addEventListener('click', () => {
-      let action = control.dataset.windowControl || control.dataset.action;
-      if (!action) {
-        const label = (control.getAttribute('title') || '').toLowerCase();
-        if (label.includes('min')) {
-          action = 'minimize';
-        } else if (label.includes('max')) {
-          action = 'maximize';
-        } else if (label.includes('close')) {
-          action = 'close';
-        }
+      if (window.electronAPI?.sendWindowControl) {
+        window.electronAPI.sendWindowControl(action);
       }
-      if (!action || !window.electronAPI?.sendWindowControl) {
-        return;
-      }
-      window.electronAPI.sendWindowControl(action);
     });
   });
 
-  settingsInputs.forEach((input) => {
-    input.addEventListener('change', handleSettingChange);
-  });
-
-  if (window.electronAPI.onShortcutUpdated) {
-    window.electronAPI.onShortcutUpdated((shortcut) => {
-      const shortcutInput = document.querySelector('[data-setting="shortcut"]');
-      if (shortcutInput) {
-        shortcutInput.value = shortcut;
-      }
-    });
-  }
-
-  if (window.electronAPI.onSettingsUpdated) {
-    window.electronAPI.onSettingsUpdated((settings) => {
-      currentSettings = settings || {};
-      renderSettings(currentSettings);
-      populateMicrophones();
-    });
-  }
-
-  if (window.electronAPI.onDashboardView) {
-    window.electronAPI.onDashboardView((viewName) => {
-      setActiveView(viewName);
-    });
-  }
-
-  if (window.electronAPI.onDashboardDataUpdated) {
-    window.electronAPI.onDashboardDataUpdated(() => {
-      refreshDashboard().catch((error) => {
-        console.error('Failed to refresh dashboard:', error);
-      });
-    });
-  }
-
-  await refreshDashboard();
+  settingsInputs.forEach((input) => input.addEventListener('change', handleSettingChange));
 
   if (misspellingToggle) {
-    misspellingToggle.addEventListener('click', () => {
-      const active = misspellingToggle.classList.toggle('active');
-      misspellingToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
+    misspellingToggle.addEventListener('change', (event) => {
       if (dictionaryCorrectionInput) {
-        dictionaryCorrectionInput.style.display = active ? 'block' : 'none';
+        dictionaryCorrectionInput.style.display = event.target.checked ? 'block' : 'none';
+        if (!event.target.checked) {
+          dictionaryCorrectionInput.value = '';
+        }
+      }
+    });
+  }
+
+  if (dictionaryAddButton) {
+    dictionaryAddButton.addEventListener('click', async () => {
+      const word = dictionaryWordInput?.value.trim();
+      if (!word) {
+        showToast('Veuillez entrer un mot.', 'error');
+        return;
+      }
+      const correction = misspellingToggle?.checked ? dictionaryCorrectionInput?.value.trim() : word;
+      if (misspellingToggle?.checked && !correction) {
+        showToast('Veuillez saisir la correction.', 'error');
+        return;
+      }
+      await window.electronAPI.upsertDictionary({ from_text: word, to_text: correction });
+      showToast(`"${word}" ajouté au dictionnaire.`);
+      if (dictionaryWordInput) {
+        dictionaryWordInput.value = '';
+      }
+      if (dictionaryCorrectionInput) {
         dictionaryCorrectionInput.value = '';
       }
+      await refreshDashboard();
     });
   }
 
@@ -869,64 +942,77 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (dictionaryCorrectionInput) {
         dictionaryCorrectionInput.value = '';
       }
-      if (misspellingToggle && misspellingToggle.classList.contains('active')) {
-        misspellingToggle.classList.remove('active');
-        misspellingToggle.setAttribute('aria-pressed', 'false');
-        if (dictionaryCorrectionInput) {
-          dictionaryCorrectionInput.style.display = 'none';
-        }
+      if (misspellingToggle) {
+        misspellingToggle.checked = false;
+      }
+      if (dictionaryCorrectionInput) {
+        dictionaryCorrectionInput.style.display = 'none';
       }
     });
   }
 
-  if (dictionaryAddButton) {
-    dictionaryAddButton.addEventListener('click', async () => {
-      if (!dictionaryWordInput) {
+  if (authOverlayForm) {
+    authOverlayForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await submitAuthLogin();
+    });
+  }
+  if (authOverlaySignup) {
+    authOverlaySignup.addEventListener('click', async () => {
+      if (window.electronAPI?.openSignupUrl) {
+        await window.electronAPI.openSignupUrl('signup');
+      }
+    });
+  }
+  if (authOverlayRetry) {
+    authOverlayRetry.addEventListener('click', async () => {
+      if (window.electronAPI?.authRetry) {
+        setOverlayStatus('Nouvelle tentative...', false);
+        await window.electronAPI.authRetry();
+      }
+    });
+  }
+
+  if (window.electronAPI?.onDashboardTranscription) {
+    window.electronAPI.onDashboardTranscription((text, target) => {
+      if (!noteCaptureActive || !noteBodyInput || target !== 'notes') {
         return;
       }
-      const word = dictionaryWordInput.value.trim();
-      if (!word) {
+      const add = (text || '').trim();
+      if (!add) {
+        toggleRecordingVisuals(false);
         return;
       }
-      const correcting = misspellingToggle && misspellingToggle.classList.contains('active');
-      const correction = dictionaryCorrectionInput ? dictionaryCorrectionInput.value.trim() : '';
-      if (correcting && !correction) {
+      const existing = noteBodyInput.value.trim();
+      noteBodyInput.value = existing ? `${existing}\n${add}` : add;
+      showToast('Texte reçu.');
+      toggleRecordingVisuals(false);
+    });
+  }
+
+  if (window.electronAPI?.onDashboardTranscriptionError) {
+    window.electronAPI.onDashboardTranscriptionError((error) => {
+      if (!noteCaptureActive) {
         return;
       }
-      await window.electronAPI.upsertDictionary({
-        from_text: word,
-        to_text: correcting ? correction : word,
-      });
-      dictionaryCancelButton.click();
-      await refreshDashboard();
+      showToast(error?.message || 'La dictée a échoué.', 'error');
+      toggleRecordingVisuals(false);
     });
   }
 
-  if (dictionaryWordInput) {
-    dictionaryWordInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        dictionaryAddButton?.click();
-      }
-    });
+  if (window.electronAPI?.getAuthState) {
+    window.electronAPI.getAuthState().then(applyAuthState).catch(() => applyAuthState({ status: 'error' }));
+  }
+  if (window.electronAPI?.onAuthState) {
+    window.electronAPI.onAuthState(applyAuthState);
+  }
+  if (window.electronAPI?.onAuthRequired) {
+    window.electronAPI.onAuthRequired((msg) => applyAuthState({ status: 'unauthenticated', message: msg }));
   }
 
-  if (dictionaryCorrectionInput) {
-    dictionaryCorrectionInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        dictionaryAddButton?.click();
-      }
-    });
+  if (window.electronAPI?.onDashboardDataUpdated) {
+    window.electronAPI.onDashboardDataUpdated(() => refreshDashboard());
   }
 
-  const syncNowButton = document.getElementById('syncNowButton');
-  if (syncNowButton) {
-    syncNowButton.addEventListener('click', async () => {
-      try {
-        await window.electronAPI.syncNow();
-        await refreshDashboard();
-      } catch (error) {
-        window.alert(error.message || 'Sync failed');
-      }
-    });
-  }
+  refreshDashboard();
 });
