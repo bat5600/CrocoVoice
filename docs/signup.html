@@ -90,7 +90,7 @@
         <p id="formSubtitle" class="text-slate-500 font-medium">Demarrez votre essai de 14 jours. Sans engagement.</p>
       </div>
 
-      <div class="grid grid-cols-2 gap-4 mb-8">
+      <div id="socialBlock" class="grid grid-cols-2 gap-4 mb-8">
         <button class="flex items-center justify-center gap-2.5 px-4 py-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-200 hover:bg-emerald-50/50 hover:text-emerald-700 transition-all text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-100 focus:ring-offset-1 shadow-sm" type="button">
           <svg viewBox="0 0 24 24" class="w-4 h-4">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -108,7 +108,7 @@
         </button>
       </div>
 
-      <div class="relative mb-8">
+      <div id="dividerBlock" class="relative mb-8">
         <div class="absolute inset-0 flex items-center">
           <div class="w-full border-t border-slate-200"></div>
         </div>
@@ -131,7 +131,7 @@
           </div>
         </div>
 
-        <div class="space-y-1.5">
+        <div id="emailField" class="space-y-1.5">
           <label class="block text-sm font-semibold text-slate-700">Email professionnel</label>
           <div class="relative group transition-all duration-200 bg-white rounded-xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -145,10 +145,10 @@
           <p id="emailError" class="text-xs text-red-500 hidden">Adresse email invalide</p>
         </div>
 
-        <div class="space-y-1.5">
+        <div id="passwordField" class="space-y-1.5">
           <div class="flex items-center justify-between">
             <label class="block text-sm font-semibold text-slate-700">Mot de passe</label>
-            <a id="forgotLink" href="#" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 hidden">Mot de passe oublie ?</a>
+            <a id="forgotLink" href="#" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 hidden">Recevoir un lien</a>
           </div>
           <div class="relative group transition-all duration-200 bg-white rounded-xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -218,6 +218,7 @@
     (() => {
       const SUPABASE_URL = 'https://wkoqeffrwrlfvfcvqhee.supabase.co';
       const SUPABASE_ANON_KEY = 'sb_publishable_4sRfQi2qDooCe722JUQwqQ_gF1NXLbu';
+      const MAGIC_LINK_REDIRECT = 'https://app.crococlick.com/signup-crocovoice?mode=set-password';
 
       const formTitle = document.getElementById('formTitle');
       const formSubtitle = document.getElementById('formSubtitle');
@@ -239,24 +240,64 @@
       const legalText = document.getElementById('legalText');
       const passwordStrength = document.getElementById('passwordStrength');
       const strengthBar = document.getElementById('strengthBar');
+      const passwordField = document.getElementById('passwordField');
+      const emailField = document.getElementById('emailField');
+      const socialBlock = document.getElementById('socialBlock');
+      const dividerBlock = document.getElementById('dividerBlock');
 
-      let isLogin = false;
+      let mode = 'signup';
       let showPassword = false;
       let client = null;
 
-      function setMode(nextIsLogin) {
-        isLogin = nextIsLogin;
-        formTitle.textContent = isLogin ? 'Bon retour parmi nous' : 'Créer un compte';
-        formSubtitle.textContent = isLogin
-          ? 'Entrez vos identifiants pour acceder a votre espace.'
-          : 'Demarrez votre essai de 14 jours. Sans engagement.';
-        togglePrefix.textContent = isLogin ? 'Pas encore de compte ?' : 'Vous avez deja un compte ?';
-        toggleMode.textContent = isLogin ? "S'inscrire" : 'Se connecter';
-        submitLabel.textContent = isLogin ? 'Se connecter' : 'Commencer gratuitement';
-        nameField.classList.toggle('hidden', isLogin);
+      function setMode(nextMode) {
+        mode = nextMode;
+        const isLogin = mode === 'login';
+        const isReset = mode === 'reset';
+        const isMagic = mode === 'magic';
+        const isSetPassword = mode === 'set-password';
+        formTitle.textContent = isReset
+          ? 'Réinitialiser le mot de passe'
+          : (isMagic
+            ? 'Connexion par lien sécurisé'
+            : (isSetPassword ? 'Définir un mot de passe' : (isLogin ? 'Bon retour parmi nous' : 'Créer un compte')));
+        formSubtitle.textContent = isReset
+          ? 'Recevez un lien de réinitialisation par email.'
+          : (isMagic
+            ? 'Recevez un lien de connexion ou de création de compte.'
+            : (isSetPassword
+              ? 'Choisissez un mot de passe pour sécuriser votre compte.'
+              : (isLogin
+                ? 'Entrez vos identifiants pour acceder a votre espace.'
+                : 'Demarrez votre essai de 14 jours. Sans engagement.')));
+        togglePrefix.textContent = (isReset || isMagic || isSetPassword)
+          ? 'Retour a'
+          : (isLogin ? 'Pas encore de compte ?' : 'Vous avez deja un compte ?');
+        toggleMode.textContent = (isReset || isMagic || isSetPassword) ? 'Se connecter' : (isLogin ? "S'inscrire" : 'Se connecter');
+        submitLabel.textContent = isReset
+          ? 'Envoyer le lien'
+          : (isMagic
+            ? 'Envoyer le lien'
+            : (isSetPassword ? 'Enregistrer le mot de passe' : (isLogin ? 'Se connecter' : 'Commencer gratuitement')));
+        nameField.classList.toggle('hidden', isLogin || isReset || isMagic);
+        emailField.classList.toggle('hidden', isSetPassword);
+        passwordField.classList.toggle('hidden', isReset || isMagic);
         forgotLink.classList.toggle('hidden', !isLogin);
-        legalText.classList.toggle('hidden', isLogin);
-        passwordStrength.classList.toggle('hidden', isLogin);
+        legalText.classList.toggle('hidden', isLogin || isReset || isMagic || isSetPassword);
+        passwordStrength.classList.toggle('hidden', isLogin || isReset || isMagic || isSetPassword);
+        if (socialBlock) {
+          socialBlock.classList.toggle('hidden', isReset || isMagic || isSetPassword);
+        }
+        if (dividerBlock) {
+          dividerBlock.classList.toggle('hidden', isReset || isMagic || isSetPassword);
+        }
+        signupName.required = !(isLogin || isReset || isMagic);
+        signupEmail.required = !isSetPassword;
+        signupPassword.required = !(isReset || isMagic);
+        signupPassword.disabled = isReset || isMagic;
+        if (isReset || isMagic) {
+          signupPassword.value = '';
+          passwordError.classList.add('hidden');
+        }
       }
 
       function setPasswordVisibility(nextShow) {
@@ -274,6 +315,9 @@
       }
 
       function validatePassword() {
+        if (mode === 'reset' || mode === 'magic') {
+          return true;
+        }
         const value = signupPassword.value;
         const isValid = !value || value.length >= 8;
         passwordError.classList.toggle('hidden', isValid);
@@ -306,7 +350,15 @@
       }
 
       toggleMode.addEventListener('click', () => {
-        setMode(!isLogin);
+        setMode(mode === 'login' ? 'signup' : 'login');
+        emailError.classList.add('hidden');
+        passwordError.classList.add('hidden');
+        setStatus('');
+      });
+
+      forgotLink.addEventListener('click', (event) => {
+        event.preventDefault();
+        setMode('magic');
         emailError.classList.add('hidden');
         passwordError.classList.add('hidden');
         setStatus('');
@@ -340,15 +392,51 @@
         event.preventDefault();
         const emailOk = validateEmail();
         const passwordOk = validatePassword();
-        if (!emailOk || !passwordOk) {
+        if (!emailOk || (!passwordOk && mode !== 'reset' && mode !== 'magic')) {
           setStatus('Veuillez corriger les champs en erreur.', true);
           return;
         }
 
         submitButton.disabled = true;
-        setStatus(isLogin ? 'Connexion en cours...' : 'Creation du compte...', false);
+        if (mode === 'reset' || mode === 'magic') {
+          setStatus('Envoi du lien...', false);
+        } else if (mode === 'set-password') {
+          setStatus('Mise a jour du mot de passe...', false);
+        } else {
+          setStatus(mode === 'login' ? 'Connexion en cours...' : 'Creation du compte...', false);
+        }
         try {
-          if (isLogin) {
+          if (mode === 'reset') {
+            const { error } = await client.auth.resetPasswordForEmail(signupEmail.value.trim());
+            if (error) {
+              throw error;
+            }
+            setStatus('Lien envoye. Verifiez votre boite mail.', false);
+            setMode('login');
+          } else if (mode === 'magic') {
+            const { error } = await client.auth.signInWithOtp({
+              email: signupEmail.value.trim(),
+              options: {
+                shouldCreateUser: true,
+                emailRedirectTo: MAGIC_LINK_REDIRECT,
+              },
+            });
+            if (error) {
+              throw error;
+            }
+            setStatus('Lien envoye. Verifiez votre boite mail.', false);
+          } else if (mode === 'set-password') {
+            const updates = { password: signupPassword.value };
+            const name = signupName.value.trim();
+            if (name) {
+              updates.data = { name };
+            }
+            const { error } = await client.auth.updateUser(updates);
+            if (error) {
+              throw error;
+            }
+            setStatus('Mot de passe mis a jour. Vous pouvez revenir dans l’app.', false);
+          } else if (mode === 'login') {
             const { error } = await client.auth.signInWithPassword({
               email: signupEmail.value.trim(),
               password: signupPassword.value,
@@ -371,23 +459,40 @@
             setStatus('Compte cree. Verifiez votre boite mail.', false);
           }
         } catch (error) {
-          setStatus(error?.message || 'Echec de creation du compte.', true);
+          if (mode === 'reset' || mode === 'magic') {
+            setStatus(error?.message || 'Echec de l’envoi du lien.', true);
+          } else if (mode === 'set-password') {
+            setStatus(error?.message || 'Echec de la mise a jour.', true);
+          } else {
+            setStatus(error?.message || 'Echec de creation du compte.', true);
+          }
         } finally {
           submitButton.disabled = false;
         }
       });
 
-      setMode(false);
+      setMode('signup');
       setPasswordVisibility(false);
       updateStrength();
       const params = new URLSearchParams(window.location.search);
-      const mode = params.get('mode');
-      if (mode === 'login') {
-        setMode(true);
+      const initialMode = params.get('mode');
+      if (initialMode === 'login') {
+        setMode('login');
+      } else if (initialMode === 'signup') {
+        setMode('signup');
+      } else if (initialMode === 'reset') {
+        setMode('reset');
+      } else if (initialMode === 'magic') {
+        setMode('magic');
+      } else if (initialMode === 'set-password') {
+        setMode('set-password');
       }
-      if (mode === 'signup') {
-        setMode(false);
-      }
+
+      client.auth.getSession().then(({ data }) => {
+        if (data?.session) {
+          setMode('set-password');
+        }
+      }).catch(() => {});
     })();
   </script>
 </body>
