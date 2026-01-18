@@ -83,11 +83,14 @@ let pendingPasteBuffer = '';
 let typingTarget = null;
 let pendingSync = null;
 let syncInFlight = null;
+let syncDebounceTimer = null;
+let syncDebounceRefresh = false;
 const OPENAI_TRANSCRIBE_TIMEOUT_MS = 30000;
 const OPENAI_CHAT_TIMEOUT_MS = 20000;
 const OPENAI_MAX_RETRIES = 2;
 const OPENAI_BASE_BACKOFF_MS = 800;
 const OPENAI_MAX_BACKOFF_MS = 5000;
+const SYNC_DEBOUNCE_MS = 120000;
 let recordingDestination = 'clipboard';
 
 const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
@@ -212,6 +215,24 @@ function requestSync({ refreshSettings } = {}) {
     return pendingSync.promise;
   }
   return performSync({ refreshSettings });
+}
+
+function scheduleDebouncedSync({ refreshSettings } = {}) {
+  if (!syncService || !syncService.isReady() || !syncService.getUser()) {
+    return;
+  }
+  syncDebounceRefresh = syncDebounceRefresh || Boolean(refreshSettings);
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+  }
+  syncDebounceTimer = setTimeout(() => {
+    const nextRefresh = syncDebounceRefresh;
+    syncDebounceTimer = null;
+    syncDebounceRefresh = false;
+    requestSync({ refreshSettings: nextRefresh }).catch((error) => {
+      console.error('Debounced sync failed:', error);
+    });
+  }, SYNC_DEBOUNCE_MS);
 }
 
 function broadcastAuthState() {
@@ -1205,6 +1226,7 @@ async function persistTranscription({ transcribedText, finalText, title }) {
   });
   await store.setSetting('last_transcription', finalText);
   sendDashboardEvent('dashboard:data-updated');
+  scheduleDebouncedSync();
 }
 
 async function handleAudioPayload(event, audioData) {
@@ -1356,6 +1378,7 @@ ipcMain.handle('settings:save', async (event, nextSettings) => {
   }
 
   settings = await store.saveSettings(candidate);
+  scheduleDebouncedSync({ refreshSettings: true });
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('settings-updated', settings);
   }
@@ -1399,6 +1422,7 @@ ipcMain.handle('dictionary:upsert', async (event, entry) => {
     created_at: entry.created_at || now,
     updated_at: now,
   });
+  scheduleDebouncedSync();
   return record;
 });
 
@@ -1407,6 +1431,7 @@ ipcMain.handle('dictionary:delete', async (event, id) => {
   if (syncService && syncService.isReady()) {
     await syncService.deleteRemote('dictionary', id);
   }
+  scheduleDebouncedSync();
   return { ok: true };
 });
 
@@ -1424,7 +1449,9 @@ ipcMain.handle('styles:upsert', async (event, entry) => {
   if (!settings.activeStyleId) {
     settings.activeStyleId = record.id;
     await store.saveSettings(settings);
+    scheduleDebouncedSync({ refreshSettings: true });
   }
+  scheduleDebouncedSync();
   return record;
 });
 
@@ -1436,13 +1463,16 @@ ipcMain.handle('styles:delete', async (event, id) => {
   if (settings.activeStyleId === id) {
     settings.activeStyleId = '';
     await store.saveSettings(settings);
+    scheduleDebouncedSync({ refreshSettings: true });
   }
+  scheduleDebouncedSync();
   return { ok: true };
 });
 
 ipcMain.handle('styles:activate', async (event, id) => {
   settings.activeStyleId = id;
   await store.saveSettings(settings);
+  scheduleDebouncedSync({ refreshSettings: true });
   return { ok: true };
 });
 
@@ -1459,6 +1489,7 @@ ipcMain.handle('history:delete', async (event, id) => {
     await syncService.deleteRemote('history', id);
   }
   sendDashboardEvent('dashboard:data-updated');
+  scheduleDebouncedSync();
   return { ok: true };
 });
 
@@ -1471,6 +1502,7 @@ ipcMain.handle('notes:delete', async (event, id) => {
     await syncService.deleteRemote('notes', id);
   }
   sendDashboardEvent('dashboard:data-updated');
+  scheduleDebouncedSync();
   return { ok: true };
 });
 
@@ -1490,6 +1522,7 @@ ipcMain.handle('notes:add', async (event, payload) => {
     metadata: payload.metadata || null,
   });
   sendDashboardEvent('dashboard:data-updated');
+  scheduleDebouncedSync();
   return record;
 });
 
@@ -1502,6 +1535,7 @@ ipcMain.handle('history:clear', async () => {
   if (syncService && syncService.isReady()) {
     await syncService.deleteAllHistory();
   }
+  scheduleDebouncedSync();
   return { ok: true };
 });
 

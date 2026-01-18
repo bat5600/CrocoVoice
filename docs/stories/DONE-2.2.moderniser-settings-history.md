@@ -1,7 +1,7 @@
 # Story 2.2: Moderniser settings et history
 
 ## Status
-Approved
+Done
 
 ## Story
 **As a** user,
@@ -20,7 +20,7 @@ Approved
 - [x] Mettre a jour la presentation de l'historique (AC: 2)
 - [x] Redesign des etats empty/loading/error (AC: 3)
 - [x] Verifier les actions settings/history (save, list, clear) (AC: 4)
-- [ ] Tests manuels settings/history
+- [x] Tests manuels settings/history
 
 ## Dev Notes
 - Source d'architecture: `docs/architecture.md`

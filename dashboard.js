@@ -44,6 +44,8 @@ const statTotal = document.getElementById('statTotal');
 const shortcutInput = document.getElementById('shortcutInput');
 const shortcutResetButton = document.getElementById('shortcutResetButton');
 const shortcutHelp = document.getElementById('shortcutHelp');
+const syncNowButton = document.getElementById('syncNowButton');
+const syncStatus = document.getElementById('syncStatus');
 
 let currentSettings = {};
 let dashboardData = null;
@@ -222,6 +224,19 @@ function sanitizeSettingsForSave(value) {
   const settings = { ...(value || {}) };
   delete settings.apiKeyPresent;
   return settings;
+}
+
+function setSyncStatusMessage(message, type) {
+  if (!syncStatus) {
+    return;
+  }
+  syncStatus.textContent = message || '';
+  syncStatus.classList.remove('ok', 'error');
+  if (type === 'ok') {
+    syncStatus.classList.add('ok');
+  } else if (type === 'error') {
+    syncStatus.classList.add('error');
+  }
 }
 
 function setEmptyStateMessage(element, title, body, showAction = true) {
@@ -575,11 +590,18 @@ function renderDictionary(dictionary) {
     }
 
     const actions = document.createElement('div');
-    actions.className = 'dictionary-actions';
+    actions.className = 'dictionary-row-actions';
 
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
-    editBtn.textContent = 'Edit';
+    editBtn.className = 'edit';
+    editBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 20h9"></path>
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+      </svg>
+      Edit
+    `;
     editBtn.addEventListener('click', async () => {
       const res = await openModal({
         title: 'Éditer le terme',
@@ -603,7 +625,17 @@ function renderDictionary(dictionary) {
 
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
-    deleteBtn.textContent = 'Supprimer';
+    deleteBtn.className = 'delete';
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+        <path d="M10 11v6"></path>
+        <path d="M14 11v6"></path>
+        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+      </svg>
+      Supprimer
+    `;
     deleteBtn.addEventListener('click', async () => {
       await window.electronAPI.deleteDictionary(entry.id);
       showToast('Terme supprimé.');
@@ -713,12 +745,14 @@ function renderAuth(auth, syncReady) {
     return;
   }
 
-  const syncBtn = document.getElementById('syncNowButton');
+  const syncBtn = syncNowButton;
+  setSyncStatusMessage('');
   if (!syncReady) {
-    authPanel.innerHTML = '<span style="color:#EF4444;font-weight:600;">Erreur de configuration serveur.</span>';
+    authPanel.innerHTML = '<span class="sync-status error">Erreur de configuration serveur.</span>';
     if (syncBtn) {
       syncBtn.disabled = true;
     }
+    setSyncStatusMessage('Configuration sync indisponible.', 'error');
     return;
   }
 
@@ -727,15 +761,16 @@ function renderAuth(auth, syncReady) {
       syncBtn.disabled = false;
     }
     authPanel.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#F8FAFC;padding:12px 14px;border-radius:14px;border:1px solid #F1F5F9;">
-        <span style="font-weight:700;color:#1F2937;">${auth.email}</span>
-        <button id="signOutButton" type="button" style="font-size:12px;font-weight:700;color:#EF4444;background:transparent;border:none;cursor:pointer;">Déconnexion</button>
+      <div class="auth-card-panel">
+        <span class="auth-email">${auth.email}</span>
+        <button id="signOutButton" class="auth-action" type="button">Déconnexion</button>
       </div>
     `;
     document.getElementById('signOutButton')?.addEventListener('click', async () => {
       await window.electronAPI.authSignOut();
       await refreshDashboard();
     });
+    setSyncStatusMessage('Synchronisation disponible.', 'ok');
     return;
   }
 
@@ -743,9 +778,9 @@ function renderAuth(auth, syncReady) {
     syncBtn.disabled = true;
   }
   authPanel.innerHTML = `
-    <div style="display:flex;gap:10px;">
-      <button id="authLoginButton" type="button" style="flex:1;padding:10px;border-radius:12px;border:1px solid #E2E8F0;background:#FFFFFF;font-weight:600;color:#64748B;">Se connecter</button>
-      <button id="authSignupButton" type="button" style="flex:1;padding:10px;border-radius:12px;border:none;background:#059669;color:#FFFFFF;font-weight:600;">Créer compte</button>
+    <div class="auth-actions-row">
+      <button id="authLoginButton" class="auth-login-btn" type="button">Se connecter</button>
+      <button id="authSignupButton" class="auth-signup-btn" type="button">Créer compte</button>
     </div>
   `;
   document.getElementById('authLoginButton')?.addEventListener('click', async () => {
@@ -758,6 +793,7 @@ function renderAuth(auth, syncReady) {
       await window.electronAPI.openSignupUrl('signup');
     }
   });
+  setSyncStatusMessage('Connectez-vous pour synchroniser.');
 }
 
 let currentAuthState = null;
@@ -1173,6 +1209,40 @@ window.addEventListener('DOMContentLoaded', () => {
   if (shortcutResetButton) {
     shortcutResetButton.addEventListener('click', async () => {
       await saveShortcut(getDefaultShortcut());
+    });
+  }
+
+  if (syncNowButton) {
+    syncNowButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.syncNow) {
+        showToast('Synchronisation indisponible.', 'error');
+        return;
+      }
+      syncNowButton.disabled = true;
+      syncNowButton.classList.add('is-loading');
+      setSyncStatusMessage('Synchronisation en cours...');
+      try {
+        const result = await window.electronAPI.syncNow();
+        if (result?.ok) {
+          showToast('Synchronisation terminée.');
+          setSyncStatusMessage('Synchronisation terminée.', 'ok');
+        } else if (result?.reason === 'not_authenticated') {
+          showToast('Connectez-vous pour synchroniser.', 'error');
+          setSyncStatusMessage('Connexion requise pour synchroniser.', 'error');
+        } else if (result?.reason === 'not_configured') {
+          showToast('Sync non configuré.', 'error');
+          setSyncStatusMessage('Configuration sync indisponible.', 'error');
+        } else {
+          showToast('Erreur de synchronisation.', 'error');
+          setSyncStatusMessage('Erreur de synchronisation.', 'error');
+        }
+      } catch (error) {
+        showToast('Erreur de synchronisation.', 'error');
+        setSyncStatusMessage('Erreur de synchronisation.', 'error');
+      } finally {
+        syncNowButton.disabled = false;
+        syncNowButton.classList.remove('is-loading');
+      }
     });
   }
 
