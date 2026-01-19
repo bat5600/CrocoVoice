@@ -107,6 +107,11 @@ class Store {
     return this._all('SELECT * FROM notes ORDER BY created_at DESC LIMIT ?', [limit]);
   }
 
+  async getNotesCount() {
+    const row = await this._get('SELECT COUNT(*) AS count FROM notes', []);
+    return Number.parseInt(row?.count || '0', 10) || 0;
+  }
+
   async addNote(entry) {
     const now = new Date().toISOString();
     const record = {

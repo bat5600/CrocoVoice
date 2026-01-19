@@ -300,6 +300,21 @@ async function getQuotaSnapshotFromServer() {
   return result || null;
 }
 
+async function refreshQuotaSnapshotInBackground() {
+  if (!shouldUseServerQuota()) {
+    return;
+  }
+  try {
+    const serverQuota = await getQuotaSnapshotFromServer();
+    if (serverQuota) {
+      await writeQuotaSnapshotCache(serverQuota);
+      await setLocalQuotaFromSnapshot(serverQuota);
+    }
+  } catch (error) {
+    console.warn('Quota snapshot (server) refresh failed:', error);
+  }
+}
+
 async function consumeQuotaOnServer(words) {
   if (!syncService || !syncService.isReady || !syncService.isReady() || !syncService.getUser()) {
     return null;
@@ -378,6 +393,11 @@ async function getQuotaSnapshot() {
   }
 
   if (shouldUseServerQuota()) {
+    const cached = readQuotaSnapshotCache();
+    if (cached) {
+      void refreshQuotaSnapshotInBackground();
+      return cached;
+    }
     try {
       const serverQuota = await getQuotaSnapshotFromServer();
       if (serverQuota) {
@@ -387,10 +407,6 @@ async function getQuotaSnapshot() {
       }
     } catch (error) {
       console.warn('Quota snapshot (server) failed:', error);
-      const cached = readQuotaSnapshotCache();
-      if (cached) {
-        return cached;
-      }
       if (QUOTA_MODE === 'server') {
         return {
           limit: WEEKLY_QUOTA_WORDS,
@@ -1746,6 +1762,7 @@ ipcMain.handle('app:open-settings', () => {
 
 ipcMain.handle('dashboard:data', async () => {
   const stats = await store.getHistoryStats(14);
+  const notesTotal = await store.getNotesCount();
   const history = await store.listHistory({ limit: 100 });
   const notes = await store.listNotes({ limit: 100 });
   const dictionary = await store.listDictionary();
@@ -1755,7 +1772,7 @@ ipcMain.handle('dashboard:data', async () => {
   const subscription = getSubscriptionSnapshot();
   return {
     settings: { ...settings, apiKeyPresent: Boolean(OPENAI_API_KEY) },
-    stats,
+    stats: { ...(stats || {}), notesTotal },
     history,
     notes,
     dictionary,
@@ -2153,6 +2170,7 @@ app.whenReady().then(async () => {
         syncReady: true,
         retryable: false,
       });
+      void refreshQuotaSnapshotInBackground();
     } else {
       setAuthState({
         status: 'unauthenticated',
@@ -2169,6 +2187,7 @@ app.whenReady().then(async () => {
     });
   }
   await hydrateAuthState();
+  void refreshQuotaSnapshotInBackground();
 
   createMainWindow();
   updateWindowVisibility();

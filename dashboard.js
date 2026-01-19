@@ -76,7 +76,7 @@ let shortcutBeforeCapture = '';
 let shortcutInvalidShown = false;
 let historyLoadError = false;
 let quotaSnapshot = null;
-const STYLE_PRESETS = ['Default', 'Casual', 'Formel'];
+const STYLE_PRESETS = ['Default', 'Casual', 'Formel', 'Croco'];
 const STYLE_EXAMPLES = {
   Default: {
     before: "Je vais, euh, manger une pomme.",
@@ -90,17 +90,53 @@ const STYLE_EXAMPLES = {
     before: "C'est pas bon, on refait.",
     after: "Cette proposition est insatisfaisante, une révision est nécessaire.",
   },
+  Croco: {
+    before: "On a besoin de booster les ventes rapidement.",
+    after: "On doit doper les ventes vite, comme si on branchait un turbo sur un vélo.",
+  },
 };
 const STYLE_DESCRIPTIONS = {
   Default: 'Style par défaut, neutre et clair.',
   Casual: 'Ton décontracté, idéal pour les réseaux.',
   Formel: 'Langage soutenu et professionnel.',
+  Croco: 'Ton direct avec des métaphores audacieuses.',
 };
 const STYLE_LABELS = {
   Default: 'Standard',
   Casual: 'Casual',
   Formel: 'Formel',
+  Croco: 'Croco',
 };
+
+function setButtonLoading(button, isLoading, label) {
+  if (!button) {
+    return;
+  }
+  if (isLoading) {
+    if (!button.dataset.loadingLabel) {
+      button.dataset.loadingLabel = button.textContent;
+    }
+    if (button.dataset.loadingDisabled === undefined) {
+      button.dataset.loadingDisabled = button.disabled ? '1' : '0';
+    }
+    button.disabled = true;
+    button.classList.add('is-loading');
+    if (label) {
+      button.dataset.loadingText = label;
+      button.textContent = label;
+    }
+    return;
+  }
+  const wasDisabled = button.dataset.loadingDisabled === '1';
+  button.disabled = wasDisabled;
+  delete button.dataset.loadingDisabled;
+  if (button.dataset.loadingLabel && (!button.dataset.loadingText || button.textContent === button.dataset.loadingText)) {
+    button.textContent = button.dataset.loadingLabel;
+  }
+  delete button.dataset.loadingLabel;
+  delete button.dataset.loadingText;
+  button.classList.remove('is-loading');
+}
 
 function openModal({ title, fields, confirmText }) {
   if (!modalBackdrop || !modalBody || !modalTitle || !modalCancel || !modalConfirm) {
@@ -590,7 +626,8 @@ function renderStats(stats) {
     statWords.textContent = stats.words;
   }
   if (statTotal) {
-    statTotal.textContent = stats.total;
+    const notesTotal = Number.isFinite(stats.notesTotal) ? stats.notesTotal : stats.total;
+    statTotal.textContent = Number.isFinite(notesTotal) ? notesTotal : '0';
   }
   if (streakSubtitle) {
     const streak = Number.isFinite(stats.dayStreak) ? stats.dayStreak : 0;
@@ -1298,6 +1335,7 @@ window.addEventListener('DOMContentLoaded', () => {
         return;
       }
       try {
+        setButtonLoading(upgradePlanButton, true, 'Ouverture...');
         const result = await window.electronAPI.startCheckout();
         if (!result?.ok) {
           showToast('Checkout non configuré.', 'error');
@@ -1307,6 +1345,8 @@ window.addEventListener('DOMContentLoaded', () => {
         await refreshDashboard();
       } catch (error) {
         showToast(error?.message || 'Checkout impossible.', 'error');
+      } finally {
+        setButtonLoading(upgradePlanButton, false);
       }
     });
   }
@@ -1326,6 +1366,7 @@ window.addEventListener('DOMContentLoaded', () => {
         return;
       }
       try {
+        setButtonLoading(manageSubscriptionButton, true, 'Ouverture...');
         const result = await window.electronAPI.openSubscriptionPortal();
         if (!result?.ok) {
           showToast('Portail non configuré.', 'error');
@@ -1333,6 +1374,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       } catch (error) {
         showToast(error?.message || 'Portail indisponible.', 'error');
+      } finally {
+        setButtonLoading(manageSubscriptionButton, false);
       }
     });
   }
