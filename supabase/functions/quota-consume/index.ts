@@ -71,16 +71,17 @@ Deno.serve(async (req) => {
     const periodStart = getWeekStartUTC().toISOString();
     const resetAt = getNextWeekStartUTC().toISOString();
 
-    const { data: current, error: currentError } = await serviceClient
-      .from('quota_weekly_usage')
-      .select('words_used')
-      .eq('user_id', user.id)
-      .eq('period_start', periodStart)
-      .maybeSingle();
-    if (currentError) {
-      throw currentError;
+    const { data: usedBeforeValue, error: usedBeforeError } = await serviceClient.rpc('_quota_weekly_get_or_create', {
+      p_user_id: user.id,
+      p_period_start: periodStart,
+    });
+    if (usedBeforeError) {
+      throw usedBeforeError;
     }
-    const usedBefore = current?.words_used || 0;
+
+    const usedBefore = Number.isFinite(usedBeforeValue)
+      ? Number(usedBeforeValue)
+      : (typeof usedBeforeValue === 'string' ? Number.parseInt(usedBeforeValue, 10) : 0);
     if (usedBefore >= WEEKLY_QUOTA_WORDS) {
       return new Response(JSON.stringify({ error: 'quota_reached' }), {
         status: 403,

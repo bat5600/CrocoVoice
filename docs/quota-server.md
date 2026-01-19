@@ -4,9 +4,12 @@ Objectif: rendre le quota **FREE** robuste (non bidouillable en local) en le sto
 
 ## 1) Schéma DB (Supabase)
 
-- Appliquer la migration: `supabase/migrations/20260119_000001_quota_weekly_usage.sql`
+- Appliquer les migrations:
+  - `supabase/migrations/20260119_000001_quota_weekly_usage.sql`
+  - `supabase/migrations/20260120_000001_quota_weekly_usage_get_or_create.sql`
 - Table créée: `public.quota_weekly_usage` (clé `(user_id, period_start)`).
 - Helper RPC (service_role only): `public._quota_weekly_consume(...)` (atomique).
+- Helper RPC (service_role only): `public._quota_weekly_get_or_create(...)` (lecture + init sans modifier `words_used`).
 
 ## 2) Edge Functions Supabase
 

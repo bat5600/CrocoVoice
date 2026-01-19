@@ -62,32 +62,17 @@ Deno.serve(async (req) => {
     const periodStart = getWeekStartUTC().toISOString();
     const resetAt = getNextWeekStartUTC().toISOString();
 
-    const { data: existing, error: readError } = await serviceClient
-      .from('quota_weekly_usage')
-      .select('words_used')
-      .eq('user_id', user.id)
-      .eq('period_start', periodStart)
-      .maybeSingle();
-
-    if (readError) {
-      throw readError;
+    const { data: usedValue, error: snapshotError } = await serviceClient.rpc('_quota_weekly_get_or_create', {
+      p_user_id: user.id,
+      p_period_start: periodStart,
+    });
+    if (snapshotError) {
+      throw snapshotError;
     }
 
-    if (!existing) {
-      const { error: insertError } = await serviceClient
-        .from('quota_weekly_usage')
-        .insert({
-          user_id: user.id,
-          period_start: periodStart,
-          words_used: 0,
-          updated_at: new Date().toISOString(),
-        });
-      if (insertError && insertError.code !== '23505') {
-        throw insertError;
-      }
-    }
-
-    const used = existing?.words_used || 0;
+    const used = Number.isFinite(usedValue)
+      ? Number(usedValue)
+      : (typeof usedValue === 'string' ? Number.parseInt(usedValue, 10) : 0);
     return new Response(JSON.stringify({
       limit: WEEKLY_QUOTA_WORDS,
       used,
