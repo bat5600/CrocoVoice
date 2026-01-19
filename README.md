@@ -1,152 +1,220 @@
-# 🎙️ CrocoVoice
+# Supabase CLI
 
-Application de bureau Electron pour la dictée vocale rapide avec transcription Whisper.
+[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
+](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
 
-## 🚀 Fonctionnalités
+[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
 
-- **Raccourci Global** : Démarrez/arrêtez la dictée via un raccourci global configurable
-- **Feedback Visuel** : Fenêtre flottante minimaliste pendant l'enregistrement
-- **Transcription IA** : Utilise OpenAI Whisper pour une transcription précise
-- **Frappe Automatique** : Le texte transcrit est automatiquement tapé à la position du curseur
-- **System Tray** : L'application tourne en arrière-plan avec une icône dans la barre système
-- **Paramètres** : Langue + raccourci via le dashboard
-- **Sync Cloud** : Synchronisation via Supabase + cache local SQLite (flow.sqlite)
+This repository contains all the functionality for Supabase CLI.
 
-## 📋 Prérequis
+- [x] Running Supabase locally
+- [x] Managing database migrations
+- [x] Creating and deploying Supabase Functions
+- [x] Generating types directly from your database schema
+- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
 
-- Node.js (v16 ou supérieur)
-- npm ou yarn
-- Clé API OpenAI (obtenez-la sur [platform.openai.com](https://platform.openai.com/api-keys))
+## Getting started
 
-## 🛠️ Installation
+### Install the CLI
 
-1. **Clonez ou téléchargez le projet**
-
-2. **Installez les dépendances**
-```bash
-npm install
-```
-
-3. **Configurez votre clé API**
-```bash
-cp .env.example .env
-```
-Puis éditez le fichier `.env` et ajoutez votre clé API OpenAI :
-```
-OPENAI_API_KEY=votre_cle_api_ici
-```
-Options supplémentaires :
-```
-CROCOVOICE_LANGUAGE=fr
-CROCOVOICE_SHORTCUT=Ctrl+Shift+R
-SUPABASE_URL=https://votre-projet.supabase.co
-SUPABASE_ANON_KEY=votre_anon_key
-```
-
-## ▶️ Lancement
+Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
 
 ```bash
-npm start
+npm i supabase --save-dev
 ```
 
-## 📖 Utilisation
-
-1. Lancez l'application avec `npm start`
-2. L'application apparaît dans la barre système (System Tray)
-3. Utilisez le raccourci global pour démarrer la dictée (configurable dans Settings)
-4. Une fenêtre flottante apparaît pour indiquer que l'enregistrement est en cours
-5. Relâchez les touches ou ré-appuyez sur le raccourci pour arrêter l'enregistrement
-6. Le texte transcrit est automatiquement tapé à la position de votre curseur
-
-## 🏗️ Structure du Projet
+When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
 
 ```
-CrocoVoice/
-├── main.js           # Processus principal Electron (raccourcis, IPC, API)
-├── renderer.js       # Processus de rendu (MediaRecorder, interface)
-├── preload.js        # Bridge sécurisé pour IPC
-├── index.html        # Interface principale (widget)
-├── dashboard.html    # Dashboard (settings, historique, dictionnaire, sync)
-├── dashboard.js      # Logique dashboard
-├── assets/           # Icônes et ressources statiques
-├── docs/             # Documentation produit/tech
-├── supabase/         # Schéma SQL pour la synchro cloud
-├── tools/            # Outils et bundles internes
-├── package.json      # Dépendances et scripts
-├── .env.example      # Template de configuration
-└── README.md         # Documentation
+NODE_OPTIONS=--no-experimental-fetch yarn add supabase
 ```
 
-## 🔧 Technologies Utilisées
+> **Note**
+For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
 
-- **Electron** : Framework pour applications de bureau
-- **OpenAI Whisper** : API de transcription vocale
-- **@nut-tree-fork/nut-js** : Automatisation clavier multiplateforme (fork gratuit de nut-js)
-- **MediaRecorder API** : Enregistrement audio natif du navigateur
+<details>
+  <summary><b>macOS</b></summary>
 
-> **Note** : Le paquet original `@nut-tree/nut-js` est devenu payant. Ce projet utilise le fork gratuit `@nut-tree-fork/nut-js` qui maintient la même API.
+  Available via [Homebrew](https://brew.sh). To install:
 
-## ⚠️ Notes Importantes
+  ```sh
+  brew install supabase/tap/supabase
+  ```
 
-- **Permissions Microphone** : L'application nécessite l'accès au microphone
-- **Clé API** : Assurez-vous que votre clé API OpenAI est valide et a des crédits disponibles
-- **Sécurité** : Ne partagez jamais votre fichier `.env` contenant votre clé API
+  To install the beta release channel:
+  
+  ```sh
+  brew install supabase/tap/supabase-beta
+  brew link --overwrite supabase-beta
+  ```
+  
+  To upgrade:
 
-## 🔐 Auth Supabase & paywall
+  ```sh
+  brew upgrade supabase
+  ```
+</details>
 
-- L'app affiche un ecran de login tant qu'une session Supabase valide n'est pas confirmee.
-- En cas d'erreur reseau, un message de retry et un mode lecture seule sont proposes, les fonctions premium restent verrouillees.
-- Le CTA "Creer un compte" ouvre la landing interne (`docs/signup.html`) puis redirige vers l'URL definie par `AUTH_SIGNUP_URL` ou `config/auth.json`.
+<details>
+  <summary><b>Windows</b></summary>
 
-## 🐛 Dépannage
+  Available via [Scoop](https://scoop.sh). To install:
 
-### L'enregistrement ne démarre pas
-- Vérifiez que vous avez accordé les permissions microphone à l'application
-- Vérifiez que votre clé API OpenAI est correctement configurée dans `.env`
+  ```powershell
+  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
+  scoop install supabase
+  ```
 
-### Le texte n'est pas tapé automatiquement
-- Vérifiez que l'application a les permissions nécessaires pour contrôler le clavier
-- Sur macOS, vous devrez peut-être accorder l'accès dans Préférences Système > Sécurité et confidentialité > Accessibilité
+  To upgrade:
 
-### Erreur de transcription
-- Vérifiez votre connexion Internet
-- Vérifiez que votre clé API OpenAI est valide et a des crédits disponibles
+  ```powershell
+  scoop update supabase
+  ```
+</details>
 
-## 🔄 Alternatives
+<details>
+  <summary><b>Linux</b></summary>
 
-Si `@nut-tree-fork/nut-js` ne fonctionne pas correctement, vous pouvez utiliser `robotjs` à la place :
+  Available via [Homebrew](https://brew.sh) and Linux packages.
 
-1. Remplacez dans `package.json` :
-```json
-"@nut-tree-fork/nut-js": "^4.1.0"
+  #### via Homebrew
+
+  To install:
+
+  ```sh
+  brew install supabase/tap/supabase
+  ```
+
+  To upgrade:
+
+  ```sh
+  brew upgrade supabase
+  ```
+
+  #### via Linux packages
+
+  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
+
+  ```sh
+  sudo apk add --allow-untrusted <...>.apk
+  ```
+
+  ```sh
+  sudo dpkg -i <...>.deb
+  ```
+
+  ```sh
+  sudo rpm -i <...>.rpm
+  ```
+
+  ```sh
+  sudo pacman -U <...>.pkg.tar.zst
+  ```
+</details>
+
+<details>
+  <summary><b>Other Platforms</b></summary>
+
+  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
+
+  ```sh
+  go install github.com/supabase/cli@latest
+  ```
+
+  Add a symlink to the binary in `$PATH` for easier access:
+
+  ```sh
+  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
+  ```
+
+  This works on other non-standard Linux distros.
+</details>
+
+<details>
+  <summary><b>Community Maintained Packages</b></summary>
+
+  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
+  To install in your working directory:
+
+  ```bash
+  pkgx install supabase
+  ```
+
+  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
+</details>
+
+### Run the CLI
+
+```bash
+supabase bootstrap
 ```
-par :
-```json
-"robotjs": "^0.6.0"
+
+Or using npx:
+
+```bash
+npx supabase bootstrap
 ```
 
-2. Dans `main.js`, remplacez :
-```javascript
-const { keyboard } = require('@nut-tree-fork/nut-js');
-```
-par :
-```javascript
-const robot = require('robotjs');
+The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
+
+## Docs
+
+Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
+
+## Breaking changes
+
+We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
+
+However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
+
+## Developing
+
+To run from source:
+
+```sh
+# Go >= 1.22
+go run . help
 ```
 
-3. Dans la fonction `typeText()`, remplacez :
-```javascript
-await keyboard.config.autoDelayMs(50);
-await keyboard.type(text);
+## CrocoVoice Stripe Setup
+
+This project uses Supabase Edge Functions to create Stripe Checkout/Portal sessions
+and a Stripe webhook to persist subscription status.
+
+### Required Supabase secrets
+
 ```
-par :
-```javascript
-robot.setKeyboardDelay(50);
-robot.typeString(text);
+STRIPE_SECRET_KEY=sk_live_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+STRIPE_PRICE_ID=price_1Sr9QvLe5mTm2IIFUB46TzHM
+STRIPE_SUCCESS_URL=https://app.crococlick.com/signup-crocovoice
+STRIPE_CANCEL_URL=https://app.crococlick.com/signup-crocovoice
+STRIPE_RETURN_URL=https://app.crococlick.com/signup-crocovoice
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
-> **Note** : `robotjs` nécessite des outils de build natifs (Python, Visual Studio Build Tools sur Windows, Xcode sur macOS).
+### Edge Functions
 
-## 📝 Licence
+- `stripe-checkout`
+- `stripe-portal`
+- `stripe-webhook`
 
-MIT
+Deploy:
+```bash
+supabase functions deploy stripe-checkout stripe-portal stripe-webhook
+```
+
+### Stripe webhook
+
+Endpoint URL:
+```
+https://<project-ref>.functions.supabase.co/stripe-webhook
+```
+
+Events to enable:
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+
+Stripe API version in code: `2025-06-30.basil`.

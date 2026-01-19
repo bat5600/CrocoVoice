@@ -7,6 +7,20 @@ function logHistoryRetentionPolicy(context) {
   console.info(`History retention policy (${context}): keep last ${HISTORY_RETENTION_DAYS} days; purge older entries.`);
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) {
+      return null;
+    }
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  } catch (error) {
+    return null;
+  }
+}
+
 class SyncService {
   constructor({ store, supabaseUrl, supabaseKey }) {
     this.store = store;
@@ -17,6 +31,7 @@ class SyncService {
     this.authSubscription = null;
     this.authChangeHandler = null;
     this.syncAbort = false;
+    this.accessToken = null;
   }
 
   async init() {
@@ -34,6 +49,7 @@ class SyncService {
       const { data, error } = await this.client.auth.setSession(session);
       if (!error) {
         this.user = data.user;
+        this.accessToken = session.access_token;
         if (this.user) {
           await this.store.attachUser(this.user.id);
         }
@@ -53,6 +69,46 @@ class SyncService {
   onAuthStateChange(handler) {
     this.authChangeHandler = typeof handler === 'function' ? handler : null;
     this._registerAuthListener();
+  }
+
+  async invokeFunction(name, body) {
+    this._ensureClient();
+    let accessToken = this.accessToken;
+    if (!accessToken) {
+      const { data: sessionData, error: sessionError } = await this.client.auth.getSession();
+      if (sessionError) {
+        throw sessionError;
+      }
+      accessToken = sessionData?.session?.access_token || null;
+    }
+    if (!accessToken) {
+      const stored = await this.store.getSetting('supabase_session');
+      accessToken = stored?.access_token || null;
+    }
+    const payload = accessToken ? decodeJwtPayload(accessToken) : null;
+    if (payload?.iss || payload?.exp) {
+      const expiresAt = payload.exp ? new Date(payload.exp * 1000).toISOString() : 'n/a';
+      console.log('[stripe-checkout] jwt iss:', payload.iss || 'n/a', 'exp:', expiresAt);
+    }
+    console.log('[stripe-checkout] token?', Boolean(accessToken), accessToken ? accessToken.slice(0, 8) : '');
+    const headers = {
+      apikey: this.supabaseKey,
+      'Content-Type': 'application/json',
+    };
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+    const response = await fetch(`${this.supabaseUrl}/functions/v1/${name}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...(body || {}), token: accessToken }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Function ${name} failed (${response.status}): ${detail || 'unknown error'}`);
+    }
+    const data = await response.json().catch(() => ({}));
+    return data;
   }
 
   async refreshSession() {
@@ -218,13 +274,20 @@ class SyncService {
       return { ok: false, reason: 'aborted' };
     }
 
+    await this._syncSubscription();
+    if (this.syncAbort) {
+      return { ok: false, reason: 'aborted' };
+    }
+
     return { ok: true };
   }
 
   async _syncSettings() {
     const cursor = await this.store.getSyncCursor('settings');
     const settingsMeta = await this.store.getSettingsWithMeta();
-    const settingsRows = Object.entries(settingsMeta).map(([key, meta]) => ({
+    const settingsRows = Object.entries(settingsMeta)
+      .filter(([key]) => key !== 'subscription')
+      .map(([key, meta]) => ({
       id: `${this.user.id}:${key}`,
       user_id: this.user.id,
       key,
@@ -252,6 +315,39 @@ class SyncService {
       }
     }
     await this.store.setSyncCursor('settings', new Date().toISOString());
+  }
+
+  async _syncSubscription() {
+    if (!this.user) {
+      return;
+    }
+    const { data, error } = await this.client
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', this.user.id)
+      .maybeSingle();
+    if (error) {
+      console.warn('Subscription sync failed:', error);
+      return;
+    }
+    if (!data) {
+      const fallback = {
+        plan: 'free',
+        status: 'inactive',
+        updatedAt: new Date().toISOString(),
+      };
+      await this.store.setSettingWithTimestamp('subscription', fallback, fallback.updatedAt);
+      return;
+    }
+    const next = {
+      plan: data.plan || 'free',
+      status: data.status || 'inactive',
+      priceId: data.price_id || null,
+      stripeCustomerId: data.stripe_customer_id || null,
+      currentPeriodEnd: data.current_period_end || null,
+      updatedAt: data.updated_at || new Date().toISOString(),
+    };
+    await this.store.setSettingWithTimestamp('subscription', next, next.updatedAt);
   }
 
   async _syncTable(name, getLocalRows, config) {
@@ -314,6 +410,7 @@ class SyncService {
       access_token: session.access_token,
       refresh_token: session.refresh_token,
     });
+    this.accessToken = session.access_token;
   }
 
   _ensureClient() {

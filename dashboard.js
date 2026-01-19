@@ -41,6 +41,17 @@ const authOverlayPassword = document.getElementById('authOverlayPassword');
 const statDays = document.getElementById('statDays');
 const statWords = document.getElementById('statWords');
 const statTotal = document.getElementById('statTotal');
+const quotaRemaining = document.getElementById('quotaRemaining');
+const quotaReset = document.getElementById('quotaReset');
+const profileName = document.getElementById('profileName');
+const profilePlan = document.getElementById('profilePlan');
+const profileAvatar = document.getElementById('profileAvatar');
+const subscriptionStatus = document.getElementById('subscriptionStatus');
+const subscriptionBadge = document.getElementById('subscriptionBadge');
+const subscriptionNote = document.getElementById('subscriptionNote');
+const upgradePlanButton = document.getElementById('upgradePlanButton');
+const manageSubscriptionButton = document.getElementById('manageSubscriptionButton');
+const refreshSubscriptionButton = document.getElementById('refreshSubscriptionButton');
 const shortcutInput = document.getElementById('shortcutInput');
 const shortcutResetButton = document.getElementById('shortcutResetButton');
 const shortcutHelp = document.getElementById('shortcutHelp');
@@ -60,6 +71,7 @@ let shortcutCaptureActive = false;
 let shortcutBeforeCapture = '';
 let shortcutInvalidShown = false;
 let historyLoadError = false;
+let quotaSnapshot = null;
 const STYLE_PRESETS = ['Default', 'Casual', 'Formel'];
 const STYLE_EXAMPLES = {
   Default: {
@@ -553,6 +565,109 @@ function renderStats(stats) {
   }
   if (statTotal) {
     statTotal.textContent = stats.total;
+  }
+}
+
+function formatResetLabel(iso) {
+  if (!iso) {
+    return 'Reset lundi 00:00 UTC';
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return 'Reset lundi 00:00 UTC';
+  }
+  return `Reset ${date.toLocaleDateString([], { weekday: 'long', hour: '2-digit', minute: '2-digit' })} UTC`;
+}
+
+function renderQuota(quota) {
+  quotaSnapshot = quota || null;
+  if (!quotaRemaining || !quotaReset) {
+    return;
+  }
+  if (!quota) {
+    quotaRemaining.textContent = '—';
+    quotaReset.textContent = 'Quota indisponible';
+    return;
+  }
+  if (quota.requiresAuth) {
+    quotaRemaining.textContent = '—';
+    quotaReset.textContent = 'Connectez-vous pour voir le quota';
+    return;
+  }
+  if (quota.unlimited) {
+    quotaRemaining.textContent = 'Illimité';
+    quotaReset.textContent = 'Plan Pro actif';
+    return;
+  }
+  quotaRemaining.textContent = quota.remaining;
+  quotaReset.textContent = formatResetLabel(quota.resetAt);
+}
+
+function getSubscriptionLabel(subscription) {
+  const status = subscription?.status || 'inactive';
+  if (status === 'pending') {
+    return 'Activation en cours';
+  }
+  if (status === 'trialing') {
+    return 'Essai Pro actif';
+  }
+  if (subscription?.isPro) {
+    return 'Plan Pro';
+  }
+  return 'Plan Free';
+}
+
+function renderSubscription(subscription, auth) {
+  if (profileName) {
+    const displayName = auth?.email ? auth.email.split('@')[0] : 'Invité';
+    profileName.textContent = displayName;
+  }
+  if (profileAvatar) {
+    const letterSource = profileName?.textContent || 'C';
+    profileAvatar.textContent = letterSource.slice(0, 1).toUpperCase();
+  }
+  if (profilePlan) {
+    profilePlan.textContent = getSubscriptionLabel(subscription);
+  }
+  if (subscriptionStatus) {
+    const statusLabel = getSubscriptionLabel(subscription);
+    const periodEnd = subscription?.currentPeriodEnd ? formatDateLabel(subscription.currentPeriodEnd) : '';
+    subscriptionStatus.textContent = periodEnd ? `${statusLabel} • Renouvelle le ${periodEnd}` : statusLabel;
+  }
+  if (subscriptionBadge) {
+    subscriptionBadge.classList.remove('pro', 'free', 'pending');
+    const status = subscription?.status || 'inactive';
+    if (status === 'pending') {
+      subscriptionBadge.classList.add('pending');
+      subscriptionBadge.textContent = 'En cours';
+    } else if (subscription?.isPro) {
+      subscriptionBadge.classList.add('pro');
+      subscriptionBadge.textContent = 'Pro';
+    } else {
+      subscriptionBadge.classList.add('free');
+      subscriptionBadge.textContent = 'Free';
+    }
+  }
+  if (upgradePlanButton) {
+    upgradePlanButton.textContent = subscription?.isPro ? 'Pro actif' : 'Passer Pro';
+    upgradePlanButton.disabled = !auth || Boolean(subscription?.isPro);
+  }
+  if (manageSubscriptionButton) {
+    manageSubscriptionButton.disabled = !auth;
+  }
+  if (refreshSubscriptionButton) {
+    refreshSubscriptionButton.disabled = !auth;
+  }
+  if (subscriptionNote) {
+    if (!auth) {
+      subscriptionNote.textContent = 'Connectez-vous pour gérer votre abonnement.';
+    } else if (subscription?.status === 'pending') {
+      subscriptionNote.textContent = 'Après achat, cliquez sur Actualiser pour récupérer votre statut.';
+    } else if (subscription?.isPro) {
+      subscriptionNote.textContent = 'Merci pour votre abonnement PRO.';
+    } else {
+      subscriptionNote.textContent = 'Passez Pro pour débloquer la dictée illimitée.';
+    }
   }
 }
 
@@ -1063,6 +1178,7 @@ async function refreshDashboard() {
   currentSettings = dashboardData.settings || {};
 
   renderStats(dashboardData.stats);
+  renderQuota(dashboardData.quota);
   historyData = dashboardData.history || [];
   notesData = dashboardData.notes || [];
   refreshActiveList();
@@ -1070,6 +1186,7 @@ async function refreshDashboard() {
   renderStyles(dashboardData.styles);
   renderSettings(currentSettings);
   renderAuth(dashboardData.auth, dashboardData.syncReady);
+  renderSubscription(dashboardData.subscription, dashboardData.auth);
   await populateMicrophones();
 }
 
@@ -1104,6 +1221,85 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (captureNoteButton) {
     captureNoteButton.addEventListener('click', handleNoteDictation);
+  }
+
+  if (upgradePlanButton) {
+    upgradePlanButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.startCheckout) {
+        showToast('Checkout indisponible.', 'error');
+        return;
+      }
+      const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
+      if (!auth) {
+        showToast('Connectez-vous pour passer PRO.', 'error');
+        if (window.electronAPI?.openSignupUrl) {
+          await window.electronAPI.openSignupUrl('login');
+        }
+        return;
+      }
+      try {
+        const result = await window.electronAPI.startCheckout();
+        if (!result?.ok) {
+          showToast('Checkout non configuré.', 'error');
+          return;
+        }
+        showToast('Redirection vers Stripe...');
+        await refreshDashboard();
+      } catch (error) {
+        showToast(error?.message || 'Checkout impossible.', 'error');
+      }
+    });
+  }
+
+  if (manageSubscriptionButton) {
+    manageSubscriptionButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.openSubscriptionPortal) {
+        showToast('Portail indisponible.', 'error');
+        return;
+      }
+      const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
+      if (!auth) {
+        showToast('Connectez-vous pour gérer l’abonnement.', 'error');
+        if (window.electronAPI?.openSignupUrl) {
+          await window.electronAPI.openSignupUrl('login');
+        }
+        return;
+      }
+      try {
+        const result = await window.electronAPI.openSubscriptionPortal();
+        if (!result?.ok) {
+          showToast('Portail non configuré.', 'error');
+          return;
+        }
+      } catch (error) {
+        showToast(error?.message || 'Portail indisponible.', 'error');
+      }
+    });
+  }
+
+  if (refreshSubscriptionButton) {
+    refreshSubscriptionButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.refreshSubscription) {
+        showToast('Actualisation indisponible.', 'error');
+        return;
+      }
+      const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
+      if (!auth) {
+        showToast('Connectez-vous pour actualiser.', 'error');
+        return;
+      }
+      try {
+        const result = await window.electronAPI.refreshSubscription();
+        if (!result?.ok) {
+          showToast('Actualisation impossible.', 'error');
+          return;
+        }
+        showToast('Abonnement actualisé.');
+        await refreshDashboard();
+      } catch (error) {
+        showToast(error?.message || 'Actualisation indisponible.', 'error');
+      }
+    });
   }
 
   document.querySelectorAll('.editor-tool').forEach((button) => {

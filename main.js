@@ -42,6 +42,9 @@ try {
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const STRIPE_CHECKOUT_URL = process.env.STRIPE_CHECKOUT_URL || '';
+const STRIPE_PORTAL_URL = process.env.STRIPE_PORTAL_URL || '';
+const STRIPE_RETURN_URL = process.env.STRIPE_RETURN_URL || '';
 let openai = null;
 
 let mainWindow = null;
@@ -91,6 +94,7 @@ const OPENAI_MAX_RETRIES = 2;
 const OPENAI_BASE_BACKOFF_MS = 800;
 const OPENAI_MAX_BACKOFF_MS = 5000;
 const SYNC_DEBOUNCE_MS = 120000;
+const WEEKLY_QUOTA_WORDS = 2000;
 let recordingDestination = 'clipboard';
 
 const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
@@ -128,6 +132,11 @@ const defaultSettings = {
   microphoneId: '',
   postProcessEnabled: true,
   activeStyleId: '',
+  subscription: {
+    plan: 'free',
+    status: 'inactive',
+    updatedAt: null,
+  },
 };
 let settings = { ...defaultSettings };
 
@@ -152,6 +161,138 @@ function isNoAudioTranscription(text) {
   }
   const looksLikeSubtitleHallucination = compact.includes('amara') && compact.includes('sous') && compact.includes('titres');
   return looksLikeSubtitleHallucination;
+}
+
+function countWords(text) {
+  if (!text) {
+    return 0;
+  }
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function getWeekStartUTC(date = new Date()) {
+  const utcDay = date.getUTCDay();
+  const offset = (utcDay + 6) % 7;
+  return new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() - offset,
+    0,
+    0,
+    0,
+    0,
+  ));
+}
+
+function getNextWeekStartUTC(date = new Date()) {
+  const start = getWeekStartUTC(date);
+  return new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+}
+
+function getSubscriptionSnapshot() {
+  const subscription = settings.subscription || {};
+  const plan = subscription.plan || 'free';
+  const status = subscription.status || 'inactive';
+  const currentPeriodEnd = subscription.currentPeriodEnd || subscription.current_period_end || null;
+  const isPro = plan === 'pro' && (status === 'active' || status === 'trialing');
+  return {
+    ...subscription,
+    plan,
+    status,
+    currentPeriodEnd,
+    isPro,
+  };
+}
+
+function isProSubscription() {
+  return getSubscriptionSnapshot().isPro;
+}
+
+async function setSubscriptionState(nextSubscription) {
+  if (!store) {
+    return;
+  }
+  settings.subscription = nextSubscription;
+  await store.setSetting('subscription', nextSubscription);
+  scheduleDebouncedSync({ refreshSettings: true });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('settings-updated', settings);
+  }
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.webContents.send('settings-updated', settings);
+  }
+  sendDashboardEvent('dashboard:data-updated');
+}
+
+async function normalizeQuotaState() {
+  if (!syncService || !syncService.getUser()) {
+    return null;
+  }
+  if (isProSubscription()) {
+    return null;
+  }
+  const weekStart = getWeekStartUTC();
+  const startIso = weekStart.toISOString();
+  const existing = settings.quotaWeekly || settings.quota_weekly || {};
+  if (existing.periodStart !== startIso) {
+    const nextQuota = { periodStart: startIso, wordsUsed: 0 };
+    settings.quotaWeekly = nextQuota;
+    settings.quota_weekly = nextQuota;
+    await store.setSetting('quota_weekly', nextQuota);
+    scheduleDebouncedSync({ refreshSettings: true });
+    return nextQuota;
+  }
+  return existing;
+}
+
+async function incrementQuotaUsage(text) {
+  if (!syncService || !syncService.getUser()) {
+    return null;
+  }
+  if (isProSubscription()) {
+    return null;
+  }
+  const nextQuota = (await normalizeQuotaState()) || { periodStart: getWeekStartUTC().toISOString(), wordsUsed: 0 };
+  const words = countWords(text);
+  nextQuota.wordsUsed = (nextQuota.wordsUsed || 0) + words;
+  settings.quotaWeekly = nextQuota;
+  settings.quota_weekly = nextQuota;
+  await store.setSetting('quota_weekly', nextQuota);
+  scheduleDebouncedSync({ refreshSettings: true });
+  return nextQuota;
+}
+
+async function getQuotaSnapshot() {
+  if (!syncService || !syncService.getUser()) {
+    return {
+      limit: WEEKLY_QUOTA_WORDS,
+      used: 0,
+      remaining: WEEKLY_QUOTA_WORDS,
+      resetAt: getNextWeekStartUTC().toISOString(),
+      requiresAuth: true,
+      unlimited: false,
+    };
+  }
+  if (isProSubscription()) {
+    return {
+      limit: null,
+      used: 0,
+      remaining: null,
+      resetAt: null,
+      requiresAuth: false,
+      unlimited: true,
+    };
+  }
+  const quota = await normalizeQuotaState();
+  const used = quota?.wordsUsed || 0;
+  return {
+    limit: WEEKLY_QUOTA_WORDS,
+    used,
+    remaining: Math.max(0, WEEKLY_QUOTA_WORDS - used),
+    resetAt: getNextWeekStartUTC().toISOString(),
+    requiresAuth: false,
+    unlimited: false,
+  };
 }
 
 function sendStatus(state, message) {
@@ -252,6 +393,30 @@ function setAuthState(nextState) {
 
 function canAccessPremium() {
   return authState.status === 'authenticated';
+}
+
+function buildStripeUrl(baseUrl, user) {
+  if (!baseUrl) {
+    return null;
+  }
+  try {
+    const url = new URL(baseUrl);
+    if (user?.id) {
+      url.searchParams.set('client_reference_id', user.id);
+      url.searchParams.set('user_id', user.id);
+    }
+    if (user?.email) {
+      url.searchParams.set('prefilled_email', user.email);
+      url.searchParams.set('email', user.email);
+    }
+    if (STRIPE_RETURN_URL) {
+      url.searchParams.set('return_to', STRIPE_RETURN_URL);
+    }
+    return url.toString();
+  } catch (error) {
+    console.warn('Invalid Stripe URL:', error);
+    return null;
+  }
 }
 
 function requireAuthenticated(message) {
@@ -1227,6 +1392,7 @@ async function persistTranscription({ transcribedText, finalText, title }) {
   await store.setSetting('last_transcription', finalText);
   sendDashboardEvent('dashboard:data-updated');
   scheduleDebouncedSync();
+  await incrementQuotaUsage(finalText);
 }
 
 async function handleAudioPayload(event, audioData) {
@@ -1399,6 +1565,8 @@ ipcMain.handle('dashboard:data', async () => {
   const dictionary = await store.listDictionary();
   const styles = await store.listStyles();
   const authUser = syncService && syncService.getUser();
+  const quota = await getQuotaSnapshot();
+  const subscription = getSubscriptionSnapshot();
   return {
     settings: { ...settings, apiKeyPresent: Boolean(OPENAI_API_KEY) },
     stats,
@@ -1406,6 +1574,8 @@ ipcMain.handle('dashboard:data', async () => {
     notes,
     dictionary,
     styles,
+    quota,
+    subscription,
     auth: authUser ? { email: authUser.email, id: authUser.id } : null,
     syncReady: Boolean(syncService && syncService.isReady()),
   };
@@ -1634,6 +1804,7 @@ ipcMain.handle('auth:sign-out', async () => {
   if (store && store.clearSensitiveData) {
     await store.clearSensitiveData();
   }
+  await setSubscriptionState({ plan: 'free', status: 'inactive', updatedAt: null });
   sendDashboardEvent('dashboard:data-updated');
   setAuthState({
     status: 'unauthenticated',
@@ -1643,6 +1814,54 @@ ipcMain.handle('auth:sign-out', async () => {
     retryable: false,
   });
   return { ok: true };
+});
+
+ipcMain.handle('subscription:checkout', async () => {
+  requireAuthenticated('Connexion requise pour passer PRO.');
+  const authUser = syncService && syncService.getUser();
+  let checkoutUrl = null;
+  if (syncService && syncService.isReady()) {
+    const result = await syncService.invokeFunction('stripe-checkout', {});
+    checkoutUrl = result && result.url;
+  }
+  if (!checkoutUrl) {
+    checkoutUrl = buildStripeUrl(STRIPE_CHECKOUT_URL, authUser);
+  }
+  if (!checkoutUrl) {
+    return { ok: false, reason: 'not_configured' };
+  }
+  await shell.openExternal(checkoutUrl);
+  const current = getSubscriptionSnapshot();
+  await setSubscriptionState({
+    ...current,
+    plan: 'pro',
+    status: current.status === 'active' ? 'active' : 'pending',
+    pendingAt: new Date().toISOString(),
+  });
+  return { ok: true, url: checkoutUrl };
+});
+
+ipcMain.handle('subscription:portal', async () => {
+  requireAuthenticated('Connexion requise pour gerer l’abonnement.');
+  const authUser = syncService && syncService.getUser();
+  let portalUrl = null;
+  if (syncService && syncService.isReady()) {
+    const result = await syncService.invokeFunction('stripe-portal', {});
+    portalUrl = result && result.url;
+  }
+  if (!portalUrl) {
+    portalUrl = buildStripeUrl(STRIPE_PORTAL_URL, authUser);
+  }
+  if (!portalUrl) {
+    return { ok: false, reason: 'not_configured' };
+  }
+  await shell.openExternal(portalUrl);
+  return { ok: true, url: portalUrl };
+});
+
+ipcMain.handle('subscription:refresh', async () => {
+  requireAuthenticated('Connexion requise pour actualiser.');
+  return requestSync({ refreshSettings: true });
 });
 
 ipcMain.handle('auth:get-signup-url', () => {
