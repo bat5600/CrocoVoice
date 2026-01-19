@@ -73,7 +73,10 @@ const RecordingState = Object.freeze({
 });
 
 const ACTION_DEBOUNCE_MS = 500;
-const HISTORY_RETENTION_DAYS = 14; // Retain last 14 days of history before purge.
+const parsedHistoryRetentionFree = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_FREE || '14', 10);
+const HISTORY_RETENTION_DAYS_FREE = Number.isFinite(parsedHistoryRetentionFree) ? parsedHistoryRetentionFree : 14;
+const parsedHistoryRetentionPro = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_PRO || '365', 10);
+const HISTORY_RETENTION_DAYS_PRO = Number.isFinite(parsedHistoryRetentionPro) ? parsedHistoryRetentionPro : 365;
 let recordingState = RecordingState.IDLE;
 const lastActionAt = {
   start: 0,
@@ -94,7 +97,10 @@ const OPENAI_MAX_RETRIES = 2;
 const OPENAI_BASE_BACKOFF_MS = 800;
 const OPENAI_MAX_BACKOFF_MS = 5000;
 const SYNC_DEBOUNCE_MS = 120000;
-const WEEKLY_QUOTA_WORDS = 2000;
+const parsedWeeklyQuota = Number.parseInt(process.env.CROCOVOICE_WEEKLY_QUOTA_WORDS || '2000', 10);
+const WEEKLY_QUOTA_WORDS = Number.isFinite(parsedWeeklyQuota) ? parsedWeeklyQuota : 2000;
+const QUOTA_MODE = (process.env.CROCOVOICE_QUOTA_MODE || 'local').toLowerCase(); // local | hybrid | server
+const QUOTA_CACHE_TTL_MS = Number.parseInt(process.env.CROCOVOICE_QUOTA_CACHE_TTL_MS || '300000', 10); // 5 min
 let recordingDestination = 'clipboard';
 
 const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
@@ -208,6 +214,13 @@ function isProSubscription() {
   return getSubscriptionSnapshot().isPro;
 }
 
+function getHistoryRetentionDays(subscriptionSnapshot) {
+  if (subscriptionSnapshot?.isPro) {
+    return HISTORY_RETENTION_DAYS_PRO;
+  }
+  return HISTORY_RETENTION_DAYS_FREE;
+}
+
 async function setSubscriptionState(nextSubscription) {
   if (!store) {
     return;
@@ -245,6 +258,72 @@ async function normalizeQuotaState() {
   return existing;
 }
 
+function shouldUseServerQuota() {
+  return QUOTA_MODE === 'server' || QUOTA_MODE === 'hybrid';
+}
+
+function readQuotaSnapshotCache() {
+  const cache = settings.quota_snapshot_cache || settings.quotaSnapshotCache;
+  const fetchedAt = cache?.fetchedAt || cache?.fetched_at;
+  const quota = cache?.quota;
+  if (!quota || !fetchedAt) {
+    return null;
+  }
+  const fetchedAtMs = Date.parse(fetchedAt);
+  if (!Number.isFinite(fetchedAtMs)) {
+    return null;
+  }
+  if (Date.now() - fetchedAtMs > QUOTA_CACHE_TTL_MS) {
+    return null;
+  }
+  return quota;
+}
+
+async function writeQuotaSnapshotCache(quota) {
+  if (!store) {
+    return;
+  }
+  const entry = { quota, fetchedAt: new Date().toISOString() };
+  settings.quota_snapshot_cache = entry;
+  settings.quotaSnapshotCache = entry;
+  await store.setSetting('quota_snapshot_cache', entry);
+}
+
+async function getQuotaSnapshotFromServer() {
+  if (!syncService || !syncService.isReady || !syncService.isReady() || !syncService.getUser()) {
+    return null;
+  }
+  if (!syncService.invokeFunction) {
+    return null;
+  }
+  const result = await syncService.invokeFunction('quota-snapshot', {});
+  return result || null;
+}
+
+async function consumeQuotaOnServer(words) {
+  if (!syncService || !syncService.isReady || !syncService.isReady() || !syncService.getUser()) {
+    return null;
+  }
+  if (!syncService.invokeFunction) {
+    return null;
+  }
+  const result = await syncService.invokeFunction('quota-consume', { words });
+  return result || null;
+}
+
+async function setLocalQuotaFromSnapshot(quota) {
+  if (!store || !quota || quota.unlimited || quota.requiresAuth) {
+    return;
+  }
+  if (!Number.isFinite(quota.used)) {
+    return;
+  }
+  const nextQuota = { periodStart: getWeekStartUTC().toISOString(), wordsUsed: quota.used };
+  settings.quotaWeekly = nextQuota;
+  settings.quota_weekly = nextQuota;
+  await store.setSetting('quota_weekly', nextQuota);
+}
+
 async function incrementQuotaUsage(text) {
   if (!syncService || !syncService.getUser()) {
     return null;
@@ -252,8 +331,22 @@ async function incrementQuotaUsage(text) {
   if (isProSubscription()) {
     return null;
   }
-  const nextQuota = (await normalizeQuotaState()) || { periodStart: getWeekStartUTC().toISOString(), wordsUsed: 0 };
   const words = countWords(text);
+  if (shouldUseServerQuota()) {
+    try {
+      const serverQuota = await consumeQuotaOnServer(words);
+      if (serverQuota) {
+        await writeQuotaSnapshotCache(serverQuota);
+        await setLocalQuotaFromSnapshot(serverQuota);
+        scheduleDebouncedSync({ refreshSettings: true });
+        return settings.quotaWeekly || settings.quota_weekly || null;
+      }
+    } catch (error) {
+      console.warn('Quota consume (server) failed:', error);
+    }
+  }
+
+  const nextQuota = (await normalizeQuotaState()) || { periodStart: getWeekStartUTC().toISOString(), wordsUsed: 0 };
   nextQuota.wordsUsed = (nextQuota.wordsUsed || 0) + words;
   settings.quotaWeekly = nextQuota;
   settings.quota_weekly = nextQuota;
@@ -283,6 +376,36 @@ async function getQuotaSnapshot() {
       unlimited: true,
     };
   }
+
+  if (shouldUseServerQuota()) {
+    try {
+      const serverQuota = await getQuotaSnapshotFromServer();
+      if (serverQuota) {
+        await writeQuotaSnapshotCache(serverQuota);
+        await setLocalQuotaFromSnapshot(serverQuota);
+        return serverQuota;
+      }
+    } catch (error) {
+      console.warn('Quota snapshot (server) failed:', error);
+      const cached = readQuotaSnapshotCache();
+      if (cached) {
+        return cached;
+      }
+      if (QUOTA_MODE === 'server') {
+        return {
+          limit: WEEKLY_QUOTA_WORDS,
+          used: WEEKLY_QUOTA_WORDS,
+          remaining: 0,
+          resetAt: getNextWeekStartUTC().toISOString(),
+          requiresAuth: false,
+          unlimited: false,
+          checkFailed: true,
+          message: 'Impossible de verifier le quota (reseau indisponible).',
+        };
+      }
+    }
+  }
+
   const quota = await normalizeQuotaState();
   const used = quota?.wordsUsed || 0;
   return {
@@ -293,6 +416,54 @@ async function getQuotaSnapshot() {
     requiresAuth: false,
     unlimited: false,
   };
+}
+
+function isQuotaReached(quota) {
+  if (!quota || quota.unlimited || quota.requiresAuth) {
+    return false;
+  }
+  if (!Number.isFinite(quota.remaining)) {
+    return false;
+  }
+  return quota.remaining <= 0;
+}
+
+function notifyQuotaBlocked(quota) {
+  const payload = {
+    remaining: Number.isFinite(quota?.remaining) ? quota.remaining : 0,
+    limit: Number.isFinite(quota?.limit) ? quota.limit : null,
+    resetAt: quota?.resetAt || null,
+  };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('quota:blocked', payload);
+  }
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.webContents.send('quota:blocked', payload);
+  }
+}
+
+async function ensureQuotaAvailable() {
+  try {
+    const quota = await getQuotaSnapshot();
+    if (quota?.checkFailed) {
+      setRecordingState(RecordingState.ERROR, quota.message || 'Impossible de verifier le quota.');
+      scheduleReturnToIdle(3500);
+      return false;
+    }
+    if (isQuotaReached(quota)) {
+      notifyQuotaBlocked(quota);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn('Failed to check quota before recording:', error);
+    if (QUOTA_MODE === 'server') {
+      setRecordingState(RecordingState.ERROR, 'Impossible de verifier le quota.');
+      scheduleReturnToIdle(3500);
+      return false;
+    }
+    return true;
+  }
 }
 
 function sendStatus(state, message) {
@@ -1146,7 +1317,7 @@ function hideWidgetFor(ms) {
   }, ms);
 }
 
-function startRecording() {
+async function startRecording() {
   if (!canAccessPremium()) {
     notifyAuthRequired('Connexion requise pour utiliser CrocoVoice.');
     return;
@@ -1161,6 +1332,12 @@ function startRecording() {
   }
 
   transitionLock = true;
+  const quotaAllowed = await ensureQuotaAvailable();
+  if (!quotaAllowed) {
+    transitionLock = false;
+    refreshRendererState();
+    return;
+  }
   clearIdleResetTimeout();
   clearProcessingTimeout();
   recordingStartTime = Date.now();
@@ -1316,11 +1493,15 @@ async function pasteText(text) {
 function normalizeAudioPayload(audioData) {
   let mimeType = '';
   let payload = audioData;
+  let warningMessage = '';
 
   if (audioData && typeof audioData === 'object' && audioData.buffer) {
     payload = audioData.buffer;
     if (typeof audioData.mimeType === 'string') {
       mimeType = audioData.mimeType;
+    }
+    if (typeof audioData.warningMessage === 'string') {
+      warningMessage = audioData.warningMessage;
     }
   }
 
@@ -1335,7 +1516,7 @@ function normalizeAudioPayload(audioData) {
     buffer = Buffer.from(payload);
   }
 
-  return { buffer, mimeType };
+  return { buffer, mimeType, warningMessage };
 }
 
 function resolveRecordingTarget() {
@@ -1407,7 +1588,7 @@ async function handleAudioPayload(event, audioData) {
       event.reply('transcription-error', message);
       return;
     }
-    const { buffer, mimeType } = normalizeAudioPayload(audioData);
+    const { buffer, mimeType, warningMessage: safetyWarningMessage } = normalizeAudioPayload(audioData);
 
     const pipelineResult = await runTranscriptionPipeline(buffer, mimeType);
     if (pipelineResult.skip) {
@@ -1421,7 +1602,7 @@ async function handleAudioPayload(event, audioData) {
       transcribedText,
       finalText,
       title,
-      warningMessage,
+      warningMessage: pipelineWarningMessage,
     } = pipelineResult;
     const shouldSkipPaste = target === 'notes';
 
@@ -1431,8 +1612,9 @@ async function handleAudioPayload(event, audioData) {
       await pasteText(finalText);
     }
 
-    if (warningMessage) {
-      setRecordingState(RecordingState.ERROR, warningMessage);
+    const combinedWarningMessage = [pipelineWarningMessage, safetyWarningMessage].filter(Boolean).join(' ');
+    if (combinedWarningMessage) {
+      setRecordingState(RecordingState.ERROR, combinedWarningMessage);
       scheduleReturnToIdle(3000);
     } else {
       setRecordingState(RecordingState.IDLE);
@@ -1484,7 +1666,11 @@ ipcMain.on('recording-error', (event, error) => {
 ipcMain.on('recording-empty', (event, reason) => {
   recordingStartTime = null;
   clearProcessingTimeout();
-  setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+  const messages = {
+    idle_timeout: "Arrêt automatique : aucun son détecté.",
+    no_audio: NO_AUDIO_MESSAGE,
+  };
+  setRecordingState(RecordingState.ERROR, messages[reason] || NO_AUDIO_MESSAGE);
   scheduleReturnToIdle(3000);
 });
 
@@ -1943,8 +2129,13 @@ app.whenReady().then(async () => {
   await store.init();
   settings = await store.getSettings();
   await ensureDefaultStyle();
-  console.info(`History retention policy: keep last ${HISTORY_RETENTION_DAYS} days; purge older entries on startup/sync.`);
-  await store.purgeHistory(HISTORY_RETENTION_DAYS);
+  const retentionDays = getHistoryRetentionDays(getSubscriptionSnapshot());
+  if (retentionDays > 0) {
+    console.info(`History retention policy: keep last ${retentionDays} days; purge older entries on startup/sync.`);
+    await store.purgeHistory(retentionDays);
+  } else {
+    console.info('History retention policy: retention disabled; no purge on startup/sync.');
+  }
 
   syncService = new SyncService({
     store,

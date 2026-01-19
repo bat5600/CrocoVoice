@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="fr" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrocoVoice - Dictée IA Parfaite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            display: ['"Space Grotesk"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              200: '#a7f3d0',
+              300: '#6ee7b7',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              800: '#065f46',
+              900: '#064e3b',
+              950: '#022c22',
+            },
+            dark: {
+              900: '#0f172a',
+              950: '#020617', // Very deep slate
+            }
+          },
+          animation: {
+            'float': 'float 6s ease-in-out infinite',
+            'float-delayed': 'float 6s ease-in-out infinite 2s',
+            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'typing': 'typing 2s steps(20, end)',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-15px)' },
+            },
+            typing: {
+              '0%': { width: '0' },
+              '100%': { width: '100%' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #020617;
+      color: #f8fafc;
+      overflow-x: hidden;
+    }
+
+    /* Subtle Grid Background */
+    .bg-grid {
+      background-size: 50px 50px;
+      background-image: linear-gradient(to right, rgba(30, 41, 59, 0.5) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(30, 41, 59, 0.5) 1px, transparent 1px);
+      mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+    }
+
+    /* Glassmorphism Refined */
+    .glass-card {
+      background: rgba(30, 41, 59, 0.4);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    .glass-card:hover {
+      border-color: rgba(16, 185, 129, 0.3);
+      background: rgba(30, 41, 59, 0.6);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    }
+
+    .shimmer-text {
+      background: linear-gradient(
+        to right,
+        #a7f3d0 20%,
+        #10b981 40%,
+        #10b981 60%,
+        #a7f3d0 80%
+      );
+      background-size: 200% auto;
+      color: transparent;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: text-shimmer 4s linear infinite;
+    }
+
+    @keyframes text-shimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 100% 50%; }
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #020617; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+  </style>
+</head>
+<body class="antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- Background Effects -->
+  <div class="fixed inset-0 pointer-events-none z-0">
+    <div class="absolute inset-0 bg-grid opacity-30"></div>
+    <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-brand-600/20 rounded-full blur-[120px]"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[120px]"></div>
+  </div>
+
+  <!-- Navbar -->
+  <header class="fixed top-0 w-full z-50 border-b border-white/5 bg-dark-950/80 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2 group cursor-pointer">
+        <div class="relative w-8 h-8 flex items-center justify-center bg-brand-900/50 rounded-lg border border-brand-500/20 group-hover:border-brand-500/50 transition-colors">
+          <div class="w-2 h-3 bg-brand-400 rounded-full animate-pulse"></div>
+          <div class="absolute inset-0 bg-brand-400/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        </div>
+        <span class="font-display font-bold text-xl tracking-tight text-white">Croco<span class="text-brand-400">Voice</span></span>
+      </div>
+
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
+        <a href="#features" class="hover:text-white transition-colors">Fonctionnalités</a>
+        <a href="#demo" class="hover:text-white transition-colors">Démo</a>
+        <a href="#pricing" class="hover:text-white transition-colors">Offres</a>
+      </nav>
+
+      <div class="flex items-center gap-4">
+        <a href="#" class="hidden md:block text-sm font-medium text-slate-400 hover:text-white transition-colors">Connexion</a>
+        <a href="https://app.crococlick.com/signup-crocovoice" class="relative group px-5 py-2 rounded-full bg-brand-600 text-white text-sm font-semibold overflow-hidden shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 transition-all">
+          <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+          <span class="relative">Essayer Gratuitement</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="relative z-10 pt-32 pb-16">
+    
+    <!-- Hero Section -->
+    <section class="max-w-7xl mx-auto px-6 grid lg:grid-cols-[1.2fr_1fr] gap-12 lg:gap-20 items-center">
+      <div class="space-y-8 text-center lg:text-left">
+        <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-brand-300">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+          </span>
+          Nouveau : Application mobile disponible
+        </div>
+        
+        <h1 class="font-display text-5xl sm:text-6xl lg:text-7xl font-bold leading-[1.1] tracking-tight text-white">
+          Arrêtez d'écrire.<br>
+          <span class="shimmer-text">Dites-le, juste.</span>
+        </h1>
+        
+        <p class="text-lg sm:text-xl text-slate-400 leading-relaxed max-w-2xl mx-auto lg:mx-0">
+          Dictez vos emails, articles et notes en vrac. CrocoVoice nettoie les "euh", reformule les hésitations et formate le texte parfaitement.
+        </p>
+
+        <div class="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
+          <a href="https://app.crococlick.com/signup-crocovoice" class="w-full sm:w-auto px-8 py-4 rounded-xl bg-white text-dark-950 font-bold text-base hover:bg-brand-50 transition-colors shadow-[0_0_30px_-5px_rgba(255,255,255,0.3)]">
+            Démarrer (Gratuit)
+          </a>
+          <a href="#demo" class="w-full sm:w-auto px-8 py-4 rounded-xl border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors flex items-center justify-center gap-2">
+            <svg class="w-5 h-5 text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Voir la magie
+          </a>
+        </div>
+        
+        <div class="pt-4 flex items-center justify-center lg:justify-start gap-3 text-sm text-slate-500">
+          <svg class="w-4 h-4 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+          <span>2,000 mots offerts chaque semaine</span>
+        </div>
+      </div>
+
+      <!-- Hero Visual Premium Animation -->
+      <div class="relative lg:h-[600px] w-full flex items-center justify-center perspective-1000">
+        <!-- Floating Elements Animation -->
+        <div class="relative w-full max-w-md aspect-[4/5] animate-float">
+          
+          <!-- Background Glow -->
+          <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-brand-500/20 rounded-full blur-[80px]"></div>
+
+          <!-- Phone/App Interface Simulation -->
+          <div class="relative z-10 w-full h-full bg-dark-900/90 border border-white/10 rounded-[2.5rem] p-6 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden">
+            <!-- Top Bar -->
+            <div class="flex justify-between items-center mb-8 opacity-50">
+              <span class="text-xs font-mono">09:41</span>
+              <div class="flex gap-1.5">
+                <div class="w-4 h-4 rounded-full border border-current"></div>
+                <div class="w-4 h-4 rounded-full bg-current"></div>
+              </div>
+            </div>
+
+            <!-- Active Voice State -->
+            <div class="flex-1 flex flex-col items-center justify-center relative">
+               <!-- Waveform bars -->
+               <div class="flex items-end justify-center gap-1.5 h-16 mb-6">
+                 <div class="w-1.5 bg-brand-400 rounded-full animate-[bounce_1s_infinite] h-8"></div>
+                 <div class="w-1.5 bg-brand-400 rounded-full animate-[bounce_1.2s_infinite] h-12"></div>
+                 <div class="w-1.5 bg-brand-400 rounded-full animate-[bounce_0.8s_infinite] h-6"></div>
+                 <div class="w-1.5 bg-brand-400 rounded-full animate-[bounce_1.5s_infinite] h-14"></div>
+                 <div class="w-1.5 bg-brand-400 rounded-full animate-[bounce_1.1s_infinite] h-10"></div>
+               </div>
+               <!-- Animated Raw Text (Simulated) -->
+               <p class="text-slate-400 font-mono text-xs text-center px-4 opacity-70 mb-2">Entrée audio brute...</p>
+               <p class="text-slate-300 font-medium text-base text-center px-4 leading-relaxed relative">
+                 "Alors <span class="text-red-400 line-through decoration-red-500 decoration-2">euh</span> pour le mail, dis-lui que <span class="text-red-400 line-through decoration-red-500 decoration-2">hum</span>... non, confirme juste le rdv de mardi."
+               </p>
+            </div>
+
+            <!-- Processing Result Card (Floating over) -->
+            <div class="absolute bottom-6 left-6 right-6 bg-slate-800/90 border border-white/10 rounded-2xl p-5 shadow-xl transform translate-y-2 hover:-translate-y-1 transition-transform cursor-default">
+              <div class="flex items-center justify-between gap-2 mb-3 border-b border-white/5 pb-2">
+                <div class="flex items-center gap-2">
+                   <div class="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></div>
+                   <span class="text-xs text-brand-300 font-bold uppercase tracking-wider">Résultat Nettoyé</span>
+                </div>
+                <span class="text-[10px] text-slate-500">0.4s</span>
+              </div>
+              
+              <div class="relative">
+                <p class="text-white text-lg font-medium">"Je vous confirme notre rendez-vous de mardi."</p>
+                <!-- Copy Icon -->
+                <div class="absolute -right-1 -bottom-1 p-1.5 rounded-md hover:bg-white/10 cursor-pointer text-slate-400 hover:text-white transition-colors">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Floating Badges -->
+          <div class="absolute -right-8 top-24 bg-slate-800 border border-white/10 p-3 rounded-xl shadow-xl animate-float-delayed flex items-center gap-3">
+            <div class="w-8 h-8 bg-red-500/20 rounded flex items-center justify-center text-red-400 text-xs font-bold border border-red-500/20">
+               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </div>
+            <div class="text-xs text-white">4 "euh" supprimés</div>
+          </div>
+          <div class="absolute -left-4 bottom-40 bg-slate-800 border border-white/10 p-3 rounded-xl shadow-xl animate-float flex items-center gap-3" style="animation-delay: 1s;">
+            <div class="w-8 h-8 bg-brand-500/20 rounded flex items-center justify-center text-brand-400 text-xs font-bold border border-brand-500/20">
+               AI
+            </div>
+            <div class="text-xs text-white">Syntaxe corrigée</div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Social Proof Ticker -->
+    <section class="py-10 border-y border-white/5 bg-white/[0.02]">
+      <div class="max-w-7xl mx-auto px-6">
+        <p class="text-center text-sm text-slate-500 mb-8 uppercase tracking-widest font-semibold">Ils ont arrêté de taper leurs emails</p>
+        <div class="flex flex-wrap justify-center gap-x-12 gap-y-8 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+           <span class="text-xl font-display font-bold text-slate-300">Journalistes</span>
+           <span class="text-xl font-display font-bold text-slate-300">Avocats</span>
+           <span class="text-xl font-display font-bold text-slate-300">Médecins</span>
+           <span class="text-xl font-display font-bold text-slate-300">Auteurs</span>
+           <span class="text-xl font-display font-bold text-slate-300">Founders</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bento Grid Features (Clean & Focus) -->
+    <section id="features" class="py-24 max-w-7xl mx-auto px-6">
+      <div class="text-center max-w-3xl mx-auto mb-20">
+        <h2 class="font-display text-3xl sm:text-4xl font-bold text-white mb-4">La magie du "Parler Propre".</h2>
+        <p class="text-slate-400">CrocoVoice transforme votre flux de pensée chaotique en prose structurée.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Main Feature: Cleaning -->
+        <div class="md:col-span-2 glass-card rounded-3xl p-8 relative overflow-hidden group">
+          <div class="absolute top-0 right-0 w-64 h-64 bg-brand-500/10 rounded-full blur-[60px] group-hover:bg-brand-500/20 transition-all"></div>
+          <div class="relative z-10">
+            <div class="w-12 h-12 rounded-xl bg-brand-900/50 flex items-center justify-center text-brand-400 mb-6 border border-brand-500/20">
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Nettoyage Intelligent</h3>
+            <p class="text-slate-400 max-w-md">L'IA détecte et supprime automatiquement les hésitations, les répétitions et les bégaiements. Votre texte sort prêt à être envoyé.</p>
+          </div>
+          <!-- Visual representation -->
+          <div class="mt-8 grid grid-cols-2 gap-4">
+             <div class="bg-red-500/10 rounded-lg p-3 text-xs text-red-300 border border-red-500/20">
+               "Euh je pense que hum... enfin bref..."
+             </div>
+             <div class="flex items-center gap-2 bg-brand-500/10 rounded-lg p-3 text-xs text-brand-300 border border-brand-500/20 font-bold">
+               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+               "Je pense que..."
+             </div>
+          </div>
+        </div>
+
+        <!-- Feature: Speed -->
+        <div class="glass-card rounded-3xl p-8 flex flex-col justify-between group">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-blue-900/30 flex items-center justify-center text-blue-400 mb-6 border border-blue-500/20">
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">3x Plus Rapide</h3>
+            <p class="text-slate-400 text-sm">On parle à 150 mots/min. On tape à 40. Faites le calcul.</p>
+          </div>
+          <div class="mt-6">
+            <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+               <div class="bg-blue-500 h-full w-[80%]"></div>
+            </div>
+            <p class="text-right text-xs text-blue-400 mt-2 font-mono">150 mots/min</p>
+          </div>
+        </div>
+
+        <!-- Feature: Rewriting -->
+        <div class="glass-card rounded-3xl p-8 flex flex-col justify-between group">
+          <div>
+             <div class="w-12 h-12 rounded-xl bg-purple-900/30 flex items-center justify-center text-purple-400 mb-6 border border-purple-500/20">
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Auto-Correction</h3>
+            <p class="text-slate-400 text-sm">"Non pardon, je voulais dire..." CrocoVoice comprend la correction et n'écrit que la version finale.</p>
+          </div>
+        </div>
+
+        <!-- Feature: Formats -->
+        <div class="md:col-span-2 glass-card rounded-3xl p-8 relative overflow-hidden flex items-center justify-between gap-6">
+           <div class="relative z-10 max-w-sm">
+            <div class="w-12 h-12 rounded-xl bg-emerald-900/50 flex items-center justify-center text-emerald-400 mb-6 border border-emerald-500/20">
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Multilingue & Formats</h3>
+            <p class="text-slate-400">Dictez en 50+ langues. Demandez un format Email, LinkedIn, ou Memo exécutif.</p>
+          </div>
+          <div class="hidden sm:flex gap-2">
+            <span class="text-2xl">🇫🇷</span>
+            <span class="text-2xl">🇺🇸</span>
+            <span class="text-2xl">🇪🇸</span>
+            <span class="text-2xl">🇩🇪</span>
+            <span class="text-2xl">🇯🇵</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing Section (Simplified V3 Model) -->
+    <section id="pricing" class="py-20 relative">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="text-center mb-16">
+          <h2 class="font-display text-3xl sm:text-4xl font-bold text-white">Simple & Transparent.</h2>
+          <p class="text-slate-400 mt-4">Commencez gratuitement, passez Pro quand vous êtes accro.</p>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-8 items-center max-w-5xl mx-auto">
+          
+          <!-- Free -->
+          <div class="glass-card rounded-3xl p-8 border-white/5 hover:border-white/10 transition-colors">
+            <h3 class="font-display text-xl font-bold text-white">Découverte</h3>
+            <div class="mt-4 flex items-baseline gap-1">
+              <span class="text-4xl font-bold text-white">0€</span>
+            </div>
+            <p class="text-sm text-slate-400 mt-2">Parfait pour tester.</p>
+            
+            <ul class="mt-8 space-y-4 text-sm text-slate-300">
+              <li class="flex items-center gap-3"><span class="text-brand-500">✓</span> 2,000 mots / semaine</li>
+              <li class="flex items-center gap-3"><span class="text-brand-500">✓</span> Nettoyage "euh" basique</li>
+              <li class="flex items-center gap-3"><span class="text-brand-500">✓</span> App Mobile</li>
+            </ul>
+
+            <a href="https://app.crococlick.com/signup-crocovoice" class="mt-8 block w-full py-3 rounded-xl border border-white/10 text-white text-center font-semibold hover:bg-white/5 transition-colors">Créer un compte</a>
+          </div>
+
+          <!-- Pro (Highlighted) -->
+          <div class="relative rounded-3xl p-10 bg-gradient-to-b from-brand-900/30 to-dark-950 border border-brand-500/30 shadow-2xl shadow-brand-900/20 transform scale-105 z-10">
+            <div class="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-brand-400 to-emerald-600 rounded-t-3xl"></div>
+            <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-brand-500 text-dark-950 text-[10px] font-bold uppercase tracking-wider rounded-full">
+              Recommandé
+            </div>
+
+            <h3 class="font-display text-2xl font-bold text-white">Pro Illimité</h3>
+            <div class="mt-4 flex items-baseline gap-1">
+              <span class="text-5xl font-bold text-white">9.90€</span>
+              <span class="text-slate-500">/mois</span>
+            </div>
+            <p class="text-sm text-brand-100/80 mt-2">Libérez votre parole.</p>
+            
+            <ul class="mt-8 space-y-4 text-sm text-slate-200 font-medium">
+              <li class="flex items-center gap-3"><span class="text-brand-400">✓</span> <strong>Dictée Illimitée</strong></li>
+              <li class="flex items-center gap-3"><span class="text-brand-400">✓</span> Nettoyage Avancé (Grammaire+)</li>
+              <li class="flex items-center gap-3"><span class="text-brand-400">✓</span> Tous les formats (LinkedIn, etc)</li>
+              <li class="flex items-center gap-3"><span class="text-brand-400">✓</span> Support Prioritaire</li>
+            </ul>
+
+            <a href="https://app.crococlick.com/signup-crocovoice?plan=pro" class="mt-8 block w-full py-4 rounded-xl bg-brand-500 text-dark-950 text-center font-bold hover:bg-brand-400 transition-colors shadow-lg shadow-brand-500/25">
+              Passer Pro
+            </a>
+          </div>
+
+          <!-- Enterprise -->
+          <div class="glass-card rounded-3xl p-8 border-white/5 hover:border-white/10 transition-colors">
+            <h3 class="font-display text-xl font-bold text-white">Team</h3>
+            <div class="mt-4 flex items-baseline gap-1">
+              <span class="text-3xl font-bold text-white">Sur mesure</span>
+            </div>
+            <p class="text-sm text-slate-400 mt-2">Pour les équipes.</p>
+            
+            <ul class="mt-8 space-y-4 text-sm text-slate-300">
+              <li class="flex items-center gap-3"><span class="text-brand-500">✓</span> Facturation centralisée</li>
+              <li class="flex items-center gap-3"><span class="text-brand-500">✓</span> Admin Dashboard</li>
+              <li class="flex items-center gap-3"><span class="text-brand-500">✓</span> Onboarding dédié</li>
+            </ul>
+
+            <a href="mailto:sales@crocovoice.com" class="mt-8 block w-full py-3 rounded-xl border border-white/10 text-white text-center font-semibold hover:bg-white/5 transition-colors">Contacter</a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="py-20 max-w-4xl mx-auto px-6">
+      <h2 class="font-display text-3xl font-bold text-white mb-12 text-center">FAQ</h2>
+      <div class="space-y-4">
+        <details class="group glass-card rounded-2xl p-6 [&_summary::-webkit-details-marker]:hidden cursor-pointer">
+          <summary class="flex items-center justify-between text-white font-medium">
+            Est-ce que ça marche sur iPhone / Android ?
+            <span class="text-brand-400 transition group-open:rotate-180">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </span>
+          </summary>
+          <p class="mt-4 text-slate-400 text-sm leading-relaxed">
+            Oui ! CrocoVoice est une application web optimisée pour mobile (PWA). Vous pouvez l'ajouter à votre écran d'accueil et dicter en marchant.
+          </p>
+        </details>
+        <details class="group glass-card rounded-2xl p-6 [&_summary::-webkit-details-marker]:hidden cursor-pointer">
+          <summary class="flex items-center justify-between text-white font-medium">
+            Quelle est la différence avec la dictée Siri / Google ?
+            <span class="text-brand-400 transition group-open:rotate-180">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </span>
+          </summary>
+          <p class="mt-4 text-slate-400 text-sm leading-relaxed">
+            Siri transcrit tout, y compris vos hésitations ("euh..."). CrocoVoice *comprend* votre intention, nettoie le texte, ajoute la ponctuation parfaite et restructure vos phrases si besoin. C'est comme avoir un éditeur humain.
+          </p>
+        </details>
+      </div>
+    </section>
+
+    <!-- CTA Finale -->
+    <section class="py-20 px-6">
+      <div class="max-w-5xl mx-auto rounded-[2.5rem] bg-gradient-to-r from-brand-900 to-dark-900 border border-white/10 relative overflow-hidden text-center px-6 py-16 sm:px-16 sm:py-20">
+        <div class="absolute inset-0 bg-grid opacity-20"></div>
+        <div class="relative z-10">
+          <h2 class="font-display text-4xl sm:text-5xl font-bold text-white mb-6">Prêt à gagner 1h / jour ?</h2>
+          <p class="text-lg text-brand-100/80 mb-10 max-w-xl mx-auto">Essayez gratuitement, sans carte de crédit.</p>
+          <a href="https://app.crococlick.com/signup-crocovoice" class="inline-block px-10 py-5 rounded-2xl bg-white text-dark-950 font-bold text-lg hover:bg-brand-50 transition-colors shadow-xl shadow-brand-900/50">
+            Créer mon compte
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="border-t border-white/5 bg-dark-950 py-12">
+    <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 bg-brand-600 rounded-md"></div>
+        <span class="font-display font-bold text-white">CrocoVoice</span>
+      </div>
+      <div class="text-sm text-slate-500">
+        &copy; 2026 CrocoClick Labs.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

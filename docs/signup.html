@@ -108,20 +108,51 @@
         </button>
       </div>
 
-      <div id="dividerBlock" class="relative mb-8">
-        <div class="absolute inset-0 flex items-center">
-          <div class="w-full border-t border-slate-200"></div>
-        </div>
-        <div class="relative flex justify-center text-xs uppercase tracking-wider font-bold text-slate-400">
-          <span class="px-3 bg-[#F8FAFC]">Ou continuer avec</span>
-        </div>
-      </div>
+	      <div id="dividerBlock" class="relative mb-8">
+	        <div class="absolute inset-0 flex items-center">
+	          <div class="w-full border-t border-slate-200"></div>
+	        </div>
+	        <div class="relative flex justify-center text-xs uppercase tracking-wider font-bold text-slate-400">
+	          <span class="px-3 bg-[#F8FAFC]">Ou continuer avec</span>
+	        </div>
+	      </div>
 
-      <form id="signupForm" class="space-y-5">
-        <div id="nameField" class="space-y-1.5">
-          <label class="block text-sm font-semibold text-slate-700">Nom complet</label>
-          <div class="relative group transition-all duration-200 bg-white rounded-xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
-            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+	      <div id="confirmedPanel" class="hidden">
+	        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+	          <div class="flex items-start gap-3">
+	            <div class="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-700 font-black">✓</div>
+	            <div>
+	              <h2 class="text-lg font-extrabold text-slate-900">Email confirmé</h2>
+	              <p class="text-sm text-slate-500 font-medium mt-1">Votre compte est prêt. Vous pouvez maintenant revenir dans l’app CrocoVoice.</p>
+	            </div>
+	          </div>
+	          <div class="mt-5 space-y-3">
+	            <div class="text-sm text-slate-600 font-medium">
+	              1) Ouvrez CrocoVoice sur votre ordinateur<br />
+	              2) Connectez-vous avec votre email et mot de passe
+	            </div>
+	            <div class="flex flex-col sm:flex-row gap-3">
+	              <button id="confirmedLoginButton" type="button" class="inline-flex justify-center items-center gap-2 py-3 px-4 rounded-xl bg-white border border-slate-200 text-slate-800 font-bold text-sm hover:bg-slate-50 transition-colors">
+	                Se connecter
+	                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /></svg>
+	              </button>
+	              <button id="confirmedCloseButton" type="button" class="inline-flex justify-center items-center gap-2 py-3 px-4 rounded-xl bg-emerald-900 text-white font-bold text-sm hover:bg-emerald-800 transition-colors">
+	                Fermer cette page
+	                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18" /><path d="M6 6l12 12" /></svg>
+	              </button>
+	            </div>
+	            <p class="text-xs text-slate-400 font-semibold">
+	              Si l’app n’est pas installée, téléchargez-la puis revenez vous connecter ici.
+	            </p>
+	          </div>
+	        </div>
+	      </div>
+
+	      <form id="signupForm" class="space-y-5">
+	        <div id="nameField" class="space-y-1.5">
+	          <label class="block text-sm font-semibold text-slate-700">Nom complet</label>
+	          <div class="relative group transition-all duration-200 bg-white rounded-xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+	            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
               <svg class="h-4 w-4 text-slate-400 group-focus-within:text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
@@ -215,10 +246,12 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script>
-    (() => {
-      const SUPABASE_URL = 'https://wkoqeffrwrlfvfcvqhee.supabase.co';
-      const SUPABASE_ANON_KEY = 'sb_publishable_4sRfQi2qDooCe722JUQwqQ_gF1NXLbu';
-      const MAGIC_LINK_REDIRECT = 'https://app.crococlick.com/signup-crocovoice?mode=set-password';
+	    (() => {
+	      const SUPABASE_URL = 'https://wkoqeffrwrlfvfcvqhee.supabase.co';
+	      const SUPABASE_ANON_KEY = 'sb_publishable_4sRfQi2qDooCe722JUQwqQ_gF1NXLbu';
+	      const BASE_URL = `${window.location.origin}${window.location.pathname}`;
+	      const MAGIC_LINK_REDIRECT = `${BASE_URL}?mode=set-password`;
+	      const EMAIL_CONFIRM_REDIRECT = `${BASE_URL}?mode=confirmed`;
 
       const formTitle = document.getElementById('formTitle');
       const formSubtitle = document.getElementById('formSubtitle');
@@ -240,65 +273,85 @@
       const legalText = document.getElementById('legalText');
       const passwordStrength = document.getElementById('passwordStrength');
       const strengthBar = document.getElementById('strengthBar');
-      const passwordField = document.getElementById('passwordField');
-      const emailField = document.getElementById('emailField');
-      const socialBlock = document.getElementById('socialBlock');
-      const dividerBlock = document.getElementById('dividerBlock');
+	      const passwordField = document.getElementById('passwordField');
+	      const emailField = document.getElementById('emailField');
+	      const socialBlock = document.getElementById('socialBlock');
+	      const dividerBlock = document.getElementById('dividerBlock');
+	      const confirmedPanel = document.getElementById('confirmedPanel');
+	      const confirmedLoginButton = document.getElementById('confirmedLoginButton');
+	      const confirmedCloseButton = document.getElementById('confirmedCloseButton');
 
       let mode = 'signup';
       let showPassword = false;
       let client = null;
 
-      function setMode(nextMode) {
-        mode = nextMode;
-        const isLogin = mode === 'login';
-        const isReset = mode === 'reset';
-        const isMagic = mode === 'magic';
-        const isSetPassword = mode === 'set-password';
-        formTitle.textContent = isReset
-          ? 'Réinitialiser le mot de passe'
-          : (isMagic
-            ? 'Connexion par lien sécurisé'
-            : (isSetPassword ? 'Définir un mot de passe' : (isLogin ? 'Bon retour parmi nous' : 'Créer un compte')));
-        formSubtitle.textContent = isReset
-          ? 'Recevez un lien de réinitialisation par email.'
-          : (isMagic
-            ? 'Recevez un lien de connexion ou de création de compte.'
-            : (isSetPassword
-              ? 'Choisissez un mot de passe pour sécuriser votre compte.'
-              : (isLogin
-                ? 'Entrez vos identifiants pour acceder a votre espace.'
-                : 'Demarrez votre essai de 14 jours. Sans engagement.')));
-        togglePrefix.textContent = (isReset || isMagic || isSetPassword)
-          ? 'Retour a'
-          : (isLogin ? 'Pas encore de compte ?' : 'Vous avez deja un compte ?');
-        toggleMode.textContent = (isReset || isMagic || isSetPassword) ? 'Se connecter' : (isLogin ? "S'inscrire" : 'Se connecter');
-        submitLabel.textContent = isReset
-          ? 'Envoyer le lien'
-          : (isMagic
-            ? 'Envoyer le lien'
-            : (isSetPassword ? 'Enregistrer le mot de passe' : (isLogin ? 'Se connecter' : 'Commencer gratuitement')));
-        nameField.classList.toggle('hidden', isLogin || isReset || isMagic);
-        emailField.classList.toggle('hidden', isSetPassword);
-        passwordField.classList.toggle('hidden', isReset || isMagic);
-        forgotLink.classList.toggle('hidden', !isLogin);
-        legalText.classList.toggle('hidden', isLogin || isReset || isMagic || isSetPassword);
-        passwordStrength.classList.toggle('hidden', isLogin || isReset || isMagic || isSetPassword);
-        if (socialBlock) {
-          socialBlock.classList.toggle('hidden', isReset || isMagic || isSetPassword);
-        }
-        if (dividerBlock) {
-          dividerBlock.classList.toggle('hidden', isReset || isMagic || isSetPassword);
-        }
-        signupName.required = !(isLogin || isReset || isMagic);
-        signupEmail.required = !isSetPassword;
-        signupPassword.required = !(isReset || isMagic);
-        signupPassword.disabled = isReset || isMagic;
-        if (isReset || isMagic) {
-          signupPassword.value = '';
-          passwordError.classList.add('hidden');
-        }
-      }
+	      function setMode(nextMode) {
+	        mode = nextMode;
+	        const isLogin = mode === 'login';
+	        const isReset = mode === 'reset';
+	        const isMagic = mode === 'magic';
+	        const isSetPassword = mode === 'set-password';
+	        const isConfirmed = mode === 'confirmed';
+	        formTitle.textContent = isReset
+	          ? 'Réinitialiser le mot de passe'
+	          : (isMagic
+	            ? 'Connexion par lien sécurisé'
+	            : (isSetPassword
+	              ? 'Définir un mot de passe'
+	              : (isConfirmed ? 'Bienvenue sur CrocoVoice' : (isLogin ? 'Bon retour parmi nous' : 'Créer un compte'))));
+	        formSubtitle.textContent = isReset
+	          ? 'Recevez un lien de réinitialisation par email.'
+	          : (isMagic
+	            ? 'Recevez un lien de connexion ou de création de compte.'
+	            : (isSetPassword
+	              ? 'Choisissez un mot de passe pour sécuriser votre compte.'
+	              : (isConfirmed
+	                ? 'Confirmez votre email, puis revenez dans l’app.'
+	                : (isLogin
+	                  ? 'Entrez vos identifiants pour acceder a votre espace.'
+	                  : 'Demarrez votre essai de 14 jours. Sans engagement.'))));
+	        togglePrefix.textContent = (isReset || isMagic || isSetPassword)
+	          ? 'Retour a'
+	          : (isLogin ? 'Pas encore de compte ?' : 'Vous avez deja un compte ?');
+	        toggleMode.textContent = (isReset || isMagic || isSetPassword) ? 'Se connecter' : (isLogin ? "S'inscrire" : 'Se connecter');
+	        submitLabel.textContent = isReset
+	          ? 'Envoyer le lien'
+	          : (isMagic
+	            ? 'Envoyer le lien'
+	            : (isSetPassword ? 'Enregistrer le mot de passe' : (isLogin ? 'Se connecter' : 'Commencer gratuitement')));
+	        nameField.classList.toggle('hidden', isLogin || isReset || isMagic || isConfirmed);
+	        emailField.classList.toggle('hidden', isSetPassword || isConfirmed);
+	        passwordField.classList.toggle('hidden', isReset || isMagic || isConfirmed);
+	        forgotLink.classList.toggle('hidden', !isLogin);
+	        legalText.classList.toggle('hidden', isLogin || isReset || isMagic || isSetPassword || isConfirmed);
+	        passwordStrength.classList.toggle('hidden', isLogin || isReset || isMagic || isSetPassword || isConfirmed);
+	        if (socialBlock) {
+	          socialBlock.classList.toggle('hidden', isReset || isMagic || isSetPassword || isConfirmed);
+	        }
+	        if (dividerBlock) {
+	          dividerBlock.classList.toggle('hidden', isReset || isMagic || isSetPassword || isConfirmed);
+	        }
+	        signupName.required = !(isLogin || isReset || isMagic || isConfirmed);
+	        signupEmail.required = !(isSetPassword || isConfirmed);
+	        signupPassword.required = !(isReset || isMagic || isConfirmed);
+	        signupPassword.disabled = isReset || isMagic || isConfirmed;
+	        if (confirmedPanel) {
+	          confirmedPanel.classList.toggle('hidden', !isConfirmed);
+	        }
+	        if (submitButton) {
+	          submitButton.classList.toggle('hidden', isConfirmed);
+	        }
+	        if (toggleMode) {
+	          toggleMode.classList.toggle('hidden', isConfirmed);
+	        }
+	        if (togglePrefix) {
+	          togglePrefix.classList.toggle('hidden', isConfirmed);
+	        }
+	        if (isReset || isMagic) {
+	          signupPassword.value = '';
+	          passwordError.classList.add('hidden');
+	        }
+	      }
 
       function setPasswordVisibility(nextShow) {
         showPassword = nextShow;
@@ -349,17 +402,29 @@
         return SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('your-');
       }
 
-      toggleMode.addEventListener('click', () => {
-        setMode(mode === 'login' ? 'signup' : 'login');
-        emailError.classList.add('hidden');
-        passwordError.classList.add('hidden');
-        setStatus('');
-      });
+	      toggleMode.addEventListener('click', () => {
+	        setMode(mode === 'login' ? 'signup' : 'login');
+	        emailError.classList.add('hidden');
+	        passwordError.classList.add('hidden');
+	        setStatus('');
+	      });
 
-      forgotLink.addEventListener('click', (event) => {
-        event.preventDefault();
-        setMode('magic');
-        emailError.classList.add('hidden');
+	      if (confirmedLoginButton) {
+	        confirmedLoginButton.addEventListener('click', () => {
+	          setMode('login');
+	          setStatus('');
+	        });
+	      }
+	      if (confirmedCloseButton) {
+	        confirmedCloseButton.addEventListener('click', () => {
+	          window.close();
+	        });
+	      }
+
+	      forgotLink.addEventListener('click', (event) => {
+	        event.preventDefault();
+	        setMode('magic');
+	        emailError.classList.add('hidden');
         passwordError.classList.add('hidden');
         setStatus('');
       });
@@ -388,12 +453,15 @@
 
       client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-      document.getElementById('signupForm').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const emailOk = validateEmail();
-        const passwordOk = validatePassword();
-        if (!emailOk || (!passwordOk && mode !== 'reset' && mode !== 'magic')) {
-          setStatus('Veuillez corriger les champs en erreur.', true);
+	      document.getElementById('signupForm').addEventListener('submit', async (event) => {
+	        event.preventDefault();
+	        if (mode === 'confirmed') {
+	          return;
+	        }
+	        const emailOk = validateEmail();
+	        const passwordOk = validatePassword();
+	        if (!emailOk || (!passwordOk && mode !== 'reset' && mode !== 'magic')) {
+	          setStatus('Veuillez corriger les champs en erreur.', true);
           return;
         }
 
@@ -445,17 +513,18 @@
               throw error;
             }
             setStatus('Connexion reussie. Vous pouvez revenir dans l’app.', false);
-          } else {
-            const { error } = await client.auth.signUp({
-              email: signupEmail.value.trim(),
-              password: signupPassword.value,
-              options: {
-                data: { name: signupName.value.trim() || undefined },
-              },
-            });
-            if (error) {
-              throw error;
-            }
+	          } else {
+	            const { error } = await client.auth.signUp({
+	              email: signupEmail.value.trim(),
+	              password: signupPassword.value,
+	              options: {
+	                data: { name: signupName.value.trim() || undefined },
+	                emailRedirectTo: EMAIL_CONFIRM_REDIRECT,
+	              },
+	            });
+	            if (error) {
+	              throw error;
+	            }
             setStatus('Compte cree. Verifiez votre boite mail.', false);
           }
         } catch (error) {
@@ -475,18 +544,20 @@
       setPasswordVisibility(false);
       updateStrength();
       const params = new URLSearchParams(window.location.search);
-      const initialMode = params.get('mode');
-      if (initialMode === 'login') {
-        setMode('login');
-      } else if (initialMode === 'signup') {
-        setMode('signup');
-      } else if (initialMode === 'reset') {
-        setMode('reset');
-      } else if (initialMode === 'magic') {
-        setMode('magic');
-      } else if (initialMode === 'set-password') {
-        setMode('set-password');
-      }
+	      const initialMode = params.get('mode');
+	      if (initialMode === 'login') {
+	        setMode('login');
+	      } else if (initialMode === 'signup') {
+	        setMode('signup');
+	      } else if (initialMode === 'reset') {
+	        setMode('reset');
+	      } else if (initialMode === 'magic') {
+	        setMode('magic');
+	      } else if (initialMode === 'set-password') {
+	        setMode('set-password');
+	      } else if (initialMode === 'confirmed') {
+	        setMode('confirmed');
+	      }
 
       client.auth.getSession().then(({ data }) => {
         if (data?.session) {

@@ -30,6 +30,8 @@ const recordingFeedback = document.getElementById('recordingFeedback');
 const micPulse = document.getElementById('micPulse');
 const toastContainer = document.getElementById('toastContainer');
 const searchInput = document.getElementById('dashboardSearchInput');
+const breadcrumbPrimary = document.getElementById('breadcrumbPrimary');
+const breadcrumbSecondary = document.getElementById('breadcrumbSecondary');
 const authOverlay = document.getElementById('authOverlay');
 const authOverlayStatus = document.getElementById('authOverlayStatus');
 const authOverlayLogin = document.getElementById('authOverlayLogin');
@@ -41,11 +43,13 @@ const authOverlayPassword = document.getElementById('authOverlayPassword');
 const statDays = document.getElementById('statDays');
 const statWords = document.getElementById('statWords');
 const statTotal = document.getElementById('statTotal');
+const streakSubtitle = document.getElementById('streakSubtitle');
 const quotaRemaining = document.getElementById('quotaRemaining');
 const quotaReset = document.getElementById('quotaReset');
 const profileName = document.getElementById('profileName');
 const profilePlan = document.getElementById('profilePlan');
 const profileAvatar = document.getElementById('profileAvatar');
+const profileCard = document.getElementById('profileCard');
 const subscriptionStatus = document.getElementById('subscriptionStatus');
 const subscriptionBadge = document.getElementById('subscriptionBadge');
 const subscriptionNote = document.getElementById('subscriptionNote');
@@ -163,16 +167,38 @@ function openModal({ title, fields, confirmText }) {
   });
 }
 
+function updateBreadcrumb(viewName) {
+  if (!breadcrumbPrimary || !breadcrumbSecondary) {
+    return;
+  }
+
+  const map = {
+    home: { primary: 'Dashboard', secondary: 'Historique' },
+    notes: { primary: 'Notes', secondary: 'Nouvelle note' },
+    dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
+    style: { primary: 'Styles', secondary: 'Persona' },
+    settings: { primary: 'Réglages', secondary: 'Général' },
+    account: { primary: 'Profil', secondary: 'Facturation' },
+  };
+
+  const next = map[viewName] || map.home;
+  breadcrumbPrimary.textContent = next.primary;
+  breadcrumbSecondary.textContent = next.secondary;
+}
+
 function setActiveView(viewName) {
+  const supportedViews = new Set(['home', 'notes', 'dictionary', 'style', 'settings', 'account']);
+  const nextView = supportedViews.has(viewName) ? viewName : 'home';
   views.forEach((view) => {
-    view.classList.toggle('active', view.id === `view-${viewName}`);
+    view.classList.toggle('active', view.id === `view-${nextView}`);
   });
 
   navItems.forEach((item) => {
-    item.classList.toggle('active', item.dataset.view === viewName);
+    item.classList.toggle('active', item.dataset.view === nextView);
   });
 
-  currentView = viewName;
+  currentView = nextView;
+  updateBreadcrumb(nextView);
   refreshActiveList();
 }
 
@@ -566,6 +592,16 @@ function renderStats(stats) {
   if (statTotal) {
     statTotal.textContent = stats.total;
   }
+  if (streakSubtitle) {
+    const streak = Number.isFinite(stats.dayStreak) ? stats.dayStreak : 0;
+    if (streak <= 0) {
+      streakSubtitle.textContent = "Aucune série en cours. Lancez une dictée pour démarrer !";
+    } else if (streak === 1) {
+      streakSubtitle.textContent = 'Vous êtes sur une série de 1 jour. Continuez comme ça !';
+    } else {
+      streakSubtitle.textContent = `Vous êtes sur une série de ${streak} jours. Continuez comme ça !`;
+    }
+  }
 }
 
 function formatResetLabel(iso) {
@@ -587,6 +623,11 @@ function renderQuota(quota) {
   if (!quota) {
     quotaRemaining.textContent = '—';
     quotaReset.textContent = 'Quota indisponible';
+    return;
+  }
+  if (quota.checkFailed || quota.unavailable) {
+    quotaRemaining.textContent = '—';
+    quotaReset.textContent = quota.message || 'Quota indisponible';
     return;
   }
   if (quota.requiresAuth) {
@@ -1192,6 +1233,7 @@ async function refreshDashboard() {
 
 window.addEventListener('DOMContentLoaded', () => {
   platform = window.electronAPI?.getPlatform ? window.electronAPI.getPlatform() : 'win32';
+  updateBreadcrumb(currentView);
 
   if (modalBackdrop) {
     modalBackdrop.addEventListener('click', (event) => {
@@ -1211,6 +1253,24 @@ window.addEventListener('DOMContentLoaded', () => {
       setActiveView(item.dataset.view);
     });
   });
+
+  if (profileCard) {
+    profileCard.addEventListener('click', () => {
+      setActiveView('account');
+    });
+    profileCard.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        setActiveView('account');
+      }
+    });
+  }
+
+  if (window.electronAPI?.onDashboardView) {
+    window.electronAPI.onDashboardView((viewName) => {
+      setActiveView(viewName || 'home');
+    });
+  }
 
   if (searchInput) {
     searchInput.addEventListener('input', (event) => {

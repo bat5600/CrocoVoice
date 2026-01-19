@@ -116,4 +116,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onAuthRequired: (callback) => {
     ipcRenderer.on('auth:required', (event, message) => callback(message));
   },
+  onQuotaBlocked: (callback) => {
+    ipcRenderer.on('quota:blocked', (event, payload) => callback(payload));
+  },
 });

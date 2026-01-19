@@ -36,6 +36,10 @@ let recordingStartedAt = null;
 let audioRmsPeak = 0;
 let audioActiveMs = 0;
 let audioMetricsLastAt = null;
+let lastAudioActiveAt = null;
+let safetyIntervalId = null;
+let pendingNoAudioReason = null;
+let pendingWarningMessage = '';
 let authGateEl = null;
 let authLoginButton = null;
 let authSignupButton = null;
@@ -48,12 +52,22 @@ let authSubmitPending = false;
 let currentAuthState = null;
 let widgetContainer = null;
 let recordingTooltipEl = null;
+let quotaGateEl = null;
+let quotaRemainingEl = null;
+let quotaResetEl = null;
+let quotaUpgradeButton = null;
+let quotaDashboardButton = null;
+let quotaDismissButton = null;
+let quotaStatusText = null;
+let quotaGateActive = false;
 
 const CANCEL_UNDO_DURATION_MS = 5000;
 const AUDIO_RMS_ACTIVE_THRESHOLD = 0.018;
 const AUDIO_MIN_TOTAL_MS = 350;
 const AUDIO_MIN_ACTIVE_MS = 200;
 const AUDIO_MIN_PEAK_RMS = 0.012;
+const RECORDING_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const RECORDING_MAX_DURATION_MS = 60 * 60 * 1000;
 
 function setUndoActive(active) {
   if (!widgetContainer) {
@@ -67,6 +81,44 @@ function resetAudioMetrics() {
   audioRmsPeak = 0;
   audioActiveMs = 0;
   audioMetricsLastAt = null;
+  lastAudioActiveAt = null;
+}
+
+function clearSafetyMonitor() {
+  if (safetyIntervalId) {
+    clearInterval(safetyIntervalId);
+    safetyIntervalId = null;
+  }
+}
+
+function startSafetyMonitor() {
+  clearSafetyMonitor();
+  safetyIntervalId = setInterval(() => {
+    if (!isRecording || !recordingStartedAt) {
+      return;
+    }
+    const now = Date.now();
+    const elapsed = now - recordingStartedAt;
+    if (elapsed >= RECORDING_MAX_DURATION_MS && !pendingWarningMessage) {
+      pendingWarningMessage = `Arrêt automatique : durée max atteinte (${Math.round(RECORDING_MAX_DURATION_MS / 60000)} min).`;
+      clearSafetyMonitor();
+      if (window.electronAPI?.toggleRecording) {
+        window.electronAPI.toggleRecording();
+      } else {
+        stopRecording();
+      }
+      return;
+    }
+    if (lastAudioActiveAt && now - lastAudioActiveAt >= RECORDING_IDLE_TIMEOUT_MS && !pendingNoAudioReason) {
+      pendingNoAudioReason = 'idle_timeout';
+      clearSafetyMonitor();
+      if (window.electronAPI?.cancelRecording) {
+        window.electronAPI.cancelRecording();
+      } else {
+        stopRecording();
+      }
+    }
+  }, 1000);
 }
 
 function trackAudioMetrics(rms, frameTimeMs) {
@@ -86,6 +138,7 @@ function trackAudioMetrics(rms, frameTimeMs) {
   audioMetricsLastAt = frameTimeMs;
   if (rms >= AUDIO_RMS_ACTIVE_THRESHOLD) {
     audioActiveMs += dt;
+    lastAudioActiveAt = Date.now();
   }
 }
 
@@ -250,11 +303,67 @@ function setAuthStatus(message, isError) {
   authStatusText.style.color = isError ? '#f87171' : 'rgba(243, 244, 246, 0.7)';
 }
 
+function setQuotaStatus(message, isError) {
+  if (!quotaStatusText) {
+    return;
+  }
+  quotaStatusText.textContent = message || '';
+  quotaStatusText.style.color = isError ? '#f87171' : 'rgba(243, 244, 246, 0.7)';
+}
+
+function formatQuotaResetLabel(iso) {
+  if (!iso) {
+    return 'Reset lundi 00:00 UTC';
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return 'Reset lundi 00:00 UTC';
+  }
+  return `Reset ${date.toLocaleDateString([], { weekday: 'long', hour: '2-digit', minute: '2-digit' })} UTC`;
+}
+
+function applyQuotaGate(payload) {
+  quotaGateActive = true;
+  document.body.classList.add('quota-gated');
+  if (quotaGateEl) {
+    quotaGateEl.setAttribute('aria-hidden', 'false');
+  }
+  if (quotaRemainingEl) {
+    const remaining = Number.isFinite(payload?.remaining) ? payload.remaining : 0;
+    quotaRemainingEl.textContent = `${remaining}`;
+  }
+  if (quotaResetEl) {
+    quotaResetEl.textContent = formatQuotaResetLabel(payload?.resetAt);
+  }
+  setQuotaStatus('');
+}
+
+function clearQuotaGate() {
+  quotaGateActive = false;
+  document.body.classList.remove('quota-gated');
+  if (quotaGateEl) {
+    quotaGateEl.setAttribute('aria-hidden', 'true');
+  }
+  setQuotaStatus('');
+}
+
+function isProSubscription(subscription) {
+  if (!subscription) {
+    return false;
+  }
+  const plan = subscription.plan || 'free';
+  const status = subscription.status || 'inactive';
+  return plan === 'pro' && (status === 'active' || status === 'trialing');
+}
+
 function applyAuthState(state) {
   currentAuthState = state || {};
   const status = currentAuthState.status || 'checking';
   const authed = status === 'authenticated';
   document.body.classList.toggle('auth-gated', !authed);
+  if (!authed && quotaGateActive) {
+    clearQuotaGate();
+  }
   if (window.electronAPI?.setWidgetExpanded) {
     window.electronAPI.setWidgetExpanded(!authed);
   }
@@ -457,8 +566,16 @@ async function initializeMediaRecorder() {
       const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
       const ab = await blob.arrayBuffer();
       const payload = { buffer: Array.from(new Uint8Array(ab)), mimeType: blob.type };
+      if (pendingWarningMessage) {
+        payload.warningMessage = pendingWarningMessage;
+        pendingWarningMessage = '';
+      }
 
-      if (cancelPending) {
+      if (pendingNoAudioReason) {
+        const reason = pendingNoAudioReason;
+        pendingNoAudioReason = null;
+        window.electronAPI.sendRecordingEmpty(reason);
+      } else if (cancelPending) {
         cancelPending = false;
         startCancelUndo(payload);
       } else if (shouldTreatAsNoAudio()) {
@@ -468,6 +585,7 @@ async function initializeMediaRecorder() {
       }
 
       window.audioChunks = [];
+      clearSafetyMonitor();
 
       if (audioStream) {
         audioStream.getTracks().forEach((track) => track.stop());
@@ -501,7 +619,10 @@ async function startRecording() {
 
   isRecording = true;
   recordingStartedAt = Date.now();
+  pendingNoAudioReason = null;
+  pendingWarningMessage = '';
   resetAudioMetrics();
+  lastAudioActiveAt = Date.now();
 
   if (!mediaRecorder) {
     const initialized = await initializeMediaRecorder();
@@ -515,6 +636,7 @@ async function startRecording() {
   window.audioChunks = [];
   mediaRecorder.start(1000);
   startWaveform();
+  startSafetyMonitor();
 }
 
 function stopRecording() {
@@ -524,6 +646,7 @@ function stopRecording() {
 
   isRecording = false;
   recordingStartedAt = null;
+  clearSafetyMonitor();
 
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     try {
@@ -586,6 +709,13 @@ document.addEventListener('DOMContentLoaded', () => {
   authSignupButton = document.getElementById('authSignupButton');
   authStatusText = document.getElementById('authStatusText');
   authRetryButton = document.getElementById('authRetryButton');
+  quotaGateEl = document.getElementById('quotaGate');
+  quotaRemainingEl = document.getElementById('quotaGateRemaining');
+  quotaResetEl = document.getElementById('quotaGateReset');
+  quotaUpgradeButton = document.getElementById('quotaUpgradeButton');
+  quotaDashboardButton = document.getElementById('quotaDashboardButton');
+  quotaDismissButton = document.getElementById('quotaDismissButton');
+  quotaStatusText = document.getElementById('quotaGateStatus');
   updateWidgetState('idle');
 
   if (window.electronAPI?.getAuthState) {
@@ -605,6 +735,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.electronAPI?.onAuthRequired) {
     window.electronAPI.onAuthRequired((message) => {
       applyAuthState({ ...(currentAuthState || {}), status: 'unauthenticated', message: message || 'Connexion requise.' });
+    });
+  }
+
+  if (window.electronAPI?.onQuotaBlocked) {
+    window.electronAPI.onQuotaBlocked((payload) => {
+      applyQuotaGate(payload || {});
     });
   }
 
@@ -638,6 +774,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (quotaUpgradeButton) {
+    quotaUpgradeButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.startCheckout) {
+        setQuotaStatus('Checkout indisponible.', true);
+        return;
+      }
+      setQuotaStatus('Ouverture du checkout...', false);
+      try {
+        const result = await window.electronAPI.startCheckout();
+        if (!result?.ok) {
+          setQuotaStatus('Checkout non configuré.', true);
+        }
+      } catch (error) {
+        setQuotaStatus(error?.message || 'Checkout indisponible.', true);
+      }
+    });
+  }
+
+  if (quotaDashboardButton) {
+    quotaDashboardButton.addEventListener('click', async () => {
+      if (window.electronAPI?.openSettings) {
+        await window.electronAPI.openSettings();
+      }
+      if (window.electronAPI?.openDashboardView) {
+        window.electronAPI.openDashboardView('settings');
+      }
+    });
+  }
+
+  if (quotaDismissButton) {
+    quotaDismissButton.addEventListener('click', () => {
+      clearQuotaGate();
+    });
+  }
+
 
   if (window.electronAPI.getSettings) {
     window.electronAPI.getSettings().then((settings) => {
@@ -659,6 +830,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const previousMic = currentSettings.microphoneId;
       currentSettings = nextSettings || {};
       updateShortcutLabel(currentSettings.shortcut);
+      if (isProSubscription(currentSettings.subscription)) {
+        clearQuotaGate();
+      }
       if (!isRecording && previousMic !== currentSettings.microphoneId) {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();

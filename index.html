@@ -53,6 +53,14 @@
       display: none;
     }
 
+    body.quota-gated {
+      background: radial-gradient(circle at top, rgba(24, 26, 30, 0.98), rgba(7, 8, 10, 0.98));
+    }
+
+    body.quota-gated .widget-shell {
+      display: none;
+    }
+
     .auth-gate {
       position: fixed;
       inset: 0;
@@ -65,6 +73,21 @@
     }
 
     body.auth-gated .auth-gate {
+      display: flex;
+    }
+
+    .quota-gate {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: var(--pill-text);
+      font-family: "Plus Jakarta Sans", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+    }
+
+    body.quota-gated .quota-gate {
       display: flex;
     }
 
@@ -81,7 +104,26 @@
       gap: 12px;
     }
 
+    .quota-card {
+      width: 100%;
+      max-width: 340px;
+      background: rgba(12, 14, 18, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
     .auth-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--pill-text);
+    }
+
+    .quota-title {
       font-size: 16px;
       font-weight: 600;
       color: var(--pill-text);
@@ -93,10 +135,34 @@
       line-height: 1.4;
     }
 
+    .quota-subtitle {
+      font-size: 12px;
+      color: var(--pill-muted);
+      line-height: 1.4;
+    }
+
     .auth-status {
       font-size: 12px;
       color: var(--pill-muted);
       min-height: 18px;
+    }
+
+    .quota-status {
+      font-size: 12px;
+      color: var(--pill-muted);
+      min-height: 18px;
+    }
+
+    .quota-metrics {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--pill-text);
+    }
+
+    .quota-metrics span {
+      color: var(--pill-muted);
     }
 
     .auth-form {
@@ -155,6 +221,35 @@
     }
 
     .auth-actions button.secondary {
+      border-color: rgba(255, 255, 255, 0.1);
+      color: var(--pill-muted);
+    }
+
+    .quota-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .quota-actions button {
+      width: 100%;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: transparent;
+      color: var(--pill-text);
+    }
+
+    .quota-actions button.primary {
+      border: none;
+      background: linear-gradient(135deg, #36d96f, #22c55e);
+      color: #0b0c0f;
+      font-weight: 700;
+    }
+
+    .quota-actions button.secondary {
       border-color: rgba(255, 255, 255, 0.1);
       color: var(--pill-muted);
     }
@@ -672,6 +767,23 @@
         <button class="secondary" type="button" id="authSignupButton">S'inscrire</button>
         <button class="secondary" type="button" id="authRetryButton">Réessayer</button>
       </div>
+    </div>
+  </div>
+
+  <div class="quota-gate" id="quotaGate" aria-hidden="true">
+    <div class="quota-card">
+      <div class="quota-title">Quota atteint</div>
+      <p class="quota-subtitle">Votre quota hebdomadaire de mots est épuisé.</p>
+      <div class="quota-metrics">
+        <div><strong id="quotaGateRemaining">0</strong> mots restants</div>
+        <div><span id="quotaGateReset">Reset lundi 00:00 UTC</span></div>
+      </div>
+      <div class="quota-actions">
+        <button class="primary" type="button" id="quotaUpgradeButton">Passer Pro</button>
+        <button class="secondary" type="button" id="quotaDashboardButton">Ouvrir le dashboard</button>
+        <button class="secondary" type="button" id="quotaDismissButton">Fermer</button>
+      </div>
+      <div class="quota-status" id="quotaGateStatus" aria-live="polite"></div>
     </div>
   </div>
 

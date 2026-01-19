@@ -206,10 +206,28 @@ class Store {
     const cutoff = new Date(Date.now() - days * DAY_MS).toISOString();
     const rows = await this._all('SELECT text, created_at FROM history WHERE created_at >= ?', [cutoff]);
     const words = rows.reduce((acc, row) => acc + this._countWords(row.text), 0);
-    const daysActive = new Set(rows.map((row) => row.created_at.slice(0, 10))).size;
+    const dayKeys = rows.map((row) => row.created_at.slice(0, 10));
+    const activeDays = new Set(dayKeys);
+    const daysActive = activeDays.size;
+
+    const utcDayKey = (date) => date.toISOString().slice(0, 10);
+    const todayKey = utcDayKey(new Date());
+    const yesterdayKey = utcDayKey(new Date(Date.now() - DAY_MS));
+
+    const anchorKey = activeDays.has(todayKey) ? todayKey : (activeDays.has(yesterdayKey) ? yesterdayKey : null);
+    let dayStreak = 0;
+    if (anchorKey) {
+      let cursor = new Date(`${anchorKey}T00:00:00.000Z`);
+      while (activeDays.has(utcDayKey(cursor))) {
+        dayStreak += 1;
+        cursor = new Date(cursor.getTime() - DAY_MS);
+      }
+    }
+
     return {
       words,
       daysActive,
+      dayStreak,
       total: rows.length,
     };
   }

@@ -1,10 +1,35 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const HISTORY_RETENTION_DAYS = 14; // Retain last 14 days of history before purge.
+const parsedHistoryRetentionFree = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_FREE || '14', 10);
+const HISTORY_RETENTION_DAYS_FREE = Number.isFinite(parsedHistoryRetentionFree) ? parsedHistoryRetentionFree : 14;
+const parsedHistoryRetentionPro = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_PRO || '365', 10);
+const HISTORY_RETENTION_DAYS_PRO = Number.isFinite(parsedHistoryRetentionPro) ? parsedHistoryRetentionPro : 365;
+const parsedHistorySyncLimitFree = Number.parseInt(process.env.CROCOVOICE_HISTORY_SYNC_LIMIT_FREE || '1000', 10);
+const HISTORY_SYNC_LIMIT_FREE = Number.isFinite(parsedHistorySyncLimitFree) ? parsedHistorySyncLimitFree : 1000;
+const parsedHistorySyncLimitPro = Number.parseInt(process.env.CROCOVOICE_HISTORY_SYNC_LIMIT_PRO || '5000', 10);
+const HISTORY_SYNC_LIMIT_PRO = Number.isFinite(parsedHistorySyncLimitPro) ? parsedHistorySyncLimitPro : 5000;
 
-function logHistoryRetentionPolicy(context) {
-  console.info(`History retention policy (${context}): keep last ${HISTORY_RETENTION_DAYS} days; purge older entries.`);
+function isProSubscription(subscription) {
+  const plan = subscription?.plan || 'free';
+  const status = subscription?.status || 'inactive';
+  return plan === 'pro' && (status === 'active' || status === 'trialing');
+}
+
+function getHistoryRetentionDays(subscription) {
+  return isProSubscription(subscription) ? HISTORY_RETENTION_DAYS_PRO : HISTORY_RETENTION_DAYS_FREE;
+}
+
+function getHistorySyncLimit(subscription) {
+  return isProSubscription(subscription) ? HISTORY_SYNC_LIMIT_PRO : HISTORY_SYNC_LIMIT_FREE;
+}
+
+function logHistoryRetentionPolicy(context, retentionDays) {
+  if (retentionDays > 0) {
+    console.info(`History retention policy (${context}): keep last ${retentionDays} days; purge older entries.`);
+    return;
+  }
+  console.info(`History retention policy (${context}): retention disabled; no purge.`);
 }
 
 
@@ -169,17 +194,24 @@ class SyncService {
       return { ok: false, reason: 'not_authenticated' };
     }
     this.syncAbort = false;
-    logHistoryRetentionPolicy('sync');
-    await this.store.purgeHistory(HISTORY_RETENTION_DAYS);
+    const subscription = await this.store.getSetting('subscription');
+    const retentionDays = getHistoryRetentionDays(subscription);
+    logHistoryRetentionPolicy('sync', retentionDays);
+    if (retentionDays > 0) {
+      await this.store.purgeHistory(retentionDays);
+    }
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
-    await this._purgeRemoteHistory(HISTORY_RETENTION_DAYS);
+    if (retentionDays > 0) {
+      await this._purgeRemoteHistory(retentionDays);
+    }
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
 
-    await this._syncTable('history', async () => this.store.listHistory({ limit: 1000 }), {
+    const historySyncLimit = getHistorySyncLimit(subscription);
+    await this._syncTable('history', async () => this.store.listHistory({ limit: historySyncLimit }), {
       table: 'history',
       key: 'history',
       mapRow: (row) => ({
@@ -266,8 +298,15 @@ class SyncService {
   async _syncSettings() {
     const cursor = await this.store.getSyncCursor('settings');
     const settingsMeta = await this.store.getSettingsWithMeta();
+    const excludedKeys = new Set([
+      'subscription',
+      'supabase_session',
+      'last_transcription',
+      'quota_weekly',
+      'quota_snapshot_cache',
+    ]);
     const settingsRows = Object.entries(settingsMeta)
-      .filter(([key]) => key !== 'subscription')
+      .filter(([key]) => !excludedKeys.has(key) && !key.startsWith('sync:'))
       .map(([key, meta]) => ({
       id: `${this.user.id}:${key}`,
       user_id: this.user.id,

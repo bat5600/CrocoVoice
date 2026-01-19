@@ -1866,23 +1866,23 @@
           </div>
         </nav>
 
-        <div class="profile-card no-drag">
-          <div class="profile-avatar" id="profileAvatar">B</div>
-          <div>
-            <div class="profile-name" id="profileName">Baptiste</div>
-            <div class="profile-plan" id="profilePlan">Plan Pro</div>
-          </div>
-        </div>
+	        <div id="profileCard" class="profile-card no-drag" role="button" tabindex="0" aria-label="Ouvrir le profil et la facturation">
+	          <div class="profile-avatar" id="profileAvatar">B</div>
+	          <div>
+	            <div class="profile-name" id="profileName">Baptiste</div>
+	            <div class="profile-plan" id="profilePlan">Plan Pro</div>
+	          </div>
+	        </div>
       </div>
     </aside>
 
     <main class="main-content">
-      <header class="top-header drag-region">
-        <div class="breadcrumb no-drag">
-          <span>Dashboard</span>
-          <span>/</span>
-          <span style="color: var(--emerald-600);">Overview</span>
-        </div>
+	      <header class="top-header drag-region">
+	        <div class="breadcrumb no-drag">
+	          <span id="breadcrumbPrimary">Dashboard</span>
+	          <span>/</span>
+	          <span id="breadcrumbSecondary" style="color: var(--emerald-600);">Overview</span>
+	        </div>
 
         <div class="search-wrap no-drag">
           <span class="search-icon">
@@ -1906,10 +1906,10 @@
 
       <div class="content-scroll custom-scroll">
         <section id="view-home" class="view active" style="max-width: 960px; margin: 0 auto;">
-          <div>
-            <h1 class="section-title">Bonjour, Baptiste 👋</h1>
-            <p class="section-subtitle">Vous êtes sur une série de 3 jours. Continuez comme ça !</p>
-          </div>
+	          <div>
+	            <h1 class="section-title">Bonjour, Baptiste 👋</h1>
+	            <p id="streakSubtitle" class="section-subtitle">Chargement des statistiques...</p>
+	          </div>
 
           <div class="stats-grid">
             <div class="stat-card">
@@ -2080,11 +2080,11 @@
           </div>
         </section>
 
-        <section id="view-style" class="view" style="max-width: 900px; margin: 0 auto;">
-          <div>
-            <h1 class="section-title">Styles & Persona</h1>
-            <p class="section-subtitle">L'IA adapte le ton de la transcription à votre audience.</p>
-          </div>
+	        <section id="view-style" class="view" style="max-width: 900px; margin: 0 auto;">
+	          <div>
+	            <h1 class="section-title">Styles & Persona</h1>
+	            <p class="section-subtitle">L'IA adapte le ton de la transcription à votre audience.</p>
+	          </div>
 
           <div id="styleList" class="style-grid" style="margin-top: 24px;"></div>
           <div id="styleEmpty" class="empty-state" data-empty-title="Aucun style disponible" data-empty-body="Rechargez vos styles pour personnaliser la sortie." data-search-title="Aucun résultat" data-search-body="Aucun style ne correspond à cette recherche.">
@@ -2094,14 +2094,48 @@
             <h3 class="empty-title"></h3>
             <p class="empty-body"></p>
             <button class="empty-action" type="button" data-empty-action="styles">Recharger les styles</button>
-          </div>
-        </section>
+	          </div>
+	        </section>
 
-        <section id="view-settings" class="view" style="max-width: 640px; margin: 0 auto;">
-          <div>
-            <h1 class="section-title">Réglages</h1>
-            <p class="section-subtitle">Personnalisez votre expérience d'enregistrement.</p>
-          </div>
+	        <section id="view-account" class="view" style="max-width: 720px; margin: 0 auto;">
+	          <div>
+	            <h1 class="section-title">Profil & Facturation</h1>
+	            <p class="section-subtitle">Gérez votre compte, votre synchronisation et votre abonnement.</p>
+	          </div>
+
+	          <div class="settings-stack" style="margin-top: 24px;">
+	            <div class="settings-card">
+	              <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">Compte</h3>
+	              <div id="authPanel" style="margin-bottom: 16px;"></div>
+	              <button id="syncNowButton" class="btn-primary sync-now" type="button" style="width: 100%;">Synchroniser maintenant</button>
+	              <div id="syncStatus" class="sync-status"></div>
+	            </div>
+
+	            <div class="settings-card">
+	              <div class="subscription-panel">
+	                <div class="subscription-row">
+	                  <div>
+	                    <div style="font-weight: 700;">Abonnement</div>
+	                    <div id="subscriptionStatus" class="subscription-status">Plan Free</div>
+	                  </div>
+	                  <span id="subscriptionBadge" class="subscription-badge free">Free</span>
+	                </div>
+	                <div class="subscription-actions">
+	                  <button id="upgradePlanButton" class="btn-primary" type="button">Passer Pro</button>
+	                  <button id="manageSubscriptionButton" class="btn-secondary" type="button">Gérer mon abonnement</button>
+	                  <button id="refreshSubscriptionButton" class="btn-secondary" type="button">Actualiser</button>
+	                </div>
+	                <div id="subscriptionNote" class="subscription-note"></div>
+	              </div>
+	            </div>
+	          </div>
+	        </section>
+
+	        <section id="view-settings" class="view" style="max-width: 640px; margin: 0 auto;">
+	          <div>
+	            <h1 class="section-title">Réglages</h1>
+	            <p class="section-subtitle">Personnalisez votre expérience d'enregistrement.</p>
+	          </div>
 
           <div class="settings-stack" style="margin-top: 24px;">
             <div class="settings-card">
@@ -2127,45 +2161,20 @@
               </div>
             </div>
 
-            <div class="settings-card">
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                <div>
-                  <div style="font-weight: 700;">Post-traitement IA</div>
-                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Corrige la grammaire et formate automatiquement.</div>
-                </div>
+	            <div class="settings-card">
+	              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+	                <div>
+	                  <div style="font-weight: 700;">Post-traitement IA</div>
+	                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Corrige la grammaire et formate automatiquement.</div>
+	                </div>
                 <select id="postProcessToggle" class="input-select" data-setting="postProcessEnabled" style="width: auto;">
                   <option value="true">Activé</option>
-                  <option value="false">Désactivé</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">Compte & synchro</h3>
-              <div id="authPanel" style="margin-bottom: 16px;"></div>
-              <button id="syncNowButton" class="btn-primary sync-now" type="button" style="width: 100%;">Synchroniser maintenant</button>
-              <div id="syncStatus" class="sync-status"></div>
-            </div>
-
-            <div class="settings-card">
-              <div class="subscription-panel">
-                <div class="subscription-row">
-                  <div>
-                    <div style="font-weight: 700;">Abonnement</div>
-                    <div id="subscriptionStatus" class="subscription-status">Plan Free</div>
-                  </div>
-                  <span id="subscriptionBadge" class="subscription-badge free">Free</span>
-                </div>
-                <div class="subscription-actions">
-                  <button id="upgradePlanButton" class="btn-primary" type="button">Passer Pro</button>
-                  <button id="manageSubscriptionButton" class="btn-secondary" type="button">Gérer mon abonnement</button>
-                  <button id="refreshSubscriptionButton" class="btn-secondary" type="button">Actualiser</button>
-                </div>
-                <div id="subscriptionNote" class="subscription-note"></div>
-              </div>
-            </div>
-          </div>
-        </section>
+	                  <option value="false">Désactivé</option>
+	                </select>
+	              </div>
+	            </div>
+	          </div>
+	        </section>
       </div>
     </main>
   </div>
