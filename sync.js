@@ -7,19 +7,6 @@ function logHistoryRetentionPolicy(context) {
   console.info(`History retention policy (${context}): keep last ${HISTORY_RETENTION_DAYS} days; purge older entries.`);
 }
 
-function decodeJwtPayload(token) {
-  try {
-    const payload = token.split('.')[1];
-    if (!payload) {
-      return null;
-    }
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
-  } catch (error) {
-    return null;
-  }
-}
 
 class SyncService {
   constructor({ store, supabaseUrl, supabaseKey }) {
@@ -85,12 +72,6 @@ class SyncService {
       const stored = await this.store.getSetting('supabase_session');
       accessToken = stored?.access_token || null;
     }
-    const payload = accessToken ? decodeJwtPayload(accessToken) : null;
-    if (payload?.iss || payload?.exp) {
-      const expiresAt = payload.exp ? new Date(payload.exp * 1000).toISOString() : 'n/a';
-      console.log('[stripe-checkout] jwt iss:', payload.iss || 'n/a', 'exp:', expiresAt);
-    }
-    console.log('[stripe-checkout] token?', Boolean(accessToken), accessToken ? accessToken.slice(0, 8) : '');
     const headers = {
       apikey: this.supabaseKey,
       'Content-Type': 'application/json',

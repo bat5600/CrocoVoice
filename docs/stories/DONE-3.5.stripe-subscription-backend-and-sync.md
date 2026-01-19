@@ -158,6 +158,7 @@ If you prefer faster delivery, fallback to storing `subscription` inside `user_s
 | --- | --- | --- | --- |
 | 2026-01-22 | v0.1 | Creation de la story 3.5 | Dev |
 | 2026-01-22 | v0.2 | Stripe backend + webhook + sync | Dev |
+| 2026-01-22 | v0.3 | Validation en production (checkout + portal) | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -171,6 +172,7 @@ N/A
 - Edge Functions: `stripe-checkout`, `stripe-portal`, `stripe-webhook` with signature verification and idempotency.
 - SyncService pulls subscription state into `settings.subscription` and app UI.
 - App checkout/portal now call Edge Functions with fallback hosted URLs.
+- Validation: checkout + portal OK, legacy JWT toggle disabled post-deploy, secrets set.
 
 ### File List
 - supabase/schema.sql
