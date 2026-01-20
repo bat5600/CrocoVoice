@@ -49,11 +49,10 @@ N/A
 
 ### Completion Notes List
 - Debounce start/stop separement pour eviter les doubles triggers sans bloquer un stop rapide.
-- Aucun test manuel execute (environnement local non lance).
 - Tests manuels effectues et OK (start/stop, double-trigger, retour a idle).
 
 ### File List
 - main.js
-- docs/stories/DONE-DONE-1.1.robustifier-cycle-enregistrement-etats.md
+- docs/stories/DONE-1.1.robustifier-cycle-enregistrement-etats.md
 
 ## QA Results

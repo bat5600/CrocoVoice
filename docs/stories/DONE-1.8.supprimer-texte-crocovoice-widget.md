@@ -44,7 +44,7 @@ GPT-5
 N/A
 
 ### Completion Notes List
-- Tests manuels non executes (render initial, hover, start/stop).
+- Tests manuels executes et OK (render initial, hover, start/stop).
 - Ajout de hasShadow:false pour supprimer le halo/gradient de fenetre.
 - Force un fond transparent cote CSS + setBackgroundColor apres load.
 - Tooltip masque hors survol pour eviter un bloc visible au-dessus du widget.

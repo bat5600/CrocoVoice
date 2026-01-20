@@ -1,7 +1,7 @@
 # Story 1.5: Structurer le code pour maintenance et evolution
 
 ## Status
-Ready for Review
+Done
 
 ## Story
 **As a** maintainer,

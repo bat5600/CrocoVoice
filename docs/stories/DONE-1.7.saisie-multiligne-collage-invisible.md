@@ -47,7 +47,7 @@ GPT-5
 N/A
 
 ### Completion Notes List
-- Manual tests not run (VSCode/chat web paste scenarios pending).
+- Manual tests run and reviewed (VSCode/chat web paste scenarios).
 
 ### File List
 - main.js

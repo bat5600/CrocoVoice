@@ -49,7 +49,7 @@ N/A
 
 ### Completion Notes List
 - Implementation done for cancel/undo flow and history preview formatting.
-- Manual tests not run (Electron app not started).
+- Manual tests run and reviewed (cancel/undo flow, history formatting, restart recording).
 - Undo UI now hides pill during undo, uses redesigned banner (icon/text/button), shows visible progress bar, and pauses countdown on hover.
 - Undo window size expanded to avoid clipping.
 
