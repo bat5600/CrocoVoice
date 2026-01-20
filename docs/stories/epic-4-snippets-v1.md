@@ -1,0 +1,57 @@
+# Epic 4 — Snippets v1 (voice cues → templates)
+
+## Status
+Draft
+
+## Story
+**As a** user,  
+**I want** Snippets where a short voice cue maps to a reusable text template,  
+**so that** I can insert common phrases/structures quickly while dictating.
+
+## Acceptance Criteria
+1. I can create, list, and delete snippets from the dashboard.
+2. Each snippet has: a “cue” (what I say) and a “template” (what gets inserted), plus an optional description.
+3. Snippet matching rules are simple and documented (v1): exact match or prefix match on the cue after normalization (trim + case-insensitive).
+4. When a dictation starts with a matching cue, the cue is removed from the delivered text and replaced by the template.
+5. User-friendly template behavior (v1 recommendation): support a single placeholder `{{content}}` that expands to the remaining spoken text (after removing the cue). If `{{content}}` is not present, append the remaining content at the end.
+6. Snippet behavior is safe: if multiple matches exist, apply the most specific match; if uncertain, do nothing.
+7. Snippets work offline (SQLite source of truth); if sync is enabled, changes are queued and non-blocking.
+
+## Tasks / Subtasks
+- [ ] Add SQLite storage for snippets (create/list/delete) (AC: 1,2,7)
+- [ ] Add dashboard UI for managing snippets (AC: 1,2)
+- [ ] Implement cue matching + replacement in main dictation pipeline (AC: 3,4,5,6)
+- [ ] Ensure behavior is consistent across delivery targets (type/paste/clipboard and Notes target) (AC: 4,7)
+
+## Dev Notes
+- Likely new table in `store.js` and new IPC handlers in `main.js`.
+- Apply snippet expansion in main process after transcription post-process and before delivery; recommended order for best UX:
+  1) LLM post-process (cleanup/punctuation)
+  2) Snippet expansion (cue → template, `{{content}}`)
+  3) Dictionary corrections
+  4) Persist + deliver
+- Keep matching rules conservative to avoid surprising replacements.
+
+### Testing
+- Manual: add snippet, speak cue-only, cue+extra text, non-matching, overlapping cues, multiple snippets.
+- Offline: verify snippets still apply with no network.
+
+## Change Log
+| Date | Version | Description | Author |
+| --- | --- | --- | --- |
+| 2026-01-20 | v0.1 | Story created from global PRD Epic 4 shard plan | PO |
+
+## Dev Agent Record
+### Agent Model Used
+TBD
+
+### Debug Log References
+N/A
+
+### Completion Notes List
+- TBD
+
+### File List
+- TBD
+
+## QA Results

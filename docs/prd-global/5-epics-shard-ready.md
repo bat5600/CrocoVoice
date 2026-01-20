@@ -1,80 +1,8 @@
-# CrocoVoice — Global Product Requirements Document (PRD)
-
-Date: 2026-01-20  
-Version: vGlobal-1.1  
-Archives: `docs/prd-archive-20260120.md`, `docs/prd-vnext-archive-20260120.md`  
-Shards (vGlobal-1.1): `docs/prd-global/`  
-Legacy shards (historic PRD fragments): `docs/prd/`  
-Supporting brief: `docs/brief.md`
-
-## 1) Product Vision & Context
-
-CrocoVoice is an **AI voice OS for writing**: a hotkey-first desktop app that captures speech, transcribes it, cleans/structures the text, and reliably **delivers** the result (type/paste/clipboard/context-aware output) with a premium UX.
-
-Current state (brownfield): Electron app (MediaRecorder → Whisper → LLM post-process → auto-typing), widget + dashboard, local SQLite as source of truth, optional Supabase (auth/sync).
-
-## 2) Scope Principles (how to keep this global PRD actionable)
-
-- This PRD covers **past / present / future** and stays actionable with `DONE / NOW / NEXT / LATER` tags.
-- Detailed implementation work is created by **sharding** into execution-ready documents (epics → stories) under `docs/stories/`. Each epic includes a “Shard plan” listing suggested filenames to create there.
-- Top priority (always): **latency + reliability + final-text quality + delivery robustness**, before moonshots (meetings, knowledge graph, deep automation).
-
-## 3) Global Requirements
-
-### Functional (high-level)
-- Universal dictation: global hotkeys, Quick Dictate overlay, Full Dictate editor.
-- Pipeline: STT (Whisper) + configurable post-processing (cleanup/punctuation/structure) + writing styles.
-- Delivery: auto-typing with paste fallback, then clipboard fallback, with explicit delivery feedback.
-- History: list/search/copy/delete + re-apply a style.
-- Notes + Dictionary + Voice snippets (voice cue → template insertion).
-- Freemium: weekly word quota + just-in-time paywall + PRO unlimited + billing settings.
-- Auth: existing signup/login + forgot/reset password.
-- Contextual awareness: adapt style/formatting based on the active app, with user controls.
-- Long form: file uploads transcription + exports; then meetings (manual record → transcript → summary/action items).
-
-### MVP Operational Defaults (locked)
-
-These defaults must be consistent across product, docs, and implementation.
-
-- **Quota authority:** `CROCOVOICE_QUOTA_MODE=hybrid` (prefer server quota when available; fall back to local enforcement).
-- **Entitlement authority:** server-backed (Stripe/Supabase is the source of truth), with cached entitlement for offline use.
-- **Offline behavior (FREE):** allowed to dictate; quota is enforced locally against the last known allowance; once remaining hits 0, dictation is blocked until reconnection + refresh/sync.
-- **Offline behavior (PRO):** allowed to dictate with “unlimited” if a cached PRO entitlement is still valid within an entitlement TTL (target: **3 days since last verification**); once TTL expires without re-verification, fall back to FREE quota mode until online verification succeeds.
-
-### Non-Functional (targets)
-- Hotkey → “listening” feedback < 100ms (p95).
-- Short dictation (<= 30s) → final text < 3s (p95), excluding bad network conditions.
-- Delivery robustness: never “lose” text (clipboard fallback + toast).
-- Privacy: consent, configurable retention, easy deletion, minimize stored audio.
-- Cost control: quotas + caching + model selection + per-action cost instrumentation.
-- Supabase sync (if enabled) must be non-blocking; SQLite remains the source of truth.
-
-## 4) Roadmap & Milestones
-
-### Legend
-- `DONE`: completed and stable (still subject to review/gates)
-- `NOW`: current focus for execution and sharding
-- `NEXT`: planned next (needs sizing, dependencies, and acceptance gates)
-- `LATER`: long-term direction (will be re-validated)
-
-### Milestones (table)
-| Milestone | Included epics | Status | Exit criteria (summary) |
-| --- | --- | --- | --- |
-| M0 — MVP Ready | Epic 1–3 | DONE* | Stable dictation pipeline + premium dashboard + quota/paywall/billing/auth working |
-| M1 — Core Daily Driver | Epic 4 + Epic 7 | NOW | Notes/history/dictionary/snippets usable daily + onboarding/permissions are smooth |
-| M2 — Context Awareness v1 | Epic 5 + Epic 8 | NEXT | App context detection + adaptive formatting/tone + basic intent routing for a few actions |
-| M3 — Long Form (Uploads) | Epic 6 | NEXT | Upload → processing → results + exports md/txt/json (+ optional timestamps) |
-| M4 — Meetings v1 | Epic 9 | LATER | Manual record + transcript + summary/action items + basic search |
-| M5 — Advanced Platform | Epic 10 + Epic 11 | LATER | Release pipeline + auto-update + multi-OS plan and compatibility matrix |
-| M6 — Knowledge & Trust | Epic 12 + Epic 13 + Epic 14 | LATER | Retrieval/search/RAG + privacy/compliance posture + quality & cost control loop |
-
-*“DONE” currently reflects your statement; recommended to run a structured MVP review to confirm.
-
-## 5) Epics (shard-ready)
+# 5) Epics (shard-ready)
 
 Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dependencies, and risks.
 
-### Epic 1 — Stabilization & Core Reliability (`DONE`)
+## Epic 1 — Stabilization & Core Reliability (`DONE`)
 **Goal**
 - Make the end-to-end dictation flow reliable and predictable (state management, retries, error recovery, delivery fallback).
 
@@ -105,7 +33,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - OS permission edge cases; inconsistent paste/typing behavior across apps.
 
-### Epic 2 — Premium Dashboard UX (`DONE`)
+## Epic 2 — Premium Dashboard UX (`DONE`)
 **Goal**
 - Ship a premium SaaS-like dashboard UI without breaking existing flows.
 
@@ -132,7 +60,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Visual regressions; accessibility/focus traps.
 
-### Epic 3 — Freemium, Billing, and Auth Flows (`DONE`)
+## Epic 3 — Freemium, Billing, and Auth Flows (`DONE`)
 **Goal**
 - Monetize with a simple FREE/PRO model (weekly quota) and solid auth/billing flows.
 
@@ -164,12 +92,12 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Client-only enforcement can be bypassed; entitlement syncing inconsistencies.
 
-### Epic 4 — Daily Driver: History, Notes, Dictionary, Snippets (`NOW`)
+## Epic 4 — Daily Driver: History, Notes, Dictionary, Snippets (`NOW`)
 **Goal**
 - Make CrocoVoice a daily companion: capture, store, refine, reuse.
 
 **In scope**
-- Notes view (create/list/search/delete) distinct from dictation history.
+- Notes view (create/list/search/delete) distinct from dictation history (Notion-like).
 - Premium history list (search, copy/delete, hover actions, good empty states).
 - Dictionary v1 (manual add; optional “add from correction” hooks).
 - Snippets v1 (voice cues mapped to templates; simple matching rules).
@@ -194,7 +122,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Data model creep; UX clutter.
 
-### Epic 5 — Contextual Awareness & Adaptive Output (`NEXT`)
+## Epic 5 — Contextual Awareness & Adaptive Output (`NEXT`)
 **Goal**
 - Adapt transcript style, tone, and formatting based on the active app and user context, using local signals.
 
@@ -224,7 +152,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Permission friction; incorrect context leading to wrong tone/format; privacy concerns.
 
-### Epic 6 — Long Form: Uploads & Exports (`NEXT`)
+## Epic 6 — Long Form: Uploads & Exports (`NEXT`)
 **Goal**
 - Support long recordings (file uploads) and practical exports.
 
@@ -249,7 +177,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Large file handling; cost spikes; privacy concerns.
 
-### Epic 7 — Onboarding, Permissions & Diagnostics (`NOW`)
+## Epic 7 — Onboarding, Permissions & Diagnostics (`NOW`)
 **Goal**
 - Make first-run success high and failures debuggable (especially OS permissions and delivery failures).
 
@@ -274,7 +202,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Platform differences; ongoing OS updates breaking behaviors.
 
-### Epic 8 — Voice-to-Action (Intent & Orchestration) (`NEXT`)
+## Epic 8 — Voice-to-Action (Intent & Orchestration) (`NEXT`)
 **Goal**
 - Turn speech into structured intent and execute a small set of safe actions.
 
@@ -299,7 +227,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Mis-execution; user trust loss; prompt brittleness.
 
-### Epic 9 — Meeting Assistant (Manual → Assisted) (`LATER`)
+## Epic 9 — Meeting Assistant (Manual → Assisted) (`LATER`)
 **Goal**
 - Capture meetings and produce searchable transcripts and actionable summaries.
 
@@ -325,7 +253,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Legal/privacy constraints; large audio storage; latency/cost.
 
-### Epic 10 — Packaging, Distribution & Auto-Update (`LATER`)
+## Epic 10 — Packaging, Distribution & Auto-Update (`LATER`)
 **Goal**
 - Ship releases safely and reduce support burden.
 
@@ -350,7 +278,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Signing/notarization complexity; update failures causing trust issues.
 
-### Epic 11 — Platform Expansion & Compatibility Matrix (`LATER`)
+## Epic 11 — Platform Expansion & Compatibility Matrix (`LATER`)
 **Goal**
 - Expand to Windows/Linux without sacrificing core reliability.
 
@@ -375,7 +303,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - OS APIs differences; high QA surface area.
 
-### Epic 12 — Search, Knowledge Base & Retrieval (`LATER`)
+## Epic 12 — Search, Knowledge Base & Retrieval (`LATER`)
 **Goal**
 - Help users find and reuse past content (history/notes/transcripts) and ask questions over it.
 
@@ -399,7 +327,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Cost growth; confusing results; privacy concerns.
 
-### Epic 13 — Privacy, Security & Compliance (`LATER`)
+## Epic 13 — Privacy, Security & Compliance (`LATER`)
 **Goal**
 - Build trust and reduce risk around sensitive audio and transcripts.
 
@@ -424,7 +352,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 **Risks**
 - Regulatory requirements; user trust erosion after incidents.
 
-### Epic 14 — Observability, Quality Loop & Cost Control (`LATER`)
+## Epic 14 — Observability, Quality Loop & Cost Control (`LATER`)
 **Goal**
 - Continuously improve output quality while keeping costs under control.
 
@@ -450,9 +378,3 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 
 **Risks**
 - Over-instrumentation; privacy concerns if telemetry is not designed carefully.
-
-## 6) Next Steps (recommended)
-
-1. Run an **MVP readiness review** for Epics 1–3 (demo + known issues + p95 metrics + manual regression checklist).
-2. Freeze the definition of “DONE” for M0, then shard Epics 4 and 7 into execution stories.
-3. Keep this PRD updated at each milestone (changelog + epic status changes).

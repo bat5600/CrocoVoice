@@ -1,0 +1,57 @@
+# Epic 4 — History: premium list, search, copy, delete (with undo)
+
+## Status
+Draft
+
+## Story
+**As a** user,  
+**I want** a premium history list with fast search and quick actions (copy/delete),  
+**so that** I can quickly find, reuse, or remove past dictations.
+
+## Acceptance Criteria
+1. History list is easy to scan and consistently shows: title (derived), preview, timestamp, and (if available) duration/language; it renders quickly for at least the last 200 entries.
+2. Title derivation is predictable: first sentence (or first non-empty line) truncated; never empty (“Untitled” fallback).
+3. Search filters history by text (and title) with responsive UX (debounced input) and good empty states.
+4. Each history row has clear actions to copy the **final** text and delete the entry (hover actions acceptable).
+5. Delete is safe: it updates UI immediately and offers an **Undo** toast for a short window (recommended: 10s); if undone, the same entry is restored.
+6. “Copy” always succeeds with a user-visible confirmation (toast) and never loses the text (clipboard fallback behavior is explicit).
+7. Deleting persists in SQLite; if sync is enabled, remote deletion is queued and non-blocking.
+8. All features work offline (SQLite source of truth).
+
+## Tasks / Subtasks
+- [ ] Implement/confirm history list layout (title/preview + timestamp + optional metadata) and fast initial load (AC: 1,2)
+- [ ] Add responsive search/filter for history with debounce and empty states (AC: 3)
+- [ ] Add row actions for copy + delete with consistent UX patterns (AC: 4)
+- [ ] Implement delete undo flow (toast + restore) (AC: 5)
+- [ ] Ensure copy uses reliable clipboard APIs and shows feedback (AC: 6)
+- [ ] Ensure delete persists locally and sync is non-blocking when enabled (AC: 7,8)
+
+## Dev Notes
+- Storage: `store.js` history table (`listHistory`, `deleteHistory`).
+- IPC: `main.js` history list/delete handlers (and any existing clipboard helper).
+- UI: `dashboard.html` / `dashboard.js` list rendering + search input + toasts; keep patterns consistent with existing views.
+- “Undo” implementation suggestion (low complexity): on delete, keep the deleted record in-memory; on undo, re-insert via existing upsert (`addHistory`) with same `id`.
+
+### Testing
+- Manual: generate multiple dictations, verify list ordering, title derivation, search, copy, delete + undo, restart persistence.
+- Offline: run without network, verify list/search/copy/delete still works and no blocking behavior occurs.
+
+## Change Log
+| Date | Version | Description | Author |
+| --- | --- | --- | --- |
+| 2026-01-20 | v0.1 | Story created from global PRD Epic 4 shard plan | PO |
+
+## Dev Agent Record
+### Agent Model Used
+TBD
+
+### Debug Log References
+N/A
+
+### Completion Notes List
+- TBD
+
+### File List
+- TBD
+
+## QA Results
