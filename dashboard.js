@@ -46,6 +46,11 @@ const statTotal = document.getElementById('statTotal');
 const streakSubtitle = document.getElementById('streakSubtitle');
 const quotaRemaining = document.getElementById('quotaRemaining');
 const quotaReset = document.getElementById('quotaReset');
+const upgradeNudge = document.getElementById('upgradeNudge');
+const upgradeNudgeRemaining = document.getElementById('upgradeNudgeRemaining');
+const upgradeNudgeFill = document.getElementById('upgradeNudgeFill');
+const upgradeNudgeCaption = document.getElementById('upgradeNudgeCaption');
+const upgradeNudgeButton = document.getElementById('upgradeNudgeButton');
 const profileName = document.getElementById('profileName');
 const profilePlan = document.getElementById('profilePlan');
 const profileAvatar = document.getElementById('profileAvatar');
@@ -76,6 +81,9 @@ let shortcutBeforeCapture = '';
 let shortcutInvalidShown = false;
 let historyLoadError = false;
 let quotaSnapshot = null;
+let currentSubscription = null;
+let currentAuth = null;
+const UPGRADE_NUDGE_THRESHOLD = 500;
 const STYLE_PRESETS = ['Default', 'Casual', 'Formel', 'Croco'];
 const STYLE_EXAMPLES = {
   Default: {
@@ -107,6 +115,12 @@ const STYLE_LABELS = {
   Formel: 'Formel',
   Croco: 'Croco',
 };
+const SUBSCRIPTION_POLL_DELAY_MS = 4000;
+const SUBSCRIPTION_POLL_MAX_ATTEMPTS = 6;
+const SUBSCRIPTION_POLL_COOLDOWN_MS = 60000;
+let subscriptionPollInFlight = false;
+let subscriptionPollToken = 0;
+let lastSubscriptionPollAt = 0;
 
 function setButtonLoading(button, isLoading, label) {
   if (!button) {
@@ -136,6 +150,115 @@ function setButtonLoading(button, isLoading, label) {
   delete button.dataset.loadingLabel;
   delete button.dataset.loadingText;
   button.classList.remove('is-loading');
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isSubscriptionActive(subscription) {
+  if (!subscription) {
+    return false;
+  }
+  if (subscription.isPro) {
+    return true;
+  }
+  return subscription.status === 'active' || subscription.status === 'trialing';
+}
+
+async function refreshSubscriptionData() {
+  if (!window.electronAPI?.refreshSubscription) {
+    return { ok: false, reason: 'not_available' };
+  }
+  try {
+    const result = await window.electronAPI.refreshSubscription();
+    if (!result?.ok) {
+      return { ok: false, reason: result?.reason || 'error' };
+    }
+    await refreshDashboard();
+    return { ok: true, subscription: dashboardData?.subscription };
+  } catch (error) {
+    return { ok: false, reason: 'error' };
+  }
+}
+
+async function startSubscriptionActivationCheck({ force } = {}) {
+  if (subscriptionPollInFlight) {
+    return;
+  }
+  const subscription = dashboardData?.subscription;
+  if (isSubscriptionActive(subscription)) {
+    return;
+  }
+  if (!force) {
+    if (!subscription || subscription.status !== 'pending') {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastSubscriptionPollAt < SUBSCRIPTION_POLL_COOLDOWN_MS) {
+      return;
+    }
+    lastSubscriptionPollAt = now;
+  }
+
+  subscriptionPollInFlight = true;
+  const token = ++subscriptionPollToken;
+  lastSubscriptionPollAt = Date.now();
+  showToast('Activation en cours...');
+
+  for (let attempt = 0; attempt < SUBSCRIPTION_POLL_MAX_ATTEMPTS; attempt += 1) {
+    const result = await refreshSubscriptionData();
+    if (token !== subscriptionPollToken) {
+      break;
+    }
+    if (result?.ok && isSubscriptionActive(dashboardData?.subscription)) {
+      showToast('Abonnement PRO activé.');
+      break;
+    }
+    if (result?.reason === 'not_authenticated') {
+      showToast('Connectez-vous pour finaliser l’abonnement.', 'error');
+      break;
+    }
+    if (result?.reason === 'not_configured') {
+      showToast('Actualisation indisponible.', 'error');
+      break;
+    }
+    if (attempt < SUBSCRIPTION_POLL_MAX_ATTEMPTS - 1) {
+      await delay(SUBSCRIPTION_POLL_DELAY_MS);
+    }
+  }
+
+  subscriptionPollInFlight = false;
+}
+
+async function triggerCheckout(button) {
+  if (!window.electronAPI?.startCheckout) {
+    showToast('Checkout indisponible.', 'error');
+    return;
+  }
+  const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
+  if (!auth) {
+    showToast('Connectez-vous pour passer PRO.', 'error');
+    if (window.electronAPI?.openSignupUrl) {
+      await window.electronAPI.openSignupUrl('login');
+    }
+    return;
+  }
+  try {
+    setButtonLoading(button, true, 'Ouverture...');
+    const result = await window.electronAPI.startCheckout();
+    if (!result?.ok) {
+      showToast('Checkout non configuré.', 'error');
+      return;
+    }
+    showToast('Redirection vers Stripe...');
+    await refreshDashboard();
+    startSubscriptionActivationCheck({ force: true });
+  } catch (error) {
+    showToast(error?.message || 'Checkout impossible.', 'error');
+  } finally {
+    setButtonLoading(button, false);
+  }
 }
 
 function openModal({ title, fields, confirmText }) {
@@ -660,25 +783,67 @@ function renderQuota(quota) {
   if (!quota) {
     quotaRemaining.textContent = '—';
     quotaReset.textContent = 'Quota indisponible';
+    renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
   if (quota.checkFailed || quota.unavailable) {
     quotaRemaining.textContent = '—';
     quotaReset.textContent = quota.message || 'Quota indisponible';
+    renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
   if (quota.requiresAuth) {
     quotaRemaining.textContent = '—';
     quotaReset.textContent = 'Connectez-vous pour voir le quota';
+    renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
   if (quota.unlimited) {
     quotaRemaining.textContent = 'Illimité';
     quotaReset.textContent = 'Plan Pro actif';
+    renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
   quotaRemaining.textContent = quota.remaining;
   quotaReset.textContent = formatResetLabel(quota.resetAt);
+  renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
+}
+
+function renderUpgradeNudge(quota, subscription, auth) {
+  if (!upgradeNudge) {
+    return;
+  }
+  const isPro = Boolean(subscription?.isPro);
+  const remaining = Number.isFinite(quota?.remaining) ? quota.remaining : null;
+  const shouldShow = !isPro
+    && !quota?.requiresAuth
+    && !quota?.unlimited
+    && Number.isFinite(remaining)
+    && remaining <= UPGRADE_NUDGE_THRESHOLD;
+
+  if (!shouldShow) {
+    upgradeNudge.style.display = 'none';
+    upgradeNudge.setAttribute('aria-hidden', 'true');
+    return;
+  }
+
+  if (upgradeNudgeRemaining) {
+    upgradeNudgeRemaining.textContent = `${remaining}`;
+  }
+  if (upgradeNudgeCaption) {
+    upgradeNudgeCaption.textContent = formatResetLabel(quota?.resetAt);
+  }
+  if (upgradeNudgeFill) {
+    const limit = Number.isFinite(quota?.limit) ? quota.limit : null;
+    const usedRatio = limit ? Math.min(1, Math.max(0, (limit - remaining) / limit)) : 1;
+    const percent = Math.max(8, Math.round(usedRatio * 100));
+    upgradeNudgeFill.style.width = `${percent}%`;
+  }
+  if (upgradeNudgeButton) {
+    upgradeNudgeButton.disabled = !auth;
+  }
+  upgradeNudge.style.display = 'block';
+  upgradeNudge.setAttribute('aria-hidden', 'false');
 }
 
 function getSubscriptionLabel(subscription) {
@@ -696,6 +861,8 @@ function getSubscriptionLabel(subscription) {
 }
 
 function renderSubscription(subscription, auth) {
+  currentSubscription = subscription || null;
+  currentAuth = auth || null;
   if (profileName) {
     const displayName = auth?.email ? auth.email.split('@')[0] : 'Invité';
     profileName.textContent = displayName;
@@ -740,13 +907,14 @@ function renderSubscription(subscription, auth) {
     if (!auth) {
       subscriptionNote.textContent = 'Connectez-vous pour gérer votre abonnement.';
     } else if (subscription?.status === 'pending') {
-      subscriptionNote.textContent = 'Après achat, cliquez sur Actualiser pour récupérer votre statut.';
+      subscriptionNote.textContent = 'Activation en cours. Cela peut prendre quelques instants.';
     } else if (subscription?.isPro) {
       subscriptionNote.textContent = 'Merci pour votre abonnement PRO.';
     } else {
       subscriptionNote.textContent = 'Passez Pro pour débloquer la dictée illimitée.';
     }
   }
+  renderUpgradeNudge(quotaSnapshot, subscription, auth);
 }
 
 function renderDictionary(dictionary) {
@@ -1266,6 +1434,7 @@ async function refreshDashboard() {
   renderAuth(dashboardData.auth, dashboardData.syncReady);
   renderSubscription(dashboardData.subscription, dashboardData.auth);
   await populateMicrophones();
+  startSubscriptionActivationCheck();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -1322,32 +1491,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (upgradePlanButton) {
     upgradePlanButton.addEventListener('click', async () => {
-      if (!window.electronAPI?.startCheckout) {
-        showToast('Checkout indisponible.', 'error');
-        return;
-      }
-      const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
-      if (!auth) {
-        showToast('Connectez-vous pour passer PRO.', 'error');
-        if (window.electronAPI?.openSignupUrl) {
-          await window.electronAPI.openSignupUrl('login');
-        }
-        return;
-      }
-      try {
-        setButtonLoading(upgradePlanButton, true, 'Ouverture...');
-        const result = await window.electronAPI.startCheckout();
-        if (!result?.ok) {
-          showToast('Checkout non configuré.', 'error');
-          return;
-        }
-        showToast('Redirection vers Stripe...');
-        await refreshDashboard();
-      } catch (error) {
-        showToast(error?.message || 'Checkout impossible.', 'error');
-      } finally {
-        setButtonLoading(upgradePlanButton, false);
-      }
+      await triggerCheckout(upgradePlanButton);
+    });
+  }
+
+  if (upgradeNudgeButton) {
+    upgradeNudgeButton.addEventListener('click', async () => {
+      await triggerCheckout(upgradeNudgeButton);
     });
   }
 

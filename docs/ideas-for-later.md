@@ -40,10 +40,12 @@
       professionnel, casual, enthousiaste, etc.  
       Tu parles normalement, CrocoVoice ajuste le style.
 
-[ ] Au démarrage de l'app ca me met toujours 2000 mots restants avant de synchroniser le VRAI nombre de mots. POurquoi  ne pas prendre la valeur en cache ? 
+[x] Au démarrage de l'app ca me met toujours 2000 mots restants avant de synchroniser le VRAI nombre de mots. POurquoi  ne pas prendre la valeur en cache ? 
 
-[ ] Quand j'atteins 0 mots restants je que le widget affiche une erreur au moment ou je tente une dictée (pas en permanence) avec un lien pour upgrader
+[x] Quand j'atteins 0 mots restants je que le widget affiche une erreur au moment ou je tente une dictée (pas en permanence) avec un lien pour upgrader
 
-[ ] Je veux égalemnet que le dashboard affiche un truc sexy pour inciter à l'upgrade et à passer pro pour continuer d'utiliser l'app
+[x] Je veux égalemnet que le dashboard affiche un truc sexy pour inciter à l'upgrade et à passer pro pour continuer d'utiliser l'app
 
 [ ] Quand je clique sur passer pro ou gérer l'abonnement c'est lent à ouvrir la page web et je n'ai pas d'indication de chargement
+
+[ ] Je veux que si je change de fenêtre cible mais que ca reste un champs de texte, on tente le "coller"

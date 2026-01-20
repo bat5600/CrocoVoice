@@ -78,6 +78,7 @@ const HISTORY_RETENTION_DAYS_FREE = Number.isFinite(parsedHistoryRetentionFree) 
 const parsedHistoryRetentionPro = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_PRO || '365', 10);
 const HISTORY_RETENTION_DAYS_PRO = Number.isFinite(parsedHistoryRetentionPro) ? parsedHistoryRetentionPro : 365;
 let recordingState = RecordingState.IDLE;
+let lastStatusMessage = '';
 const lastActionAt = {
   start: 0,
   stop: 0,
@@ -371,6 +372,15 @@ async function incrementQuotaUsage(text) {
 }
 
 async function getQuotaSnapshot() {
+  const cachedQuota = shouldUseServerQuota() ? readQuotaSnapshotCache() : null;
+  const authStatus = authState?.status;
+  const canUseCachedQuota = cachedQuota
+    && authStatus !== 'unauthenticated'
+    && authStatus !== 'not_configured';
+  if (canUseCachedQuota) {
+    void refreshQuotaSnapshotInBackground();
+    return cachedQuota;
+  }
   if (!syncService || !syncService.getUser()) {
     return {
       limit: WEEKLY_QUOTA_WORDS,
@@ -467,6 +477,8 @@ async function ensureQuotaAvailable() {
       return false;
     }
     if (isQuotaReached(quota)) {
+      setRecordingState(RecordingState.ERROR, 'Quota atteint. Passez Pro pour continuer.');
+      scheduleReturnToIdle(3500);
       notifyQuotaBlocked(quota);
       return false;
     }
@@ -491,6 +503,7 @@ function sendStatus(state, message) {
 function setRecordingState(state, message) {
   recordingState = state;
   isRecording = state === RecordingState.RECORDING;
+  lastStatusMessage = message || '';
   sendStatus(state, message);
   if (state === RecordingState.IDLE && pendingSync) {
     const deferred = pendingSync;
@@ -744,7 +757,7 @@ function shouldDebounceAction(action) {
 }
 
 function refreshRendererState() {
-  sendStatus(recordingState);
+  sendStatus(recordingState, lastStatusMessage);
 }
 
 async function captureTypingTarget() {

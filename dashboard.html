@@ -566,6 +566,52 @@
       color: var(--text-muted);
     }
 
+    .mesh-banner.upgrade-nudge {
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(255, 255, 255, 0.9));
+      box-shadow: 0 16px 30px -20px rgba(16, 185, 129, 0.45);
+      display: none;
+    }
+
+    .upgrade-nudge .mesh-title strong {
+      color: var(--emerald-700);
+    }
+
+    .quota-bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.12);
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .quota-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981, #34d399);
+      border-radius: 999px;
+      transition: width 0.3s ease;
+    }
+
+    .quota-caption {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .outline-btn.upgrade-cta {
+      border-color: rgba(16, 185, 129, 0.4);
+      color: var(--emerald-700);
+    }
+
+    .outline-btn.upgrade-cta:hover {
+      border-color: var(--emerald-500);
+      color: var(--emerald-800);
+      box-shadow: 0 10px 18px -12px rgba(16, 185, 129, 0.6);
+    }
+
     .outline-btn {
       padding: 10px 18px;
       border-radius: 12px;
@@ -1969,7 +2015,7 @@
 
             <div class="stat-card">
               <div>
-                <h3 id="quotaRemaining">2000</h3>
+                <h3 id="quotaRemaining">—</h3>
                 <div class="stat-label">Mots restants</div>
                 <div class="stat-meta" id="quotaReset">Reset lundi 00:00 UTC</div>
               </div>
@@ -1979,13 +2025,17 @@
             </div>
           </div>
 
-          <div class="mesh-banner">
+          <div class="mesh-banner upgrade-nudge" id="upgradeNudge" aria-hidden="true">
             <div class="mesh-content">
               <div>
-                <div class="mesh-title">Rétrospective 2025</div>
-                <div class="mesh-text">Découvrez des insights sur votre utilisation vocale.</div>
+                <div class="mesh-title">Plus que <strong id="upgradeNudgeRemaining">500</strong> mots avant le blocage</div>
+                <div class="mesh-text">Passez Pro pour dicter sans limite, garder l’historique complet et continuer sans interruption.</div>
+                <div class="quota-bar">
+                  <div class="quota-bar-fill" id="upgradeNudgeFill"></div>
+                </div>
+                <div class="quota-caption" id="upgradeNudgeCaption">Reset lundi 00:00 UTC</div>
               </div>
-              <button class="outline-btn" type="button">Explorer les stats</button>
+              <button class="outline-btn upgrade-cta" type="button" id="upgradeNudgeButton">Passer Pro</button>
             </div>
           </div>
 

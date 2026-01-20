@@ -515,6 +515,24 @@
       min-width: 0;
     }
 
+    .widget-error-action {
+      margin-left: auto;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(34, 197, 94, 0.6);
+      background: rgba(34, 197, 94, 0.18);
+      color: #dcfce7;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: none;
+      white-space: nowrap;
+    }
+
+    .widget-error-action:hover {
+      background: rgba(34, 197, 94, 0.28);
+    }
+
     .widget-container.idle .waveform,
     .widget-container.idle .spinner,
     .widget-container.idle .cancel-button,
@@ -719,6 +737,7 @@
       <div class="widget-error" id="widgetError" aria-live="polite">
         <span class="widget-error-icon">i</span>
         <span class="widget-error-text" id="widgetErrorText">Erreur</span>
+        <button class="widget-error-action" type="button" id="widgetErrorUpgradeButton">Passer Pro</button>
       </div>
       <div class="cancel-undo" id="cancelUndo" aria-live="polite">
         <span class="cancel-undo-icon">i</span>

@@ -86,6 +86,7 @@ So that I can access unlimited dictation and control billing.
 | --- | --- | --- | --- |
 | 2026-01-15 | v0.1 | Creation de la dev story | PM |
 | 2026-01-22 | v0.2 | Checkout/portal + statut abonnement UI | Dev |
+| 2026-01-20 | v0.3 | Auto-refresh + polling abonnement, message pending | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -97,8 +98,9 @@ N/A
 ### Completion Notes List
 - Checkout/portal Stripe exposes `STRIPE_CHECKOUT_URL` + `STRIPE_PORTAL_URL` (with user id/email query params).
 - Statut abonnement persiste via `settings.subscription` synchronise dans `user_settings`.
-- UI dashboard affiche plan, badge et actions "Passer Pro", "Gerer mon abonnement", "Actualiser".
+- UI dashboard affiche plan, badge et actions "Passer Pro", "Gerer mon abonnement".
 - Quota passe en illimite quand abonnement PRO actif (status `active`/`trialing`).
+- Auto-refresh du statut d’abonnement apres checkout et au chargement si en attente, avec polling court post-checkout.
 
 ### File List
 - main.js

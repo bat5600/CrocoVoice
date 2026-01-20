@@ -85,6 +85,7 @@ Done
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-01-23 | v0.2 | Paywall dictation gating + CTA upgrade | Dev |
+| 2026-01-24 | v0.3 | Cache quota snapshot at startup, on-demand quota error CTA, dashboard upgrade nudge | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -97,11 +98,16 @@ N/A
 - Blocage de la dictée si quota hebdo atteint (check côté main avant démarrage).
 - Paywall widget dédié avec CTA "Passer Pro" et rappel du reset du quota.
 - CTA ouvre le checkout Stripe ou le dashboard settings pour l'upgrade.
+- Utilisation du quota en cache au démarrage + refresh en arrière-plan.
+- Erreur temporaire de widget à la tentative de dictée à 0 mot avec CTA upgrade.
+- Nudge d'upgrade dans le dashboard sous 500 mots restants avec barre de progression.
 
 ### File List
 - main.js
 - preload.js
 - index.html
 - renderer.js
+- dashboard.html
+- dashboard.js
 
 ## QA Results

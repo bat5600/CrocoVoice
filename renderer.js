@@ -23,6 +23,7 @@ let stopButton = null;
 let cancelUndoEl = null;
 let widgetErrorEl = null;
 let widgetErrorText = null;
+let widgetErrorUpgradeButton = null;
 let undoCancelButton = null;
 let cancelUndoProgress = null;
 let cancelUndoTimeoutId = null;
@@ -232,6 +233,10 @@ function updateWidgetState(state, message) {
     if (widgetErrorText) {
       widgetErrorText.textContent = message || 'Erreur';
     }
+    if (widgetErrorUpgradeButton) {
+      const showUpgrade = quotaGateActive || /quota/i.test(message || '');
+      widgetErrorUpgradeButton.style.display = showUpgrade ? 'inline-flex' : 'none';
+    }
     if (widgetErrorEl) {
       widgetErrorEl.classList.add('active');
     }
@@ -242,6 +247,9 @@ function updateWidgetState(state, message) {
   } else {
     if (widgetErrorEl) {
       widgetErrorEl.classList.remove('active');
+    }
+    if (widgetErrorUpgradeButton) {
+      widgetErrorUpgradeButton.style.display = 'none';
     }
     document.body.classList.remove('error-active');
     if (window.electronAPI?.setWidgetErrorVisible) {
@@ -694,6 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
   statusTextEl = document.getElementById('statusText');
   widgetErrorEl = document.getElementById('widgetError');
   widgetErrorText = document.getElementById('widgetErrorText');
+  widgetErrorUpgradeButton = document.getElementById('widgetErrorUpgradeButton');
   recordingTooltipEl = document.getElementById('recordingTooltip');
   shortcutLabelEl = document.getElementById('shortcutLabel');
   cancelButton = document.getElementById('cancelRecordingButton');
@@ -806,6 +815,30 @@ document.addEventListener('DOMContentLoaded', () => {
   if (quotaDismissButton) {
     quotaDismissButton.addEventListener('click', () => {
       clearQuotaGate();
+    });
+  }
+
+  if (widgetErrorUpgradeButton) {
+    widgetErrorUpgradeButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.startCheckout) {
+        if (widgetErrorText) {
+          widgetErrorText.textContent = 'Checkout indisponible.';
+        }
+        return;
+      }
+      widgetErrorUpgradeButton.disabled = true;
+      try {
+        const result = await window.electronAPI.startCheckout();
+        if (!result?.ok && widgetErrorText) {
+          widgetErrorText.textContent = 'Checkout non configuré.';
+        }
+      } catch (error) {
+        if (widgetErrorText) {
+          widgetErrorText.textContent = error?.message || 'Checkout indisponible.';
+        }
+      } finally {
+        widgetErrorUpgradeButton.disabled = false;
+      }
     });
   }
 
