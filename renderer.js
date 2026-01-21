@@ -41,6 +41,13 @@ let lastAudioActiveAt = null;
 let safetyIntervalId = null;
 let pendingNoAudioReason = null;
 let pendingWarningMessage = '';
+let micMonitorStream = null;
+let micMonitorContext = null;
+let micMonitorAnalyser = null;
+let micMonitorData = null;
+let micMonitorAnimationId = null;
+let micMonitorActive = false;
+let micMonitorLastSentAt = 0;
 let authGateEl = null;
 let authLoginButton = null;
 let authSignupButton = null;
@@ -69,6 +76,7 @@ const AUDIO_MIN_ACTIVE_MS = 200;
 const AUDIO_MIN_PEAK_RMS = 0.012;
 const RECORDING_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const RECORDING_MAX_DURATION_MS = 60 * 60 * 1000;
+const MIC_MONITOR_SEND_INTERVAL_MS = 80;
 
 function setUndoActive(active) {
   if (!widgetContainer) {
@@ -534,6 +542,87 @@ function stopWaveform() {
   }
 }
 
+async function startMicMonitor() {
+  if (micMonitorActive) {
+    return;
+  }
+  if (isRecording || (mediaRecorder && mediaRecorder.state === 'recording')) {
+    window.electronAPI.sendMicMonitorError('Mic already in use by recording.');
+    return;
+  }
+
+  micMonitorActive = true;
+  micMonitorLastSentAt = 0;
+
+  try {
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+    if (currentSettings.microphoneId) {
+      audioConstraints.deviceId = { exact: currentSettings.microphoneId };
+    }
+    micMonitorStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      throw new Error('AudioContext unavailable.');
+    }
+    if (!micMonitorContext) {
+      micMonitorContext = new AudioContextClass();
+    }
+    if (micMonitorContext.state === 'suspended') {
+      await micMonitorContext.resume();
+    }
+
+    micMonitorAnalyser = micMonitorContext.createAnalyser();
+    micMonitorAnalyser.fftSize = 1024;
+    micMonitorData = new Uint8Array(micMonitorAnalyser.fftSize);
+
+    const source = micMonitorContext.createMediaStreamSource(micMonitorStream);
+    source.connect(micMonitorAnalyser);
+
+    const render = (frameTimeMs) => {
+      if (!micMonitorAnalyser || !micMonitorData) {
+        return;
+      }
+      micMonitorAnalyser.getByteTimeDomainData(micMonitorData);
+      let rmsSum = 0;
+      for (let i = 0; i < micMonitorData.length; i += 1) {
+        const centered = (micMonitorData[i] - 128) / 128.0;
+        rmsSum += centered * centered;
+      }
+      const rms = Math.sqrt(rmsSum / micMonitorData.length);
+      if (frameTimeMs - micMonitorLastSentAt >= MIC_MONITOR_SEND_INTERVAL_MS) {
+        micMonitorLastSentAt = frameTimeMs;
+        window.electronAPI.sendMicMonitorLevel({ level: rms, at: Date.now() });
+      }
+      micMonitorAnimationId = requestAnimationFrame(render);
+    };
+
+    micMonitorAnimationId = requestAnimationFrame(render);
+  } catch (error) {
+    micMonitorActive = false;
+    window.electronAPI.sendMicMonitorError(error?.message || 'Microphone access failed.');
+    stopMicMonitor();
+  }
+}
+
+function stopMicMonitor() {
+  micMonitorActive = false;
+  if (micMonitorAnimationId) {
+    cancelAnimationFrame(micMonitorAnimationId);
+    micMonitorAnimationId = null;
+  }
+  if (micMonitorStream) {
+    micMonitorStream.getTracks().forEach((track) => track.stop());
+    micMonitorStream = null;
+  }
+  micMonitorAnalyser = null;
+  micMonitorData = null;
+}
+
 async function initializeMediaRecorder() {
   try {
     const audioConstraints = {
@@ -624,6 +713,9 @@ async function startRecording() {
   if (cancelUndoActive) {
     return;
   }
+  if (micMonitorActive) {
+    stopMicMonitor();
+  }
 
   isRecording = true;
   recordingStartedAt = Date.now();
@@ -685,6 +777,18 @@ window.electronAPI.onStopRecording(() => {
     console.error('[RENDERER] stop() crashed', e);
   }
 });
+
+if (window.electronAPI.onMicMonitorStart) {
+  window.electronAPI.onMicMonitorStart(() => {
+    startMicMonitor();
+  });
+}
+
+if (window.electronAPI.onMicMonitorStop) {
+  window.electronAPI.onMicMonitorStop(() => {
+    stopMicMonitor();
+  });
+}
 
 window.electronAPI.onStatusChange((status, message) => {
   isRecording = status === 'recording';

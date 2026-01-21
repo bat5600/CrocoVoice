@@ -138,6 +138,13 @@ const defaultSettings = {
     || (process.platform === 'darwin' ? 'Command+Shift+R' : 'Ctrl+Shift+R'),
   microphoneId: '',
   postProcessEnabled: true,
+  deliveryMode: 'paste',
+  onboarding: {
+    step: 'welcome',
+    completed: false,
+    firstRunSuccess: false,
+    updatedAt: null,
+  },
   activeStyleId: '',
   subscription: {
     plan: 'free',
@@ -1485,29 +1492,35 @@ async function triggerPasteShortcut() {
   await keyboardLib.releaseKey(modifierKey, nutKey.V);
 }
 
-async function pasteText(text) {
+async function pasteText(text, options = {}) {
   let previousClipboard = '';
+  const mode = options.mode || settings.deliveryMode || 'paste';
+  const shouldPaste = mode !== 'clipboard';
   try {
-    if (!keyboardLib) {
+    if (!keyboardLib && shouldPaste) {
       throw new Error('Keyboard automation unavailable.');
     }
     if (!text) {
       return;
     }
-    await assertTypingTargetStillActive();
+    if (shouldPaste) {
+      await assertTypingTargetStillActive();
+    }
     previousClipboard = clipboard.readText();
     pendingPasteBuffer = text;
 
     await new Promise((resolve) => setTimeout(resolve, 300));
     clipboard.writeText(pendingPasteBuffer);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    await triggerPasteShortcut();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (shouldPaste) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await triggerPasteShortcut();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
   } catch (error) {
     console.error('Paste error:', error);
     throw new Error(error.message || 'Echec du collage');
   } finally {
-    if (previousClipboard !== null && previousClipboard !== undefined) {
+    if (shouldPaste && previousClipboard !== null && previousClipboard !== undefined) {
       clipboard.writeText(previousClipboard);
     }
     pendingPasteBuffer = '';
@@ -1633,7 +1646,7 @@ async function handleAudioPayload(event, audioData) {
       title,
       warningMessage: pipelineWarningMessage,
     } = pipelineResult;
-    const shouldSkipPaste = target === 'notes';
+    const shouldSkipPaste = target === 'notes' || target === 'onboarding';
 
     await persistTranscription({ transcribedText, finalText, title });
 
@@ -1682,6 +1695,14 @@ ipcMain.on('audio-data', (event, audioData) => {
 
 ipcMain.on('audio-ready', (event, audioData) => {
   handleAudioPayload(event, audioData);
+});
+
+ipcMain.on('mic-monitor:level', (event, payload) => {
+  sendDashboardEvent('onboarding:mic-level', payload);
+});
+
+ipcMain.on('mic-monitor:error', (event, message) => {
+  sendDashboardEvent('onboarding:mic-error', message);
 });
 
 ipcMain.on('recording-error', (event, error) => {
@@ -1771,6 +1792,43 @@ ipcMain.handle('settings:save', async (event, nextSettings) => {
 
 ipcMain.handle('app:open-settings', () => {
   createDashboardWindow();
+});
+
+ipcMain.handle('app:open-privacy-mic', async () => {
+  if (process.platform !== 'win32') {
+    return { ok: false, reason: 'unsupported' };
+  }
+  await shell.openExternal('ms-settings:privacy-microphone');
+  return { ok: true };
+});
+
+ipcMain.handle('onboarding:mic-start', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { ok: false, reason: 'no-widget' };
+  }
+  mainWindow.webContents.send('mic-monitor:start');
+  return { ok: true };
+});
+
+ipcMain.handle('onboarding:mic-stop', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { ok: false, reason: 'no-widget' };
+  }
+  mainWindow.webContents.send('mic-monitor:stop');
+  return { ok: true };
+});
+
+ipcMain.handle('onboarding:delivery-check', async (event, sampleText) => {
+  const text = typeof sampleText === 'string' && sampleText.trim()
+    ? sampleText.trim()
+    : 'Test CrocoVoice';
+  try {
+    await captureTypingTarget();
+    await pasteText(text, { mode: 'paste' });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'Echec injection' };
+  }
 });
 
 ipcMain.handle('dashboard:data', async () => {

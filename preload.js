@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   openSettings: () => ipcRenderer.invoke('app:open-settings'),
+  openPrivacyMicrophone: () => ipcRenderer.invoke('app:open-privacy-mic'),
   getDashboardData: () => ipcRenderer.invoke('dashboard:data'),
   upsertDictionary: (entry) => ipcRenderer.invoke('dictionary:upsert', entry),
   deleteDictionary: (id) => ipcRenderer.invoke('dictionary:delete', id),
@@ -118,5 +119,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onQuotaBlocked: (callback) => {
     ipcRenderer.on('quota:blocked', (event, payload) => callback(payload));
+  },
+  startOnboardingMic: () => ipcRenderer.invoke('onboarding:mic-start'),
+  stopOnboardingMic: () => ipcRenderer.invoke('onboarding:mic-stop'),
+  runOnboardingDeliveryCheck: (sampleText) => ipcRenderer.invoke('onboarding:delivery-check', sampleText),
+  onOnboardingMicLevel: (callback) => {
+    ipcRenderer.on('onboarding:mic-level', (event, payload) => callback(payload));
+  },
+  onOnboardingMicError: (callback) => {
+    ipcRenderer.on('onboarding:mic-error', (event, message) => callback(message));
+  },
+  onMicMonitorStart: (callback) => {
+    ipcRenderer.on('mic-monitor:start', callback);
+  },
+  onMicMonitorStop: (callback) => {
+    ipcRenderer.on('mic-monitor:stop', callback);
+  },
+  sendMicMonitorLevel: (payload) => {
+    ipcRenderer.send('mic-monitor:level', payload);
+  },
+  sendMicMonitorError: (message) => {
+    ipcRenderer.send('mic-monitor:error', message);
   },
 });

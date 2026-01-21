@@ -66,6 +66,34 @@ const shortcutResetButton = document.getElementById('shortcutResetButton');
 const shortcutHelp = document.getElementById('shortcutHelp');
 const syncNowButton = document.getElementById('syncNowButton');
 const syncStatus = document.getElementById('syncStatus');
+const onboardingResetButton = document.getElementById('onboardingResetButton');
+const onboardingOverlay = document.getElementById('onboardingOverlay');
+const onboardingStepper = document.getElementById('onboardingStepper');
+const onboardingPanels = document.querySelectorAll('.onboarding-panel[data-step]');
+const onboardingStartButton = document.getElementById('onboardingStart');
+const onboardingSkipButton = document.getElementById('onboardingSkip');
+const onboardingPermissionButton = document.getElementById('onboardingPermissionButton');
+const onboardingPrivacyLink = document.getElementById('onboardingPrivacyLink');
+const onboardingPermissionStatus = document.getElementById('onboardingPermissionStatus');
+const onboardingVuBar = document.getElementById('onboardingVuBar');
+const onboardingMicStatus = document.getElementById('onboardingMicStatus');
+const onboardingMicContinue = document.getElementById('onboardingMicContinue');
+const onboardingMicrophoneSelect = document.getElementById('onboardingMicrophoneSelect');
+const onboardingMicrophoneApply = document.getElementById('onboardingMicrophoneApply');
+const onboardingSandbox = document.getElementById('onboardingSandbox');
+const onboardingDictateButton = document.getElementById('onboardingDictateButton');
+const onboardingFirstRunNext = document.getElementById('onboardingFirstRunNext');
+const onboardingDictationStatus = document.getElementById('onboardingDictationStatus');
+const onboardingSuccessBadge = document.getElementById('onboardingSuccessBadge');
+const onboardingDeliveryInput = document.getElementById('onboardingDeliveryInput');
+const onboardingDeliveryTestButton = document.getElementById('onboardingDeliveryTestButton');
+const onboardingDeliveryNext = document.getElementById('onboardingDeliveryNext');
+const onboardingDeliveryStatus = document.getElementById('onboardingDeliveryStatus');
+const onboardingFinishButton = document.getElementById('onboardingFinishButton');
+const onboardingCheckPermission = document.getElementById('onboardingCheckPermission');
+const onboardingCheckSignal = document.getElementById('onboardingCheckSignal');
+const onboardingCheckDictation = document.getElementById('onboardingCheckDictation');
+const onboardingCheckDelivery = document.getElementById('onboardingCheckDelivery');
 
 let currentSettings = {};
 let dashboardData = null;
@@ -83,6 +111,16 @@ let historyLoadError = false;
 let quotaSnapshot = null;
 let currentSubscription = null;
 let currentAuth = null;
+let onboardingState = { step: 'welcome', completed: false, firstRunSuccess: false, updatedAt: null };
+let onboardingSessionDismissed = false;
+let onboardingMicReady = false;
+let onboardingPermissionGranted = false;
+let onboardingMicLevel = 0;
+let onboardingMicLastActiveAt = 0;
+let onboardingRecordingActive = false;
+let onboardingDeliveryReady = false;
+let micDeviceCount = 0;
+let onboardingMicIgnoreUntil = 0;
 const UPGRADE_NUDGE_THRESHOLD = 500;
 const STYLE_PRESETS = ['Default', 'Casual', 'Formel', 'Croco'];
 const STYLE_EXAMPLES = {
@@ -121,6 +159,11 @@ const SUBSCRIPTION_POLL_COOLDOWN_MS = 60000;
 let subscriptionPollInFlight = false;
 let subscriptionPollToken = 0;
 let lastSubscriptionPollAt = 0;
+const ONBOARDING_STEPS = ['welcome', 'permissions', 'mic_check', 'first_dictation', 'delivery_check', 'done'];
+const MIC_NOISE_FLOOR = 0.012;
+const MIC_READY_THRESHOLD = 0.018;
+const MIC_READY_HOLD_MS = 500;
+const MIC_IGNORE_AFTER_CHANGE_MS = 1000;
 
 function setButtonLoading(button, isLoading, label) {
   if (!button) {
@@ -164,6 +207,195 @@ function isSubscriptionActive(subscription) {
     return true;
   }
   return subscription.status === 'active' || subscription.status === 'trialing';
+}
+
+function normalizeOnboardingState(settings) {
+  const onboarding = settings?.onboarding || {};
+  const step = ONBOARDING_STEPS.includes(onboarding.step) ? onboarding.step : 'welcome';
+  return {
+    step,
+    completed: Boolean(onboarding.completed),
+    firstRunSuccess: Boolean(onboarding.firstRunSuccess),
+    updatedAt: onboarding.updatedAt || null,
+  };
+}
+
+function setOnboardingChecklistState(el, done) {
+  if (!el) {
+    return;
+  }
+  el.classList.toggle('done', Boolean(done));
+}
+
+function setOnboardingOverlayVisible(visible) {
+  if (!onboardingOverlay) {
+    return;
+  }
+  onboardingOverlay.classList.toggle('active', visible);
+  onboardingOverlay.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+async function persistOnboardingState(nextState) {
+  if (!window.electronAPI?.saveSettings) {
+    return;
+  }
+  onboardingState = { ...onboardingState, ...nextState, updatedAt: new Date().toISOString() };
+  await window.electronAPI.saveSettings({ onboarding: onboardingState });
+}
+
+function setOnboardingStep(step, { skipPersist } = {}) {
+  if (!ONBOARDING_STEPS.includes(step)) {
+    return;
+  }
+  onboardingState = { ...onboardingState, step };
+  updateOnboardingUI();
+  if (!skipPersist) {
+    persistOnboardingState({ step });
+  }
+}
+
+function updateOnboardingStepper() {
+  if (!onboardingStepper) {
+    return;
+  }
+  const currentIndex = ONBOARDING_STEPS.indexOf(onboardingState.step);
+  onboardingStepper.querySelectorAll('.onboarding-step').forEach((stepEl) => {
+    const step = stepEl.dataset.step;
+    const stepIndex = ONBOARDING_STEPS.indexOf(step);
+    const isActive = step === onboardingState.step;
+    stepEl.classList.toggle('active', isActive);
+    stepEl.classList.toggle('done', stepIndex > -1 && stepIndex < currentIndex);
+  });
+}
+
+function updateOnboardingPanels() {
+  onboardingPanels.forEach((panel) => {
+    panel.classList.toggle('active', panel.dataset.step === onboardingState.step);
+  });
+}
+
+function updateOnboardingChecklist() {
+  setOnboardingChecklistState(onboardingCheckPermission, onboardingPermissionGranted);
+  setOnboardingChecklistState(onboardingCheckSignal, onboardingMicReady);
+  setOnboardingChecklistState(onboardingCheckDictation, onboardingState?.firstRunSuccess);
+  setOnboardingChecklistState(onboardingCheckDelivery, onboardingDeliveryReady);
+}
+
+function updateOnboardingUI() {
+  if (!onboardingOverlay) {
+    return;
+  }
+
+  const shouldShow = !onboardingSessionDismissed && !onboardingState?.completed;
+  setOnboardingOverlayVisible(shouldShow);
+  updateOnboardingStepper();
+  updateOnboardingPanels();
+  updateOnboardingChecklist();
+
+  if (onboardingMicContinue) {
+    onboardingMicContinue.disabled = !onboardingMicReady;
+  }
+  if (onboardingFirstRunNext) {
+    onboardingFirstRunNext.disabled = !onboardingState?.firstRunSuccess;
+  }
+  if (onboardingDeliveryNext) {
+    onboardingDeliveryNext.disabled = !onboardingDeliveryReady;
+  }
+  if (onboardingState.step === 'permissions' && !onboardingPermissionGranted) {
+    setOnboardingStatus(onboardingPermissionStatus, 'Cliquez pour déclencher la demande d’accès.');
+  }
+  if (onboardingState.step === 'mic_check' && !onboardingMicReady) {
+    setOnboardingStatus(onboardingMicStatus, 'En attente de signal audio...');
+  }
+  if (onboardingState.step === 'mic_check' && micDeviceCount === 0) {
+    setOnboardingStatus(onboardingMicStatus, 'Aucun micro détecté. Vérifiez votre matériel.', 'error');
+    if (onboardingMicContinue) {
+      onboardingMicContinue.disabled = true;
+    }
+  }
+
+  if (onboardingState.step === 'mic_check' && window.electronAPI?.startOnboardingMic) {
+    window.electronAPI.startOnboardingMic();
+  }
+
+  if (!['permissions', 'mic_check'].includes(onboardingState.step)) {
+    if (window.electronAPI?.stopOnboardingMic) {
+      window.electronAPI.stopOnboardingMic();
+    }
+  }
+}
+
+function applyOnboardingStateFromSettings(settings) {
+  onboardingState = normalizeOnboardingState(settings);
+  if (onboardingState.step === 'welcome' && !onboardingState.completed) {
+    onboardingMicReady = false;
+    onboardingPermissionGranted = false;
+    onboardingMicLastActiveAt = 0;
+    onboardingDeliveryReady = false;
+    onboardingMicIgnoreUntil = 0;
+  }
+  if (settings?.deliveryMode === 'clipboard') {
+    onboardingDeliveryReady = true;
+  }
+  updateOnboardingUI();
+}
+
+function setOnboardingStatus(el, message, tone = '') {
+  if (!el) {
+    return;
+  }
+  el.textContent = message || '';
+  el.classList.remove('error', 'success');
+  if (tone) {
+    el.classList.add(tone);
+  }
+}
+
+function updateVuMeter(level) {
+  if (!onboardingVuBar) {
+    return;
+  }
+  const clamped = Math.max(0, Math.min(1, level || 0));
+  onboardingVuBar.style.width = `${Math.round(clamped * 100)}%`;
+}
+
+function handleOnboardingMicLevel(payload) {
+  if (Date.now() < onboardingMicIgnoreUntil) {
+    return;
+  }
+  const level = typeof payload?.level === 'number' ? payload.level : 0;
+  onboardingMicLevel = onboardingMicLevel ? (onboardingMicLevel * 0.7 + level * 0.3) : level;
+  const effectiveLevel = Math.max(0, onboardingMicLevel - MIC_NOISE_FLOOR);
+  updateVuMeter(effectiveLevel * 6);
+  onboardingPermissionGranted = level > 0 || onboardingPermissionGranted;
+  if (onboardingPermissionGranted) {
+    setOnboardingStatus(onboardingPermissionStatus, 'Micro autorisé. Parlez pour voir la jauge.', 'success');
+    if (onboardingState?.step === 'permissions') {
+      setOnboardingStep('mic_check');
+    }
+  }
+  updateOnboardingChecklist();
+
+  if (onboardingMicReady) {
+    return;
+  }
+  if (effectiveLevel >= MIC_READY_THRESHOLD) {
+    if (!onboardingMicLastActiveAt) {
+      onboardingMicLastActiveAt = Date.now();
+    }
+    if (Date.now() - onboardingMicLastActiveAt >= MIC_READY_HOLD_MS) {
+      onboardingMicReady = true;
+      setOnboardingStatus(onboardingMicStatus, 'Signal détecté. Vous pouvez continuer.', 'success');
+      updateOnboardingChecklist();
+      updateOnboardingUI();
+      return;
+    }
+  } else {
+    onboardingMicLastActiveAt = 0;
+  }
+  if (onboardingMicStatus) {
+    setOnboardingStatus(onboardingMicStatus, 'En attente de signal audio...');
+  }
 }
 
 async function refreshSubscriptionData() {
@@ -696,6 +928,33 @@ async function handleNoteDictation() {
   if (window.electronAPI?.toggleRecording) {
     window.electronAPI.toggleRecording();
   }
+}
+
+async function handleOnboardingDictation() {
+  if (!window.electronAPI?.toggleRecording) {
+    return;
+  }
+  if (onboardingRecordingActive) {
+    onboardingRecordingActive = false;
+    if (onboardingDictateButton) {
+      onboardingDictateButton.textContent = 'Dicter maintenant';
+    }
+    window.electronAPI.toggleRecording();
+    return;
+  }
+
+  onboardingRecordingActive = true;
+  if (onboardingSuccessBadge) {
+    onboardingSuccessBadge.classList.remove('active');
+  }
+  setOnboardingStatus(onboardingDictationStatus, 'En écoute... Parlez maintenant.');
+  if (onboardingDictateButton) {
+    onboardingDictateButton.textContent = 'Arrêter';
+  }
+  if (window.electronAPI?.setRecordingTarget) {
+    await window.electronAPI.setRecordingTarget('onboarding');
+  }
+  window.electronAPI.toggleRecording();
 }
 
 async function handleCreateNote() {
@@ -1242,21 +1501,28 @@ async function submitAuthLogin() {
 }
 
 async function populateMicrophones() {
-  if (!microphoneSelect || !navigator.mediaDevices?.enumerateDevices) {
+  if (!navigator.mediaDevices?.enumerateDevices) {
     return;
   }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const mics = devices.filter((device) => device.kind === 'audioinput');
-    microphoneSelect.innerHTML = '<option value="">Défaut système</option>';
-    mics.forEach((mic) => {
-      const option = document.createElement('option');
-      option.value = mic.deviceId;
-      option.textContent = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
-      microphoneSelect.appendChild(option);
+    micDeviceCount = mics.length;
+    const targets = [microphoneSelect, onboardingMicrophoneSelect].filter(Boolean);
+    targets.forEach((select) => {
+      select.innerHTML = '<option value="">Défaut système</option>';
+      mics.forEach((mic) => {
+        const option = document.createElement('option');
+        option.value = mic.deviceId;
+        option.textContent = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
+        select.appendChild(option);
+      });
+      if (currentSettings.microphoneId) {
+        select.value = currentSettings.microphoneId;
+      }
     });
-    if (currentSettings.microphoneId) {
-      microphoneSelect.value = currentSettings.microphoneId;
+    if (onboardingState?.step === 'mic_check') {
+      updateOnboardingUI();
     }
   } catch (error) {
     console.error('Failed to list microphones:', error);
@@ -1431,6 +1697,7 @@ async function refreshDashboard() {
   renderDictionary(dashboardData.dictionary);
   renderStyles(dashboardData.styles);
   renderSettings(currentSettings);
+  applyOnboardingStateFromSettings(currentSettings);
   renderAuth(dashboardData.auth, dashboardData.syncReady);
   renderSubscription(dashboardData.subscription, dashboardData.auth);
   await populateMicrophones();
@@ -1460,6 +1727,132 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  if (onboardingStartButton) {
+    onboardingStartButton.addEventListener('click', () => {
+      onboardingSessionDismissed = false;
+      setOnboardingStep('permissions');
+    });
+  }
+
+  if (onboardingSkipButton) {
+    onboardingSkipButton.addEventListener('click', () => {
+      onboardingSessionDismissed = true;
+      setOnboardingOverlayVisible(false);
+      if (window.electronAPI?.stopOnboardingMic) {
+        window.electronAPI.stopOnboardingMic();
+      }
+    });
+  }
+
+  if (onboardingPermissionButton) {
+    onboardingPermissionButton.addEventListener('click', async () => {
+      setOnboardingStatus(onboardingPermissionStatus, 'Demande d’accès en cours...');
+      if (window.electronAPI?.startOnboardingMic) {
+        const result = await window.electronAPI.startOnboardingMic();
+        if (result?.ok === false) {
+          setOnboardingStatus(onboardingPermissionStatus, 'Impossible de lancer le micro.', 'error');
+        }
+      }
+    });
+  }
+
+  if (onboardingPrivacyLink) {
+    onboardingPrivacyLink.addEventListener('click', async () => {
+      if (window.electronAPI?.openPrivacyMicrophone) {
+        await window.electronAPI.openPrivacyMicrophone();
+      }
+    });
+  }
+
+  if (onboardingMicrophoneApply) {
+    onboardingMicrophoneApply.addEventListener('click', async () => {
+      if (!onboardingMicrophoneSelect || !window.electronAPI?.saveSettings) {
+        return;
+      }
+      const value = onboardingMicrophoneSelect.value;
+      if (window.electronAPI?.stopOnboardingMic) {
+        window.electronAPI.stopOnboardingMic();
+      }
+      currentSettings = { ...currentSettings, microphoneId: value };
+      await window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
+      onboardingMicReady = false;
+      onboardingMicLevel = 0;
+      onboardingMicLastActiveAt = 0;
+      onboardingMicIgnoreUntil = Date.now() + MIC_IGNORE_AFTER_CHANGE_MS;
+      updateVuMeter(0);
+      setOnboardingStatus(onboardingMicStatus, 'Micro mis à jour. Test en cours...', '');
+      if (window.electronAPI?.startOnboardingMic) {
+        await delay(150);
+        await window.electronAPI.startOnboardingMic();
+      }
+      updateOnboardingChecklist();
+      updateOnboardingUI();
+    });
+  }
+
+  if (onboardingMicContinue) {
+    onboardingMicContinue.addEventListener('click', () => {
+      setOnboardingStep('first_dictation');
+    });
+  }
+
+  if (onboardingDictateButton) {
+    onboardingDictateButton.addEventListener('click', handleOnboardingDictation);
+  }
+
+  if (onboardingFirstRunNext) {
+    onboardingFirstRunNext.addEventListener('click', () => {
+      setOnboardingStep('delivery_check');
+    });
+  }
+
+  if (onboardingDeliveryTestButton) {
+    onboardingDeliveryTestButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.runOnboardingDeliveryCheck) {
+        setOnboardingStatus(onboardingDeliveryStatus, 'Test indisponible.', 'error');
+        return;
+      }
+      const sample = 'CrocoVoice OK';
+      if (onboardingDeliveryInput) {
+        onboardingDeliveryInput.value = '';
+        onboardingDeliveryInput.focus();
+      }
+      setOnboardingStatus(onboardingDeliveryStatus, 'Test en cours...');
+      const result = await window.electronAPI.runOnboardingDeliveryCheck(sample);
+      setTimeout(() => {
+        const received = onboardingDeliveryInput?.value.includes(sample);
+        if (result?.ok && received) {
+          onboardingDeliveryReady = true;
+          setOnboardingStatus(onboardingDeliveryStatus, 'Injection OK.', 'success');
+        } else {
+          onboardingDeliveryReady = false;
+          setOnboardingStatus(
+            onboardingDeliveryStatus,
+            result?.reason || 'Injection bloquée. Activez le presse-papier.',
+            'error',
+          );
+        }
+        updateOnboardingChecklist();
+        updateOnboardingUI();
+      }, 350);
+    });
+  }
+
+  if (onboardingDeliveryNext) {
+    onboardingDeliveryNext.addEventListener('click', () => {
+      setOnboardingStep('done');
+    });
+  }
+
+  if (onboardingFinishButton) {
+    onboardingFinishButton.addEventListener('click', async () => {
+      onboardingSessionDismissed = true;
+      await persistOnboardingState({ completed: true, step: 'done' });
+      setOnboardingOverlayVisible(false);
+      setActiveView('home');
+    });
+  }
+
   if (profileCard) {
     profileCard.addEventListener('click', () => {
       setActiveView('account');
@@ -1475,6 +1868,49 @@ window.addEventListener('DOMContentLoaded', () => {
   if (window.electronAPI?.onDashboardView) {
     window.electronAPI.onDashboardView((viewName) => {
       setActiveView(viewName || 'home');
+    });
+  }
+
+  if (onboardingResetButton) {
+    onboardingResetButton.addEventListener('click', async () => {
+      onboardingSessionDismissed = false;
+      onboardingMicReady = false;
+      onboardingPermissionGranted = false;
+      onboardingMicLevel = 0;
+      onboardingMicLastActiveAt = 0;
+      onboardingDeliveryReady = false;
+      updateVuMeter(0);
+      if (onboardingSandbox) {
+        onboardingSandbox.value = '';
+      }
+      if (onboardingSuccessBadge) {
+        onboardingSuccessBadge.classList.remove('active');
+      }
+      if (window.electronAPI?.stopOnboardingMic) {
+        window.electronAPI.stopOnboardingMic();
+      }
+      await persistOnboardingState({
+        step: 'welcome',
+        completed: false,
+        firstRunSuccess: false,
+      });
+      setActiveView('home');
+      updateOnboardingUI();
+    });
+  }
+
+  if (window.electronAPI?.onOnboardingMicLevel) {
+    window.electronAPI.onOnboardingMicLevel(handleOnboardingMicLevel);
+  }
+
+  if (window.electronAPI?.onOnboardingMicError) {
+    window.electronAPI.onOnboardingMicError((message) => {
+      setOnboardingStatus(
+        onboardingPermissionStatus,
+        message || 'Accès micro refusé. Ouvrez les paramètres Windows.',
+        'error',
+      );
+      setOnboardingStatus(onboardingMicStatus, message || 'Aucun signal détecté.', 'error');
     });
   }
 
@@ -1771,28 +2207,63 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (window.electronAPI?.onDashboardTranscription) {
     window.electronAPI.onDashboardTranscription((text, target) => {
-      if (!noteCaptureActive || !noteBodyInput || target !== 'notes') {
-        return;
-      }
-      const add = (text || '').trim();
-      if (!add) {
+      if (target === 'notes') {
+        if (!noteCaptureActive || !noteBodyInput) {
+          return;
+        }
+        const add = (text || '').trim();
+        if (!add) {
+          toggleRecordingVisuals(false);
+          return;
+        }
+        const existing = noteBodyInput.value.trim();
+        noteBodyInput.value = existing ? `${existing}\n${add}` : add;
+        showToast('Texte reçu.');
         toggleRecordingVisuals(false);
         return;
       }
-      const existing = noteBodyInput.value.trim();
-      noteBodyInput.value = existing ? `${existing}\n${add}` : add;
-      showToast('Texte reçu.');
-      toggleRecordingVisuals(false);
+
+      if (target === 'onboarding') {
+        onboardingRecordingActive = false;
+        if (onboardingDictateButton) {
+          onboardingDictateButton.textContent = 'Dicter maintenant';
+        }
+        const add = (text || '').trim();
+        if (!add) {
+          setOnboardingStatus(onboardingDictationStatus, 'On ne vous entend pas. Réessayez.', 'error');
+          return;
+        }
+        if (onboardingSandbox) {
+          onboardingSandbox.value = add;
+        }
+        onboardingState = { ...onboardingState, firstRunSuccess: true };
+        onboardingDeliveryReady = onboardingDeliveryReady || false;
+        setOnboardingStatus(onboardingDictationStatus, 'Texte reçu avec succès.', 'success');
+        if (onboardingSuccessBadge) {
+          onboardingSuccessBadge.classList.add('active');
+        }
+        updateOnboardingChecklist();
+        updateOnboardingUI();
+        persistOnboardingState({ firstRunSuccess: true });
+      }
     });
   }
 
   if (window.electronAPI?.onDashboardTranscriptionError) {
     window.electronAPI.onDashboardTranscriptionError((error) => {
-      if (!noteCaptureActive) {
+      if (noteCaptureActive) {
+        showToast(error?.message || 'La dictée a échoué.', 'error');
+        toggleRecordingVisuals(false);
         return;
       }
-      showToast(error?.message || 'La dictée a échoué.', 'error');
-      toggleRecordingVisuals(false);
+      if (onboardingRecordingActive) {
+        const message = typeof error === 'string' ? error : error?.message;
+        onboardingRecordingActive = false;
+        if (onboardingDictateButton) {
+          onboardingDictateButton.textContent = 'Dicter maintenant';
+        }
+        setOnboardingStatus(onboardingDictationStatus, message || 'La dictée a échoué.', 'error');
+      }
     });
   }
 
@@ -1808,6 +2279,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (window.electronAPI?.onDashboardDataUpdated) {
     window.electronAPI.onDashboardDataUpdated(() => refreshDashboard());
+  }
+
+  if (window.electronAPI?.onSettingsUpdated) {
+    window.electronAPI.onSettingsUpdated((nextSettings) => {
+      currentSettings = nextSettings || currentSettings;
+      applyOnboardingStateFromSettings(currentSettings);
+    });
   }
 
   refreshDashboard();

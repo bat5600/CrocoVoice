@@ -84,6 +84,292 @@
       transform: translateY(0);
     }
 
+    .onboarding-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.35);
+      backdrop-filter: blur(8px);
+      z-index: 1200;
+    }
+
+    .onboarding-overlay.active {
+      display: flex;
+    }
+
+    .onboarding-card {
+      width: min(960px, 100%);
+      background: #ffffff;
+      border-radius: 24px;
+      border: 1px solid var(--border-light);
+      box-shadow: 0 30px 80px rgba(15, 23, 42, 0.2);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .onboarding-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .onboarding-kicker {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--text-soft);
+      font-weight: 700;
+    }
+
+    .onboarding-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+
+    .ghost-btn {
+      border: 1px solid var(--border-light);
+      background: transparent;
+      color: var(--text-muted);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .onboarding-stepper {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 12px;
+    }
+
+    .onboarding-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #F8FAFC;
+      border: 1px solid transparent;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .onboarding-step .step-index {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: var(--border-light);
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .onboarding-step.active {
+      border-color: var(--emerald-200, #A7F3D0);
+      color: var(--text-main);
+      background: var(--emerald-50);
+    }
+
+    .onboarding-step.active .step-index {
+      background: var(--emerald-500);
+      color: #ffffff;
+    }
+
+    .onboarding-step.done {
+      color: var(--text-main);
+    }
+
+    .onboarding-step.done .step-index {
+      background: var(--emerald-500);
+      color: #ffffff;
+    }
+
+    .onboarding-body {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 24px;
+    }
+
+    .onboarding-panel {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      padding: 18px;
+      border-radius: 18px;
+      background: #F8FAFC;
+      border: 1px solid var(--border-light);
+    }
+
+    .onboarding-panel.active {
+      display: flex;
+    }
+
+    .onboarding-panel.onboarding-summary {
+      display: flex;
+    }
+
+    .onboarding-summary {
+      background: #ffffff;
+      border-style: dashed;
+    }
+
+    .onboarding-checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .onboarding-checklist li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .onboarding-checklist .check-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 2px solid #CBD5F5;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-size: 10px;
+    }
+
+    .onboarding-checklist li.done {
+      color: var(--text-main);
+    }
+
+    .onboarding-checklist li.done .check-dot {
+      background: var(--emerald-500);
+      border-color: var(--emerald-500);
+    }
+
+    .onboarding-panel h3 {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .onboarding-panel p {
+      color: var(--text-muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .onboarding-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .vu-meter {
+      height: 12px;
+      border-radius: 999px;
+      background: #E2E8F0;
+      overflow: hidden;
+      border: 1px solid #E2E8F0;
+    }
+
+    .vu-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #34D399, #10B981, #059669);
+      transition: width 0.12s ease-out;
+    }
+
+    .onboarding-sandbox {
+      width: 100%;
+      min-height: 140px;
+      border-radius: 14px;
+      border: 1px solid var(--border-light);
+      padding: 12px;
+      font-size: 13px;
+      background: #ffffff;
+      resize: vertical;
+    }
+
+    .onboarding-status {
+      font-size: 12px;
+      color: var(--text-soft);
+    }
+
+    .onboarding-status.error {
+      color: #EF4444;
+    }
+
+    .onboarding-status.success {
+      color: var(--emerald-600);
+      font-weight: 600;
+    }
+
+    .onboarding-success {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--emerald-600);
+      font-weight: 700;
+    }
+
+    .onboarding-success.active {
+      display: flex;
+      animation: popIn 0.3s ease-out;
+    }
+
+    .onboarding-check {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--emerald-500);
+      color: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .delivery-probe {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+
+    @keyframes popIn {
+      0% {
+        transform: scale(0.9);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .onboarding-body {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .toggle-checkbox {
       position: absolute;
       opacity: 0;
@@ -1885,6 +2171,110 @@
     </div>
   </div>
 
+  <div id="onboardingOverlay" class="onboarding-overlay" aria-hidden="true">
+    <div class="onboarding-card">
+      <div class="onboarding-header">
+        <div>
+          <div class="onboarding-kicker">First Run</div>
+          <div class="onboarding-title">Prêt à dicter en 30 secondes</div>
+        </div>
+        <button id="onboardingSkip" class="ghost-btn" type="button">Passer / Configurer plus tard</button>
+      </div>
+
+      <div id="onboardingStepper" class="onboarding-stepper">
+        <div class="onboarding-step" data-step="welcome"><span class="step-index">1</span>Accueil</div>
+        <div class="onboarding-step" data-step="permissions"><span class="step-index">2</span>Permission</div>
+        <div class="onboarding-step" data-step="mic_check"><span class="step-index">3</span>Micro</div>
+        <div class="onboarding-step" data-step="first_dictation"><span class="step-index">4</span>Dictée</div>
+        <div class="onboarding-step" data-step="delivery_check"><span class="step-index">5</span>Livraison</div>
+        <div class="onboarding-step" data-step="done"><span class="step-index">6</span>Fini</div>
+      </div>
+
+      <div class="onboarding-body">
+        <div>
+          <section class="onboarding-panel" data-step="welcome">
+            <h3>Bienvenue, on va le prouver en 1 minute.</h3>
+            <p>Vous allez autoriser le micro, vérifier le signal, puis voir un texte s'écrire tout seul pour la première fois.</p>
+            <div class="onboarding-actions">
+              <button id="onboardingStart" class="btn-primary" type="button">Commencer la configuration</button>
+            </div>
+          </section>
+
+          <section class="onboarding-panel" data-step="permissions">
+            <h3>Autoriser le microphone</h3>
+            <p>Windows va afficher une autorisation. Acceptez pour lancer la jauge audio en temps réel.</p>
+            <div class="onboarding-actions">
+              <button id="onboardingPermissionButton" class="btn-primary" type="button">Autoriser le micro</button>
+              <button id="onboardingPrivacyLink" class="btn-secondary" type="button">Ouvrir les paramètres Windows</button>
+            </div>
+            <div id="onboardingPermissionStatus" class="onboarding-status">Cliquez pour déclencher la demande d'accès.</div>
+          </section>
+
+          <section class="onboarding-panel" data-step="mic_check">
+            <h3>Test micro</h3>
+            <p>Parlez à voix normale. La jauge doit réagir pour valider que le signal passe.</p>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+              <select id="onboardingMicrophoneSelect" class="input-select" style="min-width: 220px;"></select>
+              <button id="onboardingMicrophoneApply" class="btn-secondary" type="button">Changer de micro</button>
+            </div>
+            <div class="vu-meter">
+              <div id="onboardingVuBar" class="vu-bar"></div>
+            </div>
+            <div id="onboardingMicStatus" class="onboarding-status">En attente de signal audio...</div>
+            <div class="onboarding-actions">
+              <button id="onboardingMicContinue" class="btn-primary" type="button" disabled>Continuer</button>
+            </div>
+          </section>
+
+          <section class="onboarding-panel" data-step="first_dictation">
+            <h3>Le First Run</h3>
+            <p>Maintenez le raccourci (ou cliquez) et dites une phrase simple, par exemple "Bonjour monde".</p>
+            <textarea id="onboardingSandbox" class="onboarding-sandbox" placeholder="Votre texte transcrit apparaîtra ici..."></textarea>
+            <div class="onboarding-actions">
+              <button id="onboardingDictateButton" class="btn-primary" type="button">Dicter maintenant</button>
+              <button id="onboardingFirstRunNext" class="btn-secondary" type="button" disabled>Continuer</button>
+            </div>
+            <div id="onboardingDictationStatus" class="onboarding-status"></div>
+            <div id="onboardingSuccessBadge" class="onboarding-success">
+              <span class="onboarding-check">✓</span>
+              Succès, la dictée est bien arrivée !
+            </div>
+          </section>
+
+          <section class="onboarding-panel" data-step="delivery_check">
+            <h3>Vérification d'injection</h3>
+            <p>Testons si Windows autorise l'injection de touches. Sinon, on bascule en mode presse-papier.</p>
+            <input id="onboardingDeliveryInput" class="delivery-probe" type="text" placeholder="Zone de test (gardez le focus ici)">
+            <div class="onboarding-actions">
+              <button id="onboardingDeliveryTestButton" class="btn-primary" type="button">Tester l'injection</button>
+              <button id="onboardingDeliveryNext" class="btn-secondary" type="button" disabled>Terminer</button>
+            </div>
+            <div id="onboardingDeliveryStatus" class="onboarding-status"></div>
+          </section>
+
+          <section class="onboarding-panel" data-step="done">
+            <h3>Tout est prêt.</h3>
+            <p>Votre première dictée est validée. Vous pouvez maintenant utiliser CrocoVoice au quotidien.</p>
+            <div class="onboarding-actions">
+              <button id="onboardingFinishButton" class="btn-primary" type="button">Aller au dashboard</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="onboarding-panel onboarding-summary">
+          <h3>Checklist du first run</h3>
+          <p>On coche au fur et à mesure pour un premier succès clair.</p>
+          <ul class="onboarding-checklist">
+            <li id="onboardingCheckPermission"><span class="check-dot">✓</span>Permission micro accordée</li>
+            <li id="onboardingCheckSignal"><span class="check-dot">✓</span>Signal audio détecté</li>
+            <li id="onboardingCheckDictation"><span class="check-dot">✓</span>Texte transcrit en sandbox</li>
+            <li id="onboardingCheckDelivery"><span class="check-dot">✓</span>Livraison OK ou presse-papier activé</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
@@ -2235,6 +2625,11 @@
                   <button id="shortcutResetButton" class="btn-secondary shortcut-reset" type="button">Reset</button>
                 </div>
                 <div class="shortcut-help" id="shortcutHelp">Cliquez dans le champ puis appuyez sur votre combinaison.</div>
+              </div>
+
+              <div style="margin-top: 16px;">
+                <label class="form-label">Onboarding</label>
+                <button id="onboardingResetButton" class="btn-secondary" type="button">Recommencer l'onboarding</button>
               </div>
             </div>
 
