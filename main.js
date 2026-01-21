@@ -103,8 +103,13 @@ const WEEKLY_QUOTA_WORDS = Number.isFinite(parsedWeeklyQuota) ? parsedWeeklyQuot
 const QUOTA_MODE = (process.env.CROCOVOICE_QUOTA_MODE || 'local').toLowerCase(); // local | hybrid | server
 const QUOTA_CACHE_TTL_MS = Number.parseInt(process.env.CROCOVOICE_QUOTA_CACHE_TTL_MS || '300000', 10); // 5 min
 let recordingDestination = 'clipboard';
+const WIDGET_BOTTOM_MARGIN = 8;
+const WIDGET_DISPLAY_POLL_MS = 500;
 
 const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
+
+let widgetDisplayId = null;
+let widgetDisplayPoll = null;
 
 function clearIdleResetTimeout() {
   if (idleResetTimeoutId) {
@@ -786,7 +791,7 @@ async function captureTypingTarget() {
   }
 }
 
-async function assertTypingTargetStillActive() {
+async function assertTypingTargetStillActive({ allowMismatch = false } = {}) {
   if (!typingTarget || !getActiveWindow) {
     return;
   }
@@ -794,11 +799,19 @@ async function assertTypingTargetStillActive() {
     const activeWindow = await getActiveWindow();
     const title = await activeWindow.title;
     if (!title || title !== typingTarget.title) {
+      if (allowMismatch) {
+        console.warn('Typing guard bypassed: target window changed before paste.');
+        return;
+      }
       const guardError = new Error('Fenetre cible modifiee pendant le collage. Cliquez dans la zone cible et reessayez.');
       guardError.code = 'typing_guard';
       throw guardError;
     }
   } catch (error) {
+    if (allowMismatch) {
+      console.warn('Typing guard check failed, continuing paste:', error);
+      return;
+    }
     const detail = error && error.message
       ? error.message
       : 'Impossible de verifier la fenetre cible.';
@@ -1127,23 +1140,51 @@ async function ensureDefaultStyle() {
   }
 }
 
-function setMainWindowBounds(targetSize) {
+function getWidgetDisplay() {
+  if (!screen) {
+    return null;
+  }
+  const cursorPoint = screen.getCursorScreenPoint();
+  return screen.getDisplayNearestPoint(cursorPoint) || screen.getPrimaryDisplay();
+}
+
+function setMainWindowBounds(targetSize, displayOverride = null) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
 
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
-  const x = Math.floor((width - targetSize.width) / 2);
-  const y = height - targetSize.height - 16;
+  const display = displayOverride || getWidgetDisplay() || screen.getPrimaryDisplay();
+  const workArea = display.workArea || { x: 0, y: 0, width: display.size.width, height: display.size.height };
+  const x = Math.floor(workArea.x + (workArea.width - targetSize.width) / 2);
+  const y = Math.floor(workArea.y + workArea.height - targetSize.height - WIDGET_BOTTOM_MARGIN);
   mainWindow.setBounds({ x, y, width: targetSize.width, height: targetSize.height });
+  widgetDisplayId = display.id;
 }
 
 function updateWidgetBounds() {
   const targetSize = widgetUndoVisible
     ? undoWindowSize
     : (widgetErrorVisible ? errorWindowSize : (widgetExpanded ? expandedWindowSize : compactWindowSize));
-  setMainWindowBounds(targetSize);
+  const display = getWidgetDisplay();
+  setMainWindowBounds(targetSize, display);
+}
+
+function startWidgetDisplayTracking() {
+  if (widgetDisplayPoll) {
+    return;
+  }
+  widgetDisplayPoll = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    const display = getWidgetDisplay();
+    if (!display) {
+      return;
+    }
+    if (widgetDisplayId !== display.id) {
+      updateWidgetBounds();
+    }
+  }, WIDGET_DISPLAY_POLL_MS);
 }
 
 function ensureDashboardWindow() {
@@ -1496,6 +1537,7 @@ async function pasteText(text, options = {}) {
   let previousClipboard = '';
   const mode = options.mode || settings.deliveryMode || 'paste';
   const shouldPaste = mode !== 'clipboard';
+  const allowTargetChange = options.allowTargetChange !== false;
   try {
     if (!keyboardLib && shouldPaste) {
       throw new Error('Keyboard automation unavailable.');
@@ -1504,7 +1546,7 @@ async function pasteText(text, options = {}) {
       return;
     }
     if (shouldPaste) {
-      await assertTypingTargetStillActive();
+      await assertTypingTargetStillActive({ allowMismatch: allowTargetChange });
     }
     previousClipboard = clipboard.readText();
     pendingPasteBuffer = text;
@@ -1646,12 +1688,24 @@ async function handleAudioPayload(event, audioData) {
       title,
       warningMessage: pipelineWarningMessage,
     } = pipelineResult;
-    const shouldSkipPaste = target === 'notes' || target === 'onboarding';
+    const shouldSkipPaste = target === 'notes' || target === 'notes-editor' || target === 'onboarding';
 
     await persistTranscription({ transcribedText, finalText, title });
+    if (target === 'notes') {
+      const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
+      await store.addNote({
+        id: crypto.randomUUID(),
+        user_id: userId,
+        text: finalText,
+        title,
+        metadata: { source: 'dictation' },
+      });
+      sendDashboardEvent('dashboard:data-updated');
+      scheduleDebouncedSync();
+    }
 
     if (!shouldSkipPaste) {
-      await pasteText(finalText);
+      await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
     }
 
     const combinedWarningMessage = [pipelineWarningMessage, safetyWarningMessage].filter(Boolean).join(' ');
@@ -1951,11 +2005,10 @@ ipcMain.handle('notes:delete', async (event, id) => {
 });
 
 ipcMain.handle('notes:add', async (event, payload) => {
-  requireAuthenticated('Connexion requise pour creer une note.');
-  if (!payload || !payload.text || !payload.text.trim()) {
+  if (!payload || typeof payload.text !== 'string' || !payload.text.trim()) {
     throw new Error('Le contenu est requis.');
   }
-  const text = payload.text.trim();
+  const text = payload.text;
   const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
   const title = payload.title?.trim() || await generateEntryTitle(text);
   const record = await store.addNote({
@@ -1964,6 +2017,27 @@ ipcMain.handle('notes:add', async (event, payload) => {
     text,
     title,
     metadata: payload.metadata || null,
+  });
+  sendDashboardEvent('dashboard:data-updated');
+  scheduleDebouncedSync();
+  return record;
+});
+
+ipcMain.handle('notes:upsert', async (event, payload) => {
+  if (!payload || typeof payload.text !== 'string') {
+    throw new Error('Le contenu est requis.');
+  }
+  const text = payload.text;
+  const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
+  const title = payload.title?.trim() || await generateEntryTitle(text);
+  const record = await store.addNote({
+    id: payload.id || crypto.randomUUID(),
+    user_id: payload.user_id || userId,
+    text,
+    title,
+    metadata: payload.metadata || null,
+    created_at: payload.created_at,
+    updated_at: payload.updated_at,
   });
   sendDashboardEvent('dashboard:data-updated');
   scheduleDebouncedSync();
@@ -2178,7 +2252,7 @@ ipcMain.handle('sync:now', async () => {
 ipcMain.on('history:paste-latest', async () => {
   const rows = await store.listHistory({ limit: 1 });
   if (rows.length) {
-    await pasteText(rows[0].text);
+    await pasteText(rows[0].text, { mode: 'paste', allowTargetChange: true });
   }
 });
 
@@ -2261,6 +2335,7 @@ app.whenReady().then(async () => {
   void refreshQuotaSnapshotInBackground();
 
   createMainWindow();
+  startWidgetDisplayTracking();
   updateWindowVisibility();
   createTray();
   registerGlobalShortcut(settings.shortcut);
@@ -2289,4 +2364,8 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  if (widgetDisplayPoll) {
+    clearInterval(widgetDisplayPoll);
+    widgetDisplayPoll = null;
+  }
 });

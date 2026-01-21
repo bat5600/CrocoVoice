@@ -68,6 +68,13 @@ let quotaDashboardButton = null;
 let quotaDismissButton = null;
 let quotaStatusText = null;
 let quotaGateActive = false;
+let widgetContextMenu = null;
+let widgetMicrophoneList = null;
+let widgetLanguageSearch = null;
+let widgetLanguageList = null;
+let widgetMicrophoneLabel = null;
+let widgetLanguageLabel = null;
+let availableMicrophones = [];
 
 const CANCEL_UNDO_DURATION_MS = 5000;
 const AUDIO_RMS_ACTIVE_THRESHOLD = 0.018;
@@ -77,6 +84,36 @@ const AUDIO_MIN_PEAK_RMS = 0.012;
 const RECORDING_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const RECORDING_MAX_DURATION_MS = 60 * 60 * 1000;
 const MIC_MONITOR_SEND_INTERVAL_MS = 80;
+const LANGUAGE_OPTIONS = [
+  { code: 'fr', label: 'Francais' },
+  { code: 'en', label: 'Anglais' },
+  { code: 'es', label: 'Espagnol' },
+  { code: 'de', label: 'Allemand' },
+  { code: 'it', label: 'Italien' },
+  { code: 'pt', label: 'Portugais' },
+  { code: 'nl', label: 'Neerlandais' },
+  { code: 'sv', label: 'Suedois' },
+  { code: 'no', label: 'Norvegien' },
+  { code: 'da', label: 'Danois' },
+  { code: 'fi', label: 'Finnois' },
+  { code: 'pl', label: 'Polonais' },
+  { code: 'cs', label: 'Tcheque' },
+  { code: 'sk', label: 'Slovaque' },
+  { code: 'hu', label: 'Hongrois' },
+  { code: 'ro', label: 'Roumain' },
+  { code: 'ru', label: 'Russe' },
+  { code: 'uk', label: 'Ukrainien' },
+  { code: 'tr', label: 'Turc' },
+  { code: 'ar', label: 'Arabe' },
+  { code: 'he', label: 'Hebreu' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'ja', label: 'Japonais' },
+  { code: 'ko', label: 'Coreen' },
+  { code: 'zh', label: 'Chinois' },
+  { code: 'th', label: 'Thai' },
+  { code: 'vi', label: 'Vietnamien' },
+  { code: 'id', label: 'Indonesien' },
+];
 
 function setUndoActive(active) {
   if (!widgetContainer) {
@@ -84,6 +121,107 @@ function setUndoActive(active) {
   }
   widgetContainer.classList.toggle('undo-active', active);
   document.body.classList.toggle('undo-active', active);
+}
+
+function resolveLanguageLabel(code) {
+  const entry = LANGUAGE_OPTIONS.find((option) => option.code === code);
+  return entry ? entry.label : code || '';
+}
+
+function renderLanguageList(filterValue = '') {
+  if (!widgetLanguageList) {
+    return;
+  }
+  const filter = filterValue.trim().toLowerCase();
+  widgetLanguageList.innerHTML = '';
+  const matches = LANGUAGE_OPTIONS.filter((option) => {
+    if (!filter) {
+      return true;
+    }
+    return option.label.toLowerCase().includes(filter) || option.code.toLowerCase().includes(filter);
+  });
+  if (!matches.length) {
+    const empty = document.createElement('div');
+    empty.className = 'submenu-empty';
+    empty.textContent = 'Aucun resultat';
+    widgetLanguageList.appendChild(empty);
+    return;
+  }
+  matches.forEach((option) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'submenu-item';
+    if (currentSettings.language === option.code) {
+      button.classList.add('selected');
+    }
+    button.dataset.language = option.code;
+    button.innerHTML = `<span>${option.label}</span><span class="menu-muted">${option.code}</span>`;
+    widgetLanguageList.appendChild(button);
+  });
+}
+
+function renderMicrophoneList() {
+  if (!widgetMicrophoneList) {
+    return;
+  }
+  widgetMicrophoneList.innerHTML = '';
+  const defaultButton = document.createElement('button');
+  defaultButton.type = 'button';
+  defaultButton.className = 'submenu-item';
+  defaultButton.dataset.micId = '';
+  defaultButton.textContent = 'Defaut systeme';
+  if (!currentSettings.microphoneId) {
+    defaultButton.classList.add('selected');
+  }
+  widgetMicrophoneList.appendChild(defaultButton);
+  availableMicrophones.forEach((mic) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'submenu-item';
+    button.dataset.micId = mic.deviceId;
+    const label = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
+    button.textContent = label;
+    if (currentSettings.microphoneId === mic.deviceId) {
+      button.classList.add('selected');
+    }
+    widgetMicrophoneList.appendChild(button);
+  });
+}
+
+function updateMenuLabels() {
+  if (widgetLanguageLabel) {
+    const current = resolveLanguageLabel(currentSettings.language || 'fr');
+    widgetLanguageLabel.textContent = current ? `Langue (${current})` : 'Langue';
+  }
+  if (widgetMicrophoneLabel) {
+    widgetMicrophoneLabel.textContent = 'Changer le micro';
+  }
+}
+
+async function refreshMicrophones() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    return;
+  }
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    availableMicrophones = devices.filter((device) => device.kind === 'audioinput');
+    renderMicrophoneList();
+    updateMenuLabels();
+  } catch (error) {
+    console.error('Failed to list microphones:', error);
+  }
+}
+
+function saveWidgetSetting(key, value) {
+  currentSettings = { ...currentSettings, [key]: value };
+  if (window.electronAPI?.saveSettings) {
+    const payload = { ...currentSettings };
+    delete payload.apiKeyPresent;
+    window.electronAPI.saveSettings(payload);
+  }
+  renderMicrophoneList();
+  renderLanguageList(widgetLanguageSearch ? widgetLanguageSearch.value : '');
+  updateMenuLabels();
 }
 
 function resetAudioMetrics() {
@@ -951,6 +1089,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.getSettings().then((settings) => {
       currentSettings = settings || {};
       updateShortcutLabel(settings.shortcut);
+      renderLanguageList();
+      updateMenuLabels();
+      refreshMicrophones();
     }).catch(() => {
       updateShortcutLabel('');
     });
@@ -980,14 +1121,35 @@ document.addEventListener('DOMContentLoaded', () => {
           audioStream = null;
         }
       }
+      renderMicrophoneList();
+      renderLanguageList(widgetLanguageSearch ? widgetLanguageSearch.value : '');
+      updateMenuLabels();
     });
   }
 
   widgetContainer = document.getElementById('widgetContainer');
   if (widgetContainer) {
+    widgetContextMenu = widgetContainer.querySelector('.context-menu');
+    widgetMicrophoneList = document.getElementById('widgetMicrophoneList');
+    widgetLanguageSearch = document.getElementById('widgetLanguageSearch');
+    widgetLanguageList = document.getElementById('widgetLanguageList');
+    widgetMicrophoneLabel = document.getElementById('widgetMicrophoneLabel');
+    widgetLanguageLabel = document.getElementById('widgetLanguageLabel');
     let isContextOpen = false;
     let isHovering = false;
     let hoverOutTimeout = null;
+    let openSubmenu = null;
+
+    if (widgetLanguageSearch) {
+      widgetLanguageSearch.addEventListener('input', () => {
+        renderLanguageList(widgetLanguageSearch.value);
+      });
+    }
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        refreshMicrophones();
+      });
+    }
 
     const updateExpandedState = () => {
       if (cancelUndoActive) {
@@ -1012,7 +1174,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeContextMenu = () => {
       widgetContainer.classList.remove('context-open');
       isContextOpen = false;
+      if (openSubmenu) {
+        const openItem = widgetContextMenu?.querySelector(`.menu-item[data-submenu="${openSubmenu}"]`);
+        openItem?.classList.remove('submenu-open');
+        openSubmenu = null;
+      }
       updateExpandedState();
+    };
+
+    const toggleSubmenu = (submenuName) => {
+      if (!widgetContextMenu) {
+        return;
+      }
+      const targetItem = widgetContextMenu.querySelector(`.menu-item[data-submenu="${submenuName}"]`);
+      if (!targetItem) {
+        return;
+      }
+      if (openSubmenu && openSubmenu !== submenuName) {
+        const openItem = widgetContextMenu.querySelector(`.menu-item[data-submenu="${openSubmenu}"]`);
+        openItem?.classList.remove('submenu-open');
+      }
+      const isOpen = targetItem.classList.toggle('submenu-open');
+      openSubmenu = isOpen ? submenuName : null;
     };
 
     widgetContainer.addEventListener('contextmenu', (event) => {
@@ -1043,7 +1226,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.addEventListener('click', (event) => {
-      if (!widgetContainer.contains(event.target)) {
+      if (!isContextOpen) {
+        return;
+      }
+      if (!widgetContextMenu || !widgetContextMenu.contains(event.target)) {
         closeContextMenu();
       }
     });
@@ -1054,29 +1240,61 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    const contextMenu = widgetContainer.querySelector('.context-menu');
-    if (contextMenu) {
-      contextMenu.addEventListener('click', (event) => {
-        const target = event.target.closest('button');
-        if (!target) {
+    if (widgetContextMenu) {
+      widgetContextMenu.addEventListener('click', (event) => {
+        const actionTarget = event.target.closest('[data-action]');
+        const micTarget = event.target.closest('[data-mic-id]');
+        const langTarget = event.target.closest('[data-language]');
+        if (micTarget && micTarget.dataset.micId !== undefined) {
+          saveWidgetSetting('microphoneId', micTarget.dataset.micId);
+          event.stopPropagation();
+          closeContextMenu();
           return;
         }
-        const action = target.dataset.action;
+        if (langTarget && langTarget.dataset.language) {
+          saveWidgetSetting('language', langTarget.dataset.language);
+          event.stopPropagation();
+          closeContextMenu();
+          return;
+        }
+        if (!actionTarget) {
+          return;
+        }
+        const action = actionTarget.dataset.action;
         if (action === 'hide-1h') {
           window.electronAPI.hideWidgetOneHour();
-        } else if (action === 'open-settings') {
-          window.electronAPI.openSettings();
-        } else if (action === 'open-history') {
-          window.electronAPI.openDashboardView('home');
-        } else if (action === 'paste-latest') {
-          window.electronAPI.pasteLatestTranscription();
-        } else if (action === 'open-language') {
-          window.electronAPI.openDashboardView('settings');
-        } else if (action === 'open-microphone') {
-          window.electronAPI.openDashboardView('settings');
+          event.stopPropagation();
+          closeContextMenu();
+          return;
         }
-        event.stopPropagation();
-        closeContextMenu();
+        if (action === 'open-settings') {
+          window.electronAPI.openSettings();
+          event.stopPropagation();
+          closeContextMenu();
+          return;
+        }
+        if (action === 'open-history') {
+          window.electronAPI.openDashboardView('home');
+          event.stopPropagation();
+          closeContextMenu();
+          return;
+        }
+        if (action === 'paste-latest') {
+          window.electronAPI.pasteLatestTranscription();
+          event.stopPropagation();
+          closeContextMenu();
+          return;
+        }
+        if (action === 'toggle-language') {
+          toggleSubmenu('language');
+          event.stopPropagation();
+          return;
+        }
+        if (action === 'toggle-microphone') {
+          toggleSubmenu('microphone');
+          event.stopPropagation();
+          return;
+        }
       });
     }
 

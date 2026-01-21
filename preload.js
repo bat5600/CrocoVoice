@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteNote: (id) => ipcRenderer.invoke('notes:delete', id),
   listNotes: () => ipcRenderer.invoke('notes:list'),
   addNote: (entry) => ipcRenderer.invoke('notes:add', entry),
+  upsertNote: (entry) => ipcRenderer.invoke('notes:upsert', entry),
   listHistory: (limit) => ipcRenderer.invoke('history:list', limit),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
   authStatus: () => ipcRenderer.invoke('auth:status'),

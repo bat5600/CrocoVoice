@@ -46,6 +46,16 @@
 
 [x] Je veux égalemnet que le dashboard affiche un truc sexy pour inciter à l'upgrade et à passer pro pour continuer d'utiliser l'app
 
-[ ] Quand je clique sur passer pro ou gérer l'abonnement c'est lent à ouvrir la page web et je n'ai pas d'indication de chargement
+[x] Quand je clique sur passer pro ou gérer l'abonnement c'est lent à ouvrir la page web et je n'ai pas d'indication de chargement
 
 [ ] Je veux que si je change de fenêtre cible mais que ca reste un champs de texte, on tente le "coller"
+
+[ ] Quand je fais un clic droit sur le widget et que ca ouvre le menu, je veux qu'un clic gauche en dehors du menu ferme le menu
+
+[ ] Je veux que mon widget "pill" puisse changer d'écran si ma souris change d'écran dans le cas d'un setup multi ecrans
+
+[ ] Je veux pouvoir changement de micro ou de langue directement depuis le menu du widget "pill" grâce à un sous menu, sans avoir besoin d'aller dans les settings
+
+[ ] Je veux que le changement de langue se fasse par un dropdown menu avec search 
+
+[ ] Je veux que le widget pill soit légérement plus bas qu'actuellement

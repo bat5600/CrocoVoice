@@ -22,12 +22,7 @@ const modalTitle = document.getElementById('modalTitle');
 const modalBody = document.getElementById('modalBody');
 const modalCancel = document.getElementById('modalCancel');
 const modalConfirm = document.getElementById('modalConfirm');
-const noteTitleInput = document.getElementById('noteTitleInput');
-const noteBodyInput = document.getElementById('noteBodyInput');
 const createNoteButton = document.getElementById('createNoteButton');
-const captureNoteButton = document.getElementById('captureNoteButton');
-const recordingFeedback = document.getElementById('recordingFeedback');
-const micPulse = document.getElementById('micPulse');
 const toastContainer = document.getElementById('toastContainer');
 const searchInput = document.getElementById('dashboardSearchInput');
 const breadcrumbPrimary = document.getElementById('breadcrumbPrimary');
@@ -164,6 +159,7 @@ const MIC_NOISE_FLOOR = 0.012;
 const MIC_READY_THRESHOLD = 0.018;
 const MIC_READY_HOLD_MS = 500;
 const MIC_IGNORE_AFTER_CHANGE_MS = 1000;
+let noteEditorState = null;
 
 function setButtonLoading(button, isLoading, label) {
   if (!button) {
@@ -565,7 +561,7 @@ function updateBreadcrumb(viewName) {
 
   const map = {
     home: { primary: 'Dashboard', secondary: 'Historique' },
-    notes: { primary: 'Notes', secondary: 'Nouvelle note' },
+    notes: { primary: 'Notes', secondary: 'Bibliothèque' },
     dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
     style: { primary: 'Styles', secondary: 'Persona' },
     settings: { primary: 'Réglages', secondary: 'Général' },
@@ -647,6 +643,71 @@ function showToast(message, type = 'success') {
       setTimeout(() => toast.remove(), 300);
     }
   }, 4800);
+}
+
+function showUndoToast(message, actionLabel, onUndo) {
+  if (!toastContainer) {
+    return;
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <div class="toast-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0-8-8"></path><polyline points="8 4 4 4 4 8"></polyline></svg>
+    </div>
+    <div>
+      <div class="toast-title">Action</div>
+      <div class="toast-message">${message}</div>
+    </div>
+    <button class="toast-action" type="button">${actionLabel}</button>
+  `;
+  const actionButton = toast.querySelector('.toast-action');
+  const dismiss = () => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  };
+  if (actionButton) {
+    actionButton.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (typeof onUndo === 'function') {
+        await onUndo();
+      }
+      dismiss();
+    });
+  }
+  toast.addEventListener('click', dismiss);
+  toastContainer.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    if (toast.isConnected) {
+      dismiss();
+    }
+  }, 5200);
+}
+
+async function deleteNoteWithUndo(entry) {
+  if (!window.electronAPI?.deleteNote || !window.electronAPI?.upsertNote) {
+    return;
+  }
+  notesData = notesData.filter((item) => item.id !== entry.id);
+  if (statTotal) {
+    statTotal.textContent = `${notesData.length}`;
+  }
+  renderNotesList();
+  await window.electronAPI.deleteNote(entry.id);
+  showUndoToast('Note supprimée.', 'Annuler', async () => {
+    const payload = {
+      id: entry.id,
+      user_id: entry.user_id || null,
+      title: entry.title || extractNoteTitle(entry.text || ''),
+      text: entry.text || '',
+      metadata: entry.metadata || null,
+      created_at: entry.created_at,
+      updated_at: entry.updated_at || entry.created_at,
+    };
+    const record = await window.electronAPI.upsertNote(payload);
+    updateNotesData(record);
+  });
 }
 
 function sanitizeSettingsForSave(value) {
@@ -754,30 +815,350 @@ function renderHistoryError(message) {
   );
 }
 
-function insertMarkdown(syntax) {
-  if (!noteBodyInput) {
+function insertMarkdown(syntax, targetInput) {
+  if (!targetInput) {
     return;
   }
-  const start = noteBodyInput.selectionStart || 0;
-  const end = noteBodyInput.selectionEnd || 0;
-  const value = noteBodyInput.value || '';
+  const start = targetInput.selectionStart || 0;
+  const end = targetInput.selectionEnd || 0;
+  const value = targetInput.value || '';
   const before = value.slice(0, start);
   const selection = value.slice(start, end);
   const after = value.slice(end);
   if (syntax === '- ') {
-    noteBodyInput.value = `${before}\n${syntax}${selection}${after}`;
-    noteBodyInput.selectionStart = noteBodyInput.selectionEnd = end + syntax.length + 1;
+    targetInput.value = `${before}\n${syntax}${selection}${after}`;
+    targetInput.selectionStart = targetInput.selectionEnd = end + syntax.length + 1;
   } else {
-    noteBodyInput.value = `${before}${syntax}${selection}${syntax}${after}`;
-    noteBodyInput.selectionStart = start + syntax.length;
-    noteBodyInput.selectionEnd = end + syntax.length;
+    targetInput.value = `${before}${syntax}${selection}${syntax}${after}`;
+    targetInput.selectionStart = start + syntax.length;
+    targetInput.selectionEnd = end + syntax.length;
   }
-  noteBodyInput.focus();
+  targetInput.focus();
+}
+
+function extractNoteTitle(text) {
+  if (!text) {
+    return 'Sans titre';
+  }
+  const line = text.split(/\r?\n/).map((row) => row.trim()).find(Boolean);
+  if (!line) {
+    return 'Sans titre';
+  }
+  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
+}
+
+function getNotePreview(text) {
+  if (!text) {
+    return '';
+  }
+  const collapsed = text.replace(/\s+/g, ' ').trim();
+  if (collapsed.length <= 160) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, 160)}…`;
+}
+
+function resetNoteEditorState() {
+  if (noteEditorState?.saveTimer) {
+    clearTimeout(noteEditorState.saveTimer);
+  }
+  if (noteEditorState?.keyHandler) {
+    document.removeEventListener('keydown', noteEditorState.keyHandler);
+  }
+  noteEditorState = null;
+  noteCaptureActive = false;
+}
+
+function setNoteStatus(state, detail) {
+  if (!noteEditorState?.statusEl || !noteEditorState?.statusDetailEl) {
+    return;
+  }
+  const statusEl = noteEditorState.statusEl;
+  statusEl.classList.remove('is-dirty', 'is-saving', 'is-error');
+  let label = 'Enregistré';
+  if (state === 'dirty') {
+    label = 'Modifications non sauvegardées';
+    statusEl.classList.add('is-dirty');
+  } else if (state === 'saving') {
+    label = 'Enregistrement...';
+    statusEl.classList.add('is-saving');
+  } else if (state === 'error') {
+    label = 'Erreur';
+    statusEl.classList.add('is-error');
+  } else if (state === 'empty') {
+    label = 'Vide';
+    statusEl.classList.add('is-dirty');
+  }
+  statusEl.textContent = label;
+  noteEditorState.statusDetailEl.textContent = detail || '';
+}
+
+function updateNotesData(record) {
+  if (!record) {
+    return;
+  }
+  const index = notesData.findIndex((item) => item.id === record.id);
+  if (index >= 0) {
+    notesData[index] = record;
+  } else {
+    notesData = [record, ...notesData];
+  }
+  if (statTotal) {
+    statTotal.textContent = `${notesData.length}`;
+  }
+  renderNotesList();
+}
+
+async function saveNote({ force = false } = {}) {
+  if (!noteEditorState || !noteEditorState.bodyInput) {
+    return null;
+  }
+  if (!window.electronAPI?.upsertNote) {
+    setNoteStatus('error', 'API indisponible');
+    return null;
+  }
+  const text = noteEditorState.bodyInput.value || '';
+  const hasContent = Boolean(text.trim());
+  if (!hasContent && !noteEditorState.note?.id) {
+    setNoteStatus('empty', 'Ajoutez du contenu pour sauvegarder.');
+    return null;
+  }
+  if (!force && !noteEditorState.dirty) {
+    return noteEditorState.note || null;
+  }
+
+  noteEditorState.saving = true;
+  setNoteStatus('saving', 'Enregistrement en cours...');
+
+  const now = new Date().toISOString();
+  const titleInput = noteEditorState.titleInput?.value.trim();
+  const title = titleInput || extractNoteTitle(text);
+  const payload = {
+    id: noteEditorState.note?.id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`),
+    user_id: noteEditorState.note?.user_id || null,
+    title,
+    text,
+    metadata: noteEditorState.note?.metadata || { source: 'manual' },
+    created_at: noteEditorState.note?.created_at || now,
+    updated_at: now,
+  };
+
+  try {
+    const record = await window.electronAPI.upsertNote(payload);
+    noteEditorState.note = record;
+    noteEditorState.dirty = false;
+    noteEditorState.saving = false;
+    updateNotesData(record);
+    setNoteStatus('saved', `Enregistré à ${formatTime(record.updated_at)}`);
+    return record;
+  } catch (error) {
+    noteEditorState.saving = false;
+    setNoteStatus('error', 'Sauvegarde impossible.');
+    return null;
+  }
+}
+
+function scheduleNoteAutosave() {
+  if (!noteEditorState) {
+    return;
+  }
+  if (noteEditorState.saveTimer) {
+    clearTimeout(noteEditorState.saveTimer);
+  }
+  noteEditorState.saveTimer = setTimeout(() => {
+    saveNote();
+  }, 800);
+}
+
+function openNoteEditor(note = null) {
+  if (!modalBackdrop || !modalBody || !modalTitle || !modalCancel || !modalConfirm) {
+    return;
+  }
+
+  resetNoteEditorState();
+  modalTitle.textContent = note ? 'Modifier la note' : 'Nouvelle note';
+  modalConfirm.textContent = 'Fermer';
+  modalBody.innerHTML = '';
+  modalBackdrop.classList.add('is-visible', 'notes-modal');
+  modalBackdrop.setAttribute('aria-hidden', 'false');
+
+  const editor = document.createElement('div');
+  editor.className = 'note-editor';
+
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.className = 'note-title-input';
+  titleInput.placeholder = 'Titre de la note...';
+  titleInput.value = note?.title || '';
+
+  const statusRow = document.createElement('div');
+  statusRow.className = 'note-status-row';
+  const statusPill = document.createElement('span');
+  statusPill.className = 'note-status';
+  const statusDetail = document.createElement('span');
+  statusDetail.className = 'note-status-detail';
+  const hint = document.createElement('span');
+  hint.textContent = platform === 'darwin' ? 'Cmd+S pour enregistrer' : 'Ctrl+S pour enregistrer';
+  statusRow.appendChild(statusPill);
+  statusRow.appendChild(statusDetail);
+  statusRow.appendChild(hint);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'editor-toolbar';
+  toolbar.setAttribute('role', 'toolbar');
+  toolbar.setAttribute('aria-label', 'Formatage');
+  toolbar.innerHTML = `
+    <button class="editor-tool" type="button" data-md="**" aria-label="Gras">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg>
+    </button>
+    <button class="editor-tool" type="button" data-md="*" aria-label="Italique">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line></svg>
+    </button>
+    <div class="editor-sep" aria-hidden="true"></div>
+    <button class="editor-tool" type="button" data-md="- " aria-label="Liste">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+    </button>
+  `;
+
+  const bodyInput = document.createElement('textarea');
+  bodyInput.className = 'input-textarea';
+  bodyInput.placeholder = 'Commencez à écrire votre note...';
+  bodyInput.value = note?.text || '';
+
+  const actions = document.createElement('div');
+  actions.className = 'note-editor-actions';
+  const recordBadge = document.createElement('div');
+  recordBadge.className = 'recording-feedback';
+  recordBadge.innerHTML = `
+    <div class="audio-bars">
+      <span class="audio-bar" style="animation-duration: 420ms;"></span>
+      <span class="audio-bar" style="animation-duration: 460ms;"></span>
+      <span class="audio-bar" style="animation-duration: 390ms;"></span>
+      <span class="audio-bar" style="animation-duration: 430ms;"></span>
+    </div>
+    En écoute...
+  `;
+  const actionGroup = document.createElement('div');
+  actionGroup.style.display = 'flex';
+  actionGroup.style.gap = '12px';
+  actionGroup.style.alignItems = 'center';
+  actionGroup.style.flexWrap = 'wrap';
+  const dictateButton = document.createElement('button');
+  dictateButton.className = 'btn-secondary';
+  dictateButton.type = 'button';
+  dictateButton.textContent = 'Dictée';
+  actionGroup.appendChild(dictateButton);
+  actions.appendChild(recordBadge);
+  actions.appendChild(actionGroup);
+
+  editor.appendChild(titleInput);
+  editor.appendChild(statusRow);
+  editor.appendChild(toolbar);
+  editor.appendChild(bodyInput);
+  editor.appendChild(actions);
+  modalBody.appendChild(editor);
+
+  noteEditorState = {
+    note,
+    titleInput,
+    bodyInput,
+    statusEl: statusPill,
+    statusDetailEl: statusDetail,
+    dictateButton,
+    recordBadge,
+    dirty: false,
+    saving: false,
+    saveTimer: null,
+    keyHandler: null,
+  };
+
+  const initialDetail = note?.updated_at ? `Dernière sauvegarde à ${formatTime(note.updated_at)}` : '';
+  if ((note?.text || '').trim()) {
+    setNoteStatus('saved', initialDetail);
+  } else {
+    setNoteStatus('empty', 'Ajoutez du contenu pour sauvegarder.');
+  }
+
+  const onInput = () => {
+    noteEditorState.dirty = true;
+    setNoteStatus('dirty', 'Sauvegarde automatique en cours...');
+    scheduleNoteAutosave();
+  };
+  titleInput.addEventListener('input', onInput);
+  bodyInput.addEventListener('input', onInput);
+  toolbar.querySelectorAll('.editor-tool').forEach((button) => {
+    button.addEventListener('click', () => {
+      const md = button.dataset.md;
+      if (md) {
+        insertMarkdown(md, bodyInput);
+        onInput();
+      }
+    });
+  });
+
+  dictateButton.addEventListener('click', async () => {
+    if (!window.electronAPI?.toggleRecording || !window.electronAPI?.setRecordingTarget) {
+      return;
+    }
+    if (noteCaptureActive) {
+      noteCaptureActive = false;
+      recordBadge.classList.remove('active');
+      dictateButton.textContent = 'Dictée';
+      window.electronAPI.toggleRecording();
+      return;
+    }
+    noteCaptureActive = true;
+    recordBadge.classList.add('active');
+    dictateButton.textContent = 'Arrêter';
+    bodyInput.focus();
+    await window.electronAPI.setRecordingTarget('notes-editor');
+    window.electronAPI.toggleRecording();
+  });
+
+  noteEditorState.keyHandler = (event) => {
+    const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's';
+    if (isSave) {
+      event.preventDefault();
+      saveNote({ force: true });
+    }
+  };
+  document.addEventListener('keydown', noteEditorState.keyHandler);
+
+  modalResolver = () => {};
+  const closeEditor = async () => {
+    if (noteEditorState?.dirty) {
+      await saveNote({ force: true });
+    }
+    if (noteCaptureActive && window.electronAPI?.toggleRecording) {
+      window.electronAPI.toggleRecording();
+    }
+    toggleRecordingVisuals(false);
+    modalBackdrop.classList.remove('is-visible', 'notes-modal');
+    modalBackdrop.setAttribute('aria-hidden', 'true');
+    modalBody.innerHTML = '';
+    modalResolver = null;
+    resetNoteEditorState();
+  };
+
+  modalCancel.onclick = () => closeEditor();
+  modalConfirm.onclick = () => closeEditor();
+  setTimeout(() => titleInput.focus(), 0);
 }
 
 function buildEntryRow(entry, type) {
   const row = document.createElement('div');
   row.className = 'entry-row';
+  if (type === 'notes') {
+    row.role = 'button';
+    row.tabIndex = 0;
+    row.addEventListener('click', () => openNoteEditor(entry));
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openNoteEditor(entry);
+      }
+    });
+  }
 
   const icon = document.createElement('div');
   icon.className = 'entry-icon';
@@ -794,11 +1175,19 @@ function buildEntryRow(entry, type) {
 
   const title = document.createElement('div');
   title.className = 'entry-title';
-  title.textContent = entry.title || entry.text?.split(/\r?\n/)[0] || 'Sans titre';
+  if (type === 'notes') {
+    title.textContent = entry.title || extractNoteTitle(entry.text);
+  } else {
+    title.textContent = entry.title || entry.text?.split(/\r?\n/)[0] || 'Sans titre';
+  }
 
   const preview = document.createElement('div');
   preview.className = 'entry-preview';
-  preview.textContent = entry.text || entry.raw_text || '';
+  if (type === 'notes') {
+    preview.textContent = getNotePreview(entry.text || '');
+  } else {
+    preview.textContent = entry.text || entry.raw_text || '';
+  }
 
   main.appendChild(metaDiv);
   main.appendChild(title);
@@ -836,9 +1225,13 @@ function buildEntryRow(entry, type) {
     if (!method) {
       return;
     }
-    await method(entry.id);
-    showToast(type === 'notes' ? 'Note supprimée.' : 'Entrée supprimée.');
-    await refreshDashboard();
+    if (type === 'notes') {
+      await deleteNoteWithUndo(entry);
+    } else {
+      await method(entry.id);
+      showToast('Entrée supprimée.');
+      await refreshDashboard();
+    }
   });
 
   actions.appendChild(copyBtn);
@@ -898,35 +1291,11 @@ function refreshActiveList() {
 
 function toggleRecordingVisuals(active) {
   noteCaptureActive = active;
-  if (recordingFeedback) {
-    recordingFeedback.classList.toggle('active', active);
+  if (noteEditorState?.recordBadge) {
+    noteEditorState.recordBadge.classList.toggle('active', active);
   }
-  if (micPulse) {
-    micPulse.classList.toggle('active', active);
-  }
-  if (captureNoteButton) {
-    captureNoteButton.classList.toggle('is-recording', active);
-  }
-}
-
-async function handleNoteDictation() {
-  if (!noteBodyInput) {
-    return;
-  }
-  if (noteCaptureActive) {
-    toggleRecordingVisuals(false);
-    if (window.electronAPI?.toggleRecording) {
-      window.electronAPI.toggleRecording();
-    }
-    return;
-  }
-  toggleRecordingVisuals(true);
-  noteBodyInput.focus();
-  if (window.electronAPI?.setRecordingTarget) {
-    await window.electronAPI.setRecordingTarget('notes');
-  }
-  if (window.electronAPI?.toggleRecording) {
-    window.electronAPI.toggleRecording();
+  if (noteEditorState?.dictateButton) {
+    noteEditorState.dictateButton.textContent = active ? 'Arrêter' : 'Dictée';
   }
 }
 
@@ -958,43 +1327,7 @@ async function handleOnboardingDictation() {
 }
 
 async function handleCreateNote() {
-  if (!noteBodyInput) {
-    return;
-  }
-  const content = noteBodyInput.value.trim();
-  if (!content) {
-    showToast('La note est vide.', 'error');
-    return;
-  }
-
-  const payload = { text: content, metadata: { source: 'manual' } };
-  if (noteTitleInput?.value.trim()) {
-    payload.title = noteTitleInput.value.trim();
-  }
-
-  if (createNoteButton) {
-    createNoteButton.disabled = true;
-  }
-
-  try {
-    if (!window.electronAPI?.addNote) {
-      throw new Error('API indisponible');
-    }
-    await window.electronAPI.addNote(payload);
-    if (noteTitleInput) {
-      noteTitleInput.value = '';
-    }
-    noteBodyInput.value = '';
-    showToast('Note sauvegardée.');
-    await refreshDashboard();
-  } catch (error) {
-    console.error(error);
-    showToast('Erreur sauvegarde.', 'error');
-  } finally {
-    if (createNoteButton) {
-      createNoteButton.disabled = false;
-    }
-  }
+  openNoteEditor(null);
 }
 
 function renderStats(stats) {
@@ -1921,10 +2254,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (captureNoteButton) {
-    captureNoteButton.addEventListener('click', handleNoteDictation);
-  }
-
   if (upgradePlanButton) {
     upgradePlanButton.addEventListener('click', async () => {
       await triggerCheckout(upgradePlanButton);
@@ -1991,15 +2320,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.querySelectorAll('.editor-tool').forEach((button) => {
-    button.addEventListener('click', () => {
-      const md = button.dataset.md;
-      if (md) {
-        insertMarkdown(md);
-      }
-    });
-  });
-
   document.querySelectorAll('[data-empty-action]').forEach((button) => {
     button.addEventListener('click', () => {
       const action = button.dataset.emptyAction;
@@ -2009,7 +2329,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       if (action === 'note-editor') {
         setActiveView('notes');
-        noteTitleInput?.focus();
+        openNoteEditor(null);
         return;
       }
       if (action === 'dictionary') {
@@ -2207,18 +2527,23 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (window.electronAPI?.onDashboardTranscription) {
     window.electronAPI.onDashboardTranscription((text, target) => {
-      if (target === 'notes') {
-        if (!noteCaptureActive || !noteBodyInput) {
-          return;
-        }
+      if (target === 'notes' || target === 'notes-editor') {
         const add = (text || '').trim();
         if (!add) {
           toggleRecordingVisuals(false);
           return;
         }
-        const existing = noteBodyInput.value.trim();
-        noteBodyInput.value = existing ? `${existing}\n${add}` : add;
-        showToast('Texte reçu.');
+        if (target === 'notes-editor' && noteEditorState?.bodyInput) {
+          const existing = noteEditorState.bodyInput.value.trim();
+          noteEditorState.bodyInput.value = existing ? `${existing}\n${add}` : add;
+          noteEditorState.dirty = true;
+          setNoteStatus('dirty', 'Sauvegarde automatique en cours...');
+          scheduleNoteAutosave();
+          showToast('Texte reçu.');
+        } else {
+          showToast('Note ajoutée.');
+          refreshDashboard();
+        }
         toggleRecordingVisuals(false);
         return;
       }

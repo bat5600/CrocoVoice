@@ -1820,6 +1820,18 @@
       color: #64748B;
     }
 
+    .toast-action {
+      margin-left: auto;
+      border: none;
+      background: #ECFDF5;
+      color: var(--emerald-700);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
     .empty-state {
       display: none;
       flex-direction: column;
@@ -2120,6 +2132,83 @@
       justify-content: flex-end;
       gap: 12px;
       background: #F8FAFC;
+    }
+
+    .modal-backdrop.notes-modal .modal-card {
+      display: flex;
+      flex-direction: column;
+      max-width: 980px;
+      height: min(82vh, 780px);
+    }
+
+    .modal-backdrop.notes-modal .modal-body {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .note-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .note-editor textarea {
+      flex: 1;
+      resize: none;
+    }
+
+    .note-status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748B;
+    }
+
+    .note-status-detail {
+      color: #94A3B8;
+      font-weight: 600;
+    }
+
+    .note-status {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #ECFDF3;
+      color: #047857;
+      font-weight: 700;
+    }
+
+    .note-status.is-dirty {
+      background: #FEF3C7;
+      color: #B45309;
+    }
+
+    .note-status.is-saving {
+      background: #E0F2FE;
+      color: #0369A1;
+    }
+
+    .note-status.is-error {
+      background: #FEE2E2;
+      color: #B91C1C;
+    }
+
+    .note-editor-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .notes-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
     }
 
     @media (max-width: 900px) {
@@ -2447,50 +2536,12 @@
         </section>
 
         <section id="view-notes" class="view" style="max-width: 720px; margin: 0 auto;">
-          <div>
-            <h1 class="section-title">Nouvelle Note</h1>
-            <p class="section-subtitle">Dictée intelligente avec formatage automatique.</p>
-          </div>
-
-          <div class="card" style="margin-top: 24px;">
-            <input id="noteTitleInput" class="note-title-input" type="text" placeholder="Titre de la note...">
-
-            <div style="margin-top: 16px;">
-              <label class="form-label" for="noteBodyInput">Contenu</label>
-              <div class="editor-toolbar" role="toolbar" aria-label="Formatage">
-                <button class="editor-tool" type="button" data-md="**" aria-label="Gras">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg>
-                </button>
-                <button class="editor-tool" type="button" data-md="*" aria-label="Italique">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line></svg>
-                </button>
-                <div class="editor-sep" aria-hidden="true"></div>
-                <button class="editor-tool" type="button" data-md="- " aria-label="Liste">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-                </button>
-              </div>
-              <textarea id="noteBodyInput" class="input-textarea" rows="5" placeholder="Commencez à écrire ou lancez la dictée..."></textarea>
+          <div class="notes-header">
+            <div>
+              <h1 class="section-title">Notes</h1>
+              <p class="section-subtitle">Un espace dédié, séparé de l’historique.</p>
             </div>
-
-            <div class="note-actions">
-              <div id="recordingFeedback" class="recording-feedback">
-                <div class="audio-bars">
-                  <span class="audio-bar" style="animation-duration: 420ms;"></span>
-                  <span class="audio-bar" style="animation-duration: 460ms;"></span>
-                  <span class="audio-bar" style="animation-duration: 390ms;"></span>
-                  <span class="audio-bar" style="animation-duration: 430ms;"></span>
-                </div>
-                En écoute...
-              </div>
-              <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                <button id="captureNoteButton" class="btn-secondary" type="button" style="position: relative;">
-                  <span id="micPulse" class="mic-pulse"></span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
-                  Dictée
-                </button>
-                <button id="createNoteButton" class="btn-primary" type="button">Enregistrer</button>
-              </div>
-            </div>
+            <button id="createNoteButton" class="btn-primary" type="button">Nouvelle note</button>
           </div>
 
           <div style="margin-top: 32px;">

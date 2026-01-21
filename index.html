@@ -652,7 +652,11 @@
       box-shadow: var(--shadow);
       padding: 8px 0;
       display: none;
-      overflow: hidden;
+      overflow: visible;
+    }
+
+    .menu-item {
+      position: relative;
     }
 
     .widget-container.context-open .context-menu {
@@ -683,6 +687,85 @@
 
     .context-menu button:hover {
       background: var(--menu-hover);
+    }
+
+    .submenu-panel {
+      position: static;
+      width: calc(100% - 24px);
+      margin: 6px 12px 10px;
+      background: var(--menu-bg);
+      border: 1px solid var(--menu-border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 8px;
+      display: none;
+    }
+
+    .menu-item.submenu-open .submenu-panel {
+      display: block;
+      animation: menuIn 0.18s ease;
+    }
+
+    .submenu-header {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--pill-muted);
+      margin-bottom: 8px;
+    }
+
+    .submenu-search {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--menu-border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--pill-text);
+      font-size: 12px;
+      padding: 8px 10px;
+      font-family: inherit;
+      margin-bottom: 8px;
+    }
+
+    .submenu-search:focus {
+      outline: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .submenu-list {
+      max-height: 190px;
+      overflow-y: auto;
+      display: grid;
+      gap: 4px;
+    }
+
+    .submenu-item {
+      appearance: none;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--pill-text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: inherit;
+    }
+
+    .submenu-item:hover {
+      background: var(--menu-hover);
+    }
+
+    .submenu-item.selected {
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .submenu-empty {
+      font-size: 12px;
+      color: var(--pill-muted);
+      padding: 8px 4px;
+      text-align: center;
     }
 
     .menu-muted {
@@ -752,14 +835,27 @@
         <button type="button" role="menuitem" data-action="hide-1h">Masquer pendant 1 heure</button>
         <button type="button" role="menuitem" data-action="open-settings">Paramètres</button>
         <div class="menu-separator" role="separator"></div>
-        <button type="button" role="menuitem" data-action="open-microphone">
-          <span>Changer de microphone</span>
-          <span class="menu-muted">&gt;</span>
-        </button>
-        <button type="button" role="menuitem" data-action="open-language">
-          <span>Langue</span>
-          <span class="menu-muted">&gt;</span>
-        </button>
+        <div class="menu-item" data-submenu="microphone">
+          <button type="button" role="menuitem" data-action="toggle-microphone">
+            <span id="widgetMicrophoneLabel">Changer le micro</span>
+            <span class="menu-muted">&gt;</span>
+          </button>
+          <div class="submenu-panel" data-submenu-panel="microphone">
+            <div class="submenu-header">Microphone</div>
+            <div class="submenu-list" id="widgetMicrophoneList"></div>
+          </div>
+        </div>
+        <div class="menu-item" data-submenu="language">
+          <button type="button" role="menuitem" data-action="toggle-language">
+            <span id="widgetLanguageLabel">Langue</span>
+            <span class="menu-muted">&gt;</span>
+          </button>
+          <div class="submenu-panel" data-submenu-panel="language">
+            <div class="submenu-header">Langue</div>
+            <input type="text" class="submenu-search" id="widgetLanguageSearch" placeholder="Rechercher...">
+            <div class="submenu-list" id="widgetLanguageList"></div>
+          </div>
+        </div>
         <div class="menu-separator" role="separator"></div>
         <button type="button" role="menuitem" data-action="open-history">Voir l'historique</button>
         <button type="button" role="menuitem" data-action="paste-latest">
