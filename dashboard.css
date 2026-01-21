@@ -1107,3 +1107,329 @@ body.auth-locked .auth-overlay,
     margin: 0 24px;
   }
 }
+
+/* ========================================= */
+/*       CROCOVOICE DASHBOARD PATCH          */
+/* ========================================= */
+
+/* 1. Missing Editor Toolbar Styles */
+.editor-tool {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.editor-tool:hover {
+    background: #fff;
+    color: var(--emerald-600);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.editor-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border-light);
+    margin: 0 4px;
+}
+
+/* 2. Global Form Element Fixes */
+input,
+select,
+textarea,
+button {
+    font-family: var(--font-main) !important;
+}
+
+.input-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 40px !important;
+}
+
+.input-select:focus,
+.input-field:focus,
+.input-textarea:focus {
+    border-color: var(--emerald-500);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+    outline: none;
+    background-color: #fff;
+}
+
+/* 3. Note Title Input */
+.note-title-input {
+    width: 100%;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text-main);
+    background: transparent;
+    border: none;
+    padding: 12px 0;
+    margin-bottom: 8px;
+}
+
+.note-title-input::placeholder {
+    color: var(--slate-300);
+}
+
+.note-title-input:focus {
+    outline: none;
+}
+
+/* 4. Dictionary & List Actions */
+.entry-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.entry-action {
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-muted);
+    transition: all 0.2s;
+}
+
+.entry-action:hover {
+    background: var(--slate-100);
+    color: var(--text-main);
+}
+
+.entry-action.delete:hover {
+    color: #ef4444;
+    background: #fee2e2;
+    border-color: #fca5a5;
+}
+
+.dictionary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    margin-bottom: 8px;
+}
+
+.dictionary-term {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-main);
+}
+
+.dictionary-term .arrow {
+    color: var(--text-muted);
+}
+
+.dictionary-row-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.dictionary-row-actions button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.dictionary-row-actions button:hover {
+    background: var(--slate-100);
+    color: var(--text-main);
+}
+
+.dictionary-row-actions button.delete:hover {
+    color: #ef4444;
+    background: #fee2e2;
+}
+
+/* 5. Auth/Profile Panel */
+.auth-card-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auth-email {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.auth-action {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-align: left;
+}
+
+.auth-action:hover {
+    color: var(--text-main);
+    text-decoration-color: var(--text-muted);
+}
+
+.auth-actions-row {
+    display: flex;
+    gap: 8px;
+}
+
+.auth-login-btn,
+.auth-signup-btn {
+    flex: 1;
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.auth-login-btn {
+    background: var(--emerald-500);
+    color: white;
+    border: none;
+}
+
+.auth-signup-btn {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-main);
+}
+
+/* 6. Style Tab Grid */
+.style-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+    width: 100%;
+}
+
+.style-card {
+    background: #fff;
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    padding: 20px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.2s;
+}
+
+.style-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--slate-300);
+}
+
+.style-card.active {
+    border-color: var(--emerald-500);
+    background: var(--emerald-50);
+    box-shadow: 0 0 0 1px var(--emerald-500);
+}
+
+.style-card h3 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-main);
+}
+
+.style-badge {
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 99px;
+    background: var(--emerald-500);
+    color: #fff;
+}
+
+.style-preview {
+    background: var(--slate-50);
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: auto;
+    border: 1px solid var(--border-light);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.style-card.active .style-preview {
+    background: #fff;
+    border-color: var(--emerald-200);
+}
+
+.style-preview-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.style-preview-label {
+    width: 40px;
+    flex-shrink: 0;
+    color: var(--text-soft);
+    font-weight: 600;
+}
+
+.style-preview-text {
+    font-style: italic;
+    color: var(--text-main);
+}
+
+.style-card button {
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--border-light);
+    background: #fff;
+    margin-top: 8px;
+    cursor: pointer;
+    color: var(--text-main);
+}
+
+.style-card button:hover {
+    background: var(--slate-100);
+}
+
+.style-card.active button {
+    background: var(--emerald-500);
+    color: #fff;
+    border-color: var(--emerald-500);
+}
