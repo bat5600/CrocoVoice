@@ -147,6 +147,41 @@ const defaultSettings = {
 };
 let settings = { ...defaultSettings };
 
+const DEFAULT_ONBOARDING_STATE = {
+  version: 1,
+  completed: false,
+  completedAt: null,
+  step: 'welcome',
+  micOk: false,
+  lastMicError: null,
+  deliveryOk: false,
+  lastDeliveryError: null,
+  updatedAt: null,
+};
+
+async function getOnboardingState() {
+  if (!store) {
+    return { ...DEFAULT_ONBOARDING_STATE };
+  }
+  const state = await store.getSetting('onboarding_state', null);
+  if (!state || typeof state !== 'object') {
+    return { ...DEFAULT_ONBOARDING_STATE };
+  }
+  return { ...DEFAULT_ONBOARDING_STATE, ...state };
+}
+
+async function setOnboardingState(patch) {
+  if (!store) {
+    return { ...DEFAULT_ONBOARDING_STATE };
+  }
+  const now = new Date().toISOString();
+  const current = await getOnboardingState();
+  const next = { ...current, ...(patch || {}), updatedAt: now };
+  await store.setSetting('onboarding_state', next);
+  sendDashboardEvent('dashboard:data-updated');
+  return next;
+}
+
 function normalizeText(value) {
   return value
     .normalize('NFD')
@@ -592,7 +627,7 @@ function setAuthState(nextState) {
 }
 
 function canAccessPremium() {
-  return authState.status === 'authenticated';
+  return authState.status === 'authenticated' || authState.status === 'not_configured';
 }
 
 function buildStripeUrl(baseUrl, user) {
@@ -1444,7 +1479,7 @@ async function transcribeAudio(audioBuffer, mimeType) {
     const extension = getAudioExtension(mimeType);
     tempFilePath = path.join(tempDir, `recording-${Date.now()}.${extension}`);
 
-    fs.writeFileSync(tempFilePath, audioBuffer);
+    await fs.promises.writeFile(tempFilePath, audioBuffer);
 
     const transcription = await executeOpenAICall({
       label: 'audio.transcriptions',
@@ -1463,8 +1498,14 @@ async function transcribeAudio(audioBuffer, mimeType) {
     console.error('Transcription error:', error);
     throw error;
   } finally {
-    if (tempFilePath && fs.existsSync(tempFilePath)) {
-      fs.unlinkSync(tempFilePath);
+    if (tempFilePath) {
+      try {
+        await fs.promises.unlink(tempFilePath);
+      } catch (error) {
+        if (error?.code !== 'ENOENT') {
+          console.warn('Failed to cleanup temp audio file:', error);
+        }
+      }
     }
   }
 }
@@ -1783,6 +1824,7 @@ ipcMain.handle('dashboard:data', async () => {
   const authUser = syncService && syncService.getUser();
   const quota = await getQuotaSnapshot();
   const subscription = getSubscriptionSnapshot();
+  const onboarding = await getOnboardingState();
   return {
     settings: { ...settings, apiKeyPresent: Boolean(OPENAI_API_KEY) },
     stats: { ...(stats || {}), notesTotal },
@@ -1792,9 +1834,56 @@ ipcMain.handle('dashboard:data', async () => {
     styles,
     quota,
     subscription,
+    onboarding,
     auth: authUser ? { email: authUser.email, id: authUser.id } : null,
     syncReady: Boolean(syncService && syncService.isReady()),
   };
+});
+
+ipcMain.handle('onboarding:get', async () => {
+  return getOnboardingState();
+});
+
+ipcMain.handle('onboarding:update', async (event, patch) => {
+  return setOnboardingState(patch);
+});
+
+ipcMain.handle('onboarding:complete', async () => {
+  const now = new Date().toISOString();
+  return setOnboardingState({
+    completed: true,
+    completedAt: now,
+    step: 'done',
+  });
+});
+
+ipcMain.handle('onboarding:reset', async () => {
+  const now = new Date().toISOString();
+  return setOnboardingState({ ...DEFAULT_ONBOARDING_STATE, updatedAt: now });
+});
+
+ipcMain.handle('onboarding:delivery-test', async (event, payload) => {
+  const text = (payload && typeof payload.text === 'string' ? payload.text : '').trim()
+    || 'CrocoVoice — test de livraison';
+  try {
+    await captureTypingTarget();
+    await pasteText(text);
+    await setOnboardingState({ deliveryOk: true, step: 'delivery' });
+    return { ok: true, mode: 'paste' };
+  } catch (error) {
+    clipboard.writeText(text);
+    await setOnboardingState({ deliveryOk: false, step: 'delivery', lastDeliveryError: error?.message || 'Echec livraison' });
+    return { ok: false, mode: 'clipboard', error: error?.message || 'Echec livraison' };
+  }
+});
+
+ipcMain.handle('onboarding:copy', async (event, payload) => {
+  const text = (payload && typeof payload.text === 'string' ? payload.text : '').trim();
+  if (!text) {
+    return { ok: false };
+  }
+  clipboard.writeText(text);
+  return { ok: true };
 });
 
 ipcMain.handle('dictionary:upsert', async (event, entry) => {

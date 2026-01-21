@@ -367,7 +367,7 @@ function isProSubscription(subscription) {
 function applyAuthState(state) {
   currentAuthState = state || {};
   const status = currentAuthState.status || 'checking';
-  const authed = status === 'authenticated';
+  const authed = status === 'authenticated' || status === 'not_configured';
   document.body.classList.toggle('auth-gated', !authed);
   if (!authed && quotaGateActive) {
     clearQuotaGate();

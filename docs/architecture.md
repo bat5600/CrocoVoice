@@ -161,17 +161,25 @@ CrocoVoice/
 ├── sync.js
 ├── index.html
 ├── dashboard.html
-├── dashboard.js
+├── dashboard.css
+├── dashboard/
+│   ├── app.js
+│   ├── onboarding.js
+│   ├── state.js
+│   ├── ui.js
+│   ├── render.js
+│   ├── actions.js
+│   └── README.md
 ├── assets/
 └── supabase/
 ```
 
 ### New File Organization
-No new folders/files required for this enhancement; changes will be made within existing core files.
+Dashboard UI assets are split into `dashboard/` with a shared `dashboard.css` stylesheet.
 
 ### Integration Guidelines
 - **File Naming:** Keep existing lower-case filenames; no new conventions introduced.
-- **Folder Organization:** Preserve current flat root structure for core runtime files.
+- **Folder Organization:** Core runtime files remain at the root; dashboard assets live under `dashboard/`.
 - **Import/Export Patterns:** Continue CommonJS require pattern as used across main.js, store.js, and sync.js.
 
 ## Infrastructure and Deployment Integration
@@ -232,4 +240,3 @@ None required beyond reinforcing consistent state transition and error-handling 
 - **Existing Feature Verification:** Repeat core flows (start/stop, settings change, history save, sync optional).
 - **Automated Regression Suite:** None; optional to add later.
 - **Manual Testing Requirements:** Multi-OS checks for mic + keyboard permissions and global shortcuts.
-

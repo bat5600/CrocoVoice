@@ -12,7 +12,7 @@ It complements (does not replace) the existing brownfield stability architecture
 - Electron app with main/renderer split and IPC via `preload.js`
 - Local SQLite (flow.sqlite) as source of truth via `store.js`
 - Dictation pipeline orchestrated in `main.js` (state machine, OpenAI calls, typing/paste fallback)
-- Dashboard UI in `dashboard.html` + `dashboard.js`
+- Dashboard UI in `dashboard.html` + `dashboard/state.js` + `dashboard/ui.js` + `dashboard/render.js` + `dashboard/actions.js` + `dashboard/onboarding.js` + `dashboard/app.js` + `dashboard.css`
 - Optional Supabase auth/sync via `sync.js`
 
 ## 2) Architectural Goals (vNext)
@@ -28,7 +28,7 @@ It complements (does not replace) the existing brownfield stability architecture
 ```mermaid
 graph TD
   UIWidget[Widget UI (index.html/renderer.js)] -->|IPC| Main[Main process (main.js)]
-  UIDash[Dashboard UI (dashboard.html/dashboard.js)] -->|IPC| Main
+  UIDash[Dashboard UI (dashboard.html/dashboard/*.js)] -->|IPC| Main
   Main --> Store[SQLite Store (store.js)]
   Main --> Sync[Sync Service (sync.js) optional]
   Main --> OpenAI[OpenAI (Whisper + Chat) optional]

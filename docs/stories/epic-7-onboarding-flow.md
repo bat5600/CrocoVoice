@@ -1,7 +1,7 @@
 # Epic 7 — Onboarding flow (first-run success, Windows-first)
 
 ## Status
-Draft
+In Progress
 
 ## Story
 **As a** new user,  
@@ -16,10 +16,10 @@ Draft
 5. Onboarding state is persisted locally (can be resumed; doesn’t reappear once completed unless user explicitly resets it).
 
 ## Tasks / Subtasks
-- [ ] Define minimal onboarding state + persistence (AC: 1,5)
-- [ ] Implement onboarding UI flow (stepper, modal, or dedicated view) (AC: 1,3)
-- [ ] Implement Windows-first checks and a “first successful dictation” verification (AC: 2,4)
-- [ ] Add clear user feedback (success/failure) and easy next actions (AC: 3,4)
+- [x] Define minimal onboarding state + persistence (AC: 1,5)
+- [x] Implement onboarding UI flow (stepper, modal, or dedicated view) (AC: 1,3)
+- [x] Implement Windows-first checks and a “first successful dictation” verification (AC: 2,4)
+- [x] Add clear user feedback (success/failure) and easy next actions (AC: 3,4)
 
 ## Dev Notes
 - Likely stored in `store.js` settings (e.g., `onboarding:*` keys) and surfaced via `main.js`/IPC to `dashboard.js`.
@@ -38,15 +38,26 @@ Draft
 
 ## Dev Agent Record
 ### Agent Model Used
-TBD
+GPT-5.2
 
 ### Debug Log References
 N/A
 
 ### Completion Notes List
-- TBD
+- Added Windows-first onboarding overlay (mic test + delivery test) with persisted progress and completion state.
+- Needs manual validation on Windows to confirm paste automation success (fallback-to-clipboard covered).
 
 ### File List
-- TBD
+- main.js
+- preload.js
+- dashboard.html
+- dashboard.css
+- dashboard/app.js
+- dashboard/onboarding.js
+- dashboard/state.js
+- dashboard/ui.js
+- dashboard/render.js
+- dashboard/actions.js
+- dashboard/README.md
 
 ## QA Results

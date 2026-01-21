@@ -19,8 +19,438 @@
       background: transparent;
       display: block;
       min-height: 100vh;
-      font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+      font-family: "Plus Jakarta Sans", "Space Grotesk", system-ui, sans-serif;
       overflow: visible;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :root {
+      /* Palette Matching Dashboard */
+      --emerald-400: #34d399;
+      --emerald-500: #10b981;
+      --emerald-600: #059669;
+      
+      --pill-bg: #0f172a;
+      --pill-edge: rgba(255, 255, 255, 0.1);
+      --pill-text: #f1f5f9;
+      --pill-muted: #94a3b8;
+      
+      --croco-green: var(--emerald-500);
+      
+      --menu-bg: rgba(15, 23, 42, 0.95);
+      --menu-border: rgba(255, 255, 255, 0.1);
+      --menu-hover: rgba(255, 255, 255, 0.08);
+      
+      --shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      --shadow-colored: 0 10px 25px rgba(16, 185, 129, 0.25);
+    }
+
+    .widget-shell {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 12px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    body.auth-gated, body.quota-gated {
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.95), #020617);
+    }
+
+    body.auth-gated .widget-shell,
+    body.quota-gated .widget-shell {
+      display: none;
+    }
+
+    .auth-gate, .quota-gate {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: var(--pill-text);
+      backdrop-filter: blur(8px);
+    }
+
+    body.auth-gated .auth-gate, body.quota-gated .quota-gate {
+      display: flex;
+    }
+
+    .auth-card, .quota-card {
+      width: 100%;
+      max-width: 340px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 30px 60px -12px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .auth-title, .quota-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .auth-subtitle, .quota-subtitle {
+      font-size: 13px;
+      color: var(--pill-muted);
+      line-height: 1.5;
+    }
+
+    .quota-metrics {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+      color: #e2e8f0;
+      background: rgba(255,255,255,0.05);
+      padding: 12px;
+      border-radius: 12px;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .auth-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--pill-muted);
+      font-weight: 700;
+    }
+
+    .auth-form input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.3);
+      color: #fff;
+      font-size: 13px;
+      transition: all 0.2s ease;
+    }
+
+    .auth-form input:focus {
+      outline: none;
+      border-color: var(--emerald-500);
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .auth-primary, .quota-actions button.primary {
+      border: none;
+      border-radius: 14px;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--emerald-500), var(--emerald-600));
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      box-shadow: var(--shadow-colored);
+      transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .auth-primary:hover, .quota-actions button.primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 24px rgba(16, 185, 129, 0.35);
+    }
+
+    .auth-actions, .quota-actions {
+      display: flex;
+      gap: 10px;
+    }
+    
+    .quota-actions { flex-direction: column; }
+
+    .auth-actions button, .quota-actions button.secondary {
+      flex: 1;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: transparent;
+      color: var(--pill-muted);
+      border-radius: 14px;
+      padding: 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .auth-actions button:hover, .quota-actions button.secondary:hover {
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      border-color: rgba(255,255,255,0.3);
+    }
+
+    .widget-container {
+      position: relative;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    .pill-button {
+      width: 96px;
+      height: 32px;
+      border-radius: 999px;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 
+        inset 0 1px 1px rgba(255, 255, 255, 0.08), 
+        0 12px 24px -6px rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+    }
+
+    .widget-container.idle .pill-button {
+      width: 68px;
+      height: 12px;
+      background: rgba(15, 23, 42, 0.9);
+      border-color: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      opacity: 0.8;
+    }
+
+    .widget-container.idle:hover .pill-button {
+      width: 96px;
+      height: 32px;
+      background: #0f172a;
+      opacity: 1;
+      box-shadow: 
+        inset 0 1px 1px rgba(255, 255, 255, 0.08), 
+        0 16px 32px -8px rgba(0, 0, 0, 0.6);
+    }
+
+    .widget-container.recording .pill-button {
+      width: 200px;
+      padding: 0 6px;
+      justify-content: space-between;
+      border-color: rgba(16, 185, 129, 0.3);
+      box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.1), 0 16px 40px -10px rgba(0,0,0,0.7);
+    }
+
+    .waveform {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      flex: 1;
+    }
+
+    .waveform-canvas {
+      width: 60px;
+      height: 20px;
+      filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.4));
+    }
+
+    .spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-top-color: var(--emerald-400);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .cancel-button {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.6);
+      border: none;
+      place-items: center;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .cancel-button:hover {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+
+    .stop-button {
+      display: none;
+      height: 22px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: none;
+      background: #ef4444;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      margin-right: 2px;
+      box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+    }
+    
+    .stop-button:hover {
+      background: #dc2626;
+    }
+
+    .stop-icon {
+      width: 8px;
+      height: 8px;
+      background: #ffffff;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    /* Undo/Error States need to be sleek too */
+    .cancel-undo, .widget-error {
+      background: #0f1729;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+    }
+
+    .tooltip {
+      position: absolute;
+      bottom: calc(100% + 14px);
+      left: 50%;
+      transform: translate(-50%, 8px);
+      background: var(--menu-bg);
+      backdrop-filter: blur(12px);
+      color: var(--pill-text);
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 14px;
+      border: 1px solid var(--menu-border);
+      box-shadow: var(--shadow);
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .widget-container:hover .tooltip {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+      width: 10px;
+      height: 10px;
+      background: var(--menu-bg);
+      border-right: 1px solid var(--menu-border);
+      border-bottom: 1px solid var(--menu-border);
+      margin-top: -5px;
+    }
+
+    .context-menu {
+      position: absolute;
+      bottom: calc(100% + 16px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 260px;
+      background: var(--menu-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--menu-border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 8px;
+      display: none;
+      animation: menuIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    
+    .context-menu button {
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 500;
+      transition: background 0.1s;
+    }
+    
+    .context-menu button:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes menuIn {
+      from { opacity: 0; transform: translate(-50%, 8px) scale(0.96); }
+      to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    }
+    
+    /* Missing Logic Classes need to be kept from original or redefined */
+    .widget-container.recording .waveform { display: flex; }
+    .widget-container.recording .spinner { display: none; }
+    .widget-container.recording .cancel-button { display: grid; }
+    .widget-container.recording .stop-button { display: inline-flex; }
+    .widget-container.processing .spinner { display: block; }
+    .widget-container.processing .waveform { display: none; }
+    .widget-container.error .waveform, .widget-container.error .spinner { display: none; }
+
+    .cancel-undo {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 10px 14px;
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
+      color: #e5e7eb;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .cancel-undo.active { display: flex; }
+
+    .widget-error {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      padding: 10px 14px;
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
+      color: #e5e7eb;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .widget-error.active { display: flex; }
+
+    .widget-error-icon, .cancel-undo-icon {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 12px;
+      border: 2px solid currentColor;
+    }
+    .widget-error-icon { color: #f87171; }
+    .cancel-undo-icon { color: #a78bfa; }
+
+    .cancel-undo-bar {
+      flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: hidden; min-width: 100px;
+    }
+    .cancel-undo-progress {
+      height: 100%; width: 100%; background: #e2e8f0; border-radius: 99px; transition: width 5s linear;
+    }
+    
+    /* Utilities for hiding */
+    .widget-container.undo-active .pill-button,
+    body.undo-active .pill-button,
+    body.error-active .pill-button { display: none; }
+    
+    body.undo-active .cancel-undo, body.error-active .widget-error {
+       display: flex; margin-top: 0;
     }
 
     :root {

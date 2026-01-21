@@ -390,6 +390,12 @@ class Store {
       const raw = fs.readFileSync(jsonPath, 'utf-8');
       const parsed = JSON.parse(raw);
       await this.saveSettings(parsed);
+      const migratedPath = path.join(this.userDataPath, 'settings.json.migrated');
+      try {
+        await fs.promises.rename(jsonPath, migratedPath);
+      } catch (error) {
+        console.warn('Failed to archive settings.json after migration:', error);
+      }
     } catch (error) {
       console.error('Failed to migrate settings.json:', error);
     }

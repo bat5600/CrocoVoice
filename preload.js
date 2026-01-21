@@ -90,6 +90,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openDashboardView: (viewName) => ipcRenderer.send('dashboard:open-view', viewName),
   sendWindowControl: (action) => ipcRenderer.send('dashboard:window-control', action),
   getPlatform: () => process.platform,
+  getOnboardingState: () => ipcRenderer.invoke('onboarding:get'),
+  updateOnboardingState: (patch) => ipcRenderer.invoke('onboarding:update', patch),
+  completeOnboarding: () => ipcRenderer.invoke('onboarding:complete'),
+  resetOnboarding: () => ipcRenderer.invoke('onboarding:reset'),
+  runOnboardingDeliveryTest: (payload) => ipcRenderer.invoke('onboarding:delivery-test', payload),
+  copyOnboardingText: (payload) => ipcRenderer.invoke('onboarding:copy', payload),
 
   onShortcutUpdated: (callback) => {
     ipcRenderer.on('shortcut-updated', (event, shortcut) => callback(shortcut));
