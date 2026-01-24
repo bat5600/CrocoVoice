@@ -628,17 +628,22 @@ function showToast(message, type = 'success') {
   }
   const toast = document.createElement('div');
   toast.className = `toast ${type === 'error' ? 'error' : ''}`;
-  toast.innerHTML = `
-    <div class="toast-icon">
-      ${type === 'error'
-        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"></path></svg>'}
-    </div>
-    <div>
-      <div class="toast-title">${type === 'error' ? 'Erreur' : 'Succès'}</div>
-      <div class="toast-message">${message}</div>
-    </div>
-  `;
+  const icon = document.createElement('div');
+  icon.className = 'toast-icon';
+  icon.innerHTML = type === 'error'
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"></path></svg>';
+  const content = document.createElement('div');
+  const title = document.createElement('div');
+  title.className = 'toast-title';
+  title.textContent = type === 'error' ? 'Erreur' : 'Succès';
+  const messageEl = document.createElement('div');
+  messageEl.className = 'toast-message';
+  messageEl.textContent = message || '';
+  content.appendChild(title);
+  content.appendChild(messageEl);
+  toast.appendChild(icon);
+  toast.appendChild(content);
   toast.addEventListener('click', () => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
@@ -659,17 +664,25 @@ function showUndoToast(message, actionLabel, onUndo) {
   }
   const toast = document.createElement('div');
   toast.className = 'toast';
-  toast.innerHTML = `
-    <div class="toast-icon">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0-8-8"></path><polyline points="8 4 4 4 4 8"></polyline></svg>
-    </div>
-    <div>
-      <div class="toast-title">Action</div>
-      <div class="toast-message">${message}</div>
-    </div>
-    <button class="toast-action" type="button">${actionLabel}</button>
-  `;
-  const actionButton = toast.querySelector('.toast-action');
+  const icon = document.createElement('div');
+  icon.className = 'toast-icon';
+  icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0-8-8"></path><polyline points="8 4 4 4 4 8"></polyline></svg>';
+  const content = document.createElement('div');
+  const title = document.createElement('div');
+  title.className = 'toast-title';
+  title.textContent = 'Action';
+  const messageEl = document.createElement('div');
+  messageEl.className = 'toast-message';
+  messageEl.textContent = message || '';
+  content.appendChild(title);
+  content.appendChild(messageEl);
+  const actionButton = document.createElement('button');
+  actionButton.className = 'toast-action';
+  actionButton.type = 'button';
+  actionButton.textContent = actionLabel || '';
+  toast.appendChild(icon);
+  toast.appendChild(content);
+  toast.appendChild(actionButton);
   const dismiss = () => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
@@ -1196,7 +1209,7 @@ function hideFocusToolbar() {
   noteFocusToolbar.classList.remove('is-visible');
 }
 
-function applyFocusFormat(format) {
+async function applyFocusFormat(format) {
   if (!noteFocusEditor) {
     return;
   }
@@ -1240,8 +1253,26 @@ function applyFocusFormat(format) {
       document.execCommand('formatBlock', false, 'p');
       break;
     case 'link': {
-      const url = window.prompt('URL du lien');
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount || selection.isCollapsed) {
+        break;
+      }
+      const selectionRange = selection.getRangeAt(0).cloneRange();
+      const res = await openModal({
+        title: 'Ajouter un lien',
+        confirmText: 'Ajouter',
+        fields: [
+          { key: 'url', label: 'URL du lien', value: '' },
+        ],
+      });
+      const url = res?.url || '';
       if (url) {
+        noteFocusEditor.focus();
+        const restoredSelection = window.getSelection();
+        if (restoredSelection && selectionRange) {
+          restoredSelection.removeAllRanges();
+          restoredSelection.addRange(selectionRange);
+        }
         document.execCommand('createLink', false, url);
       }
       break;
@@ -1845,16 +1876,21 @@ function renderStyles(styles) {
     const example = STYLE_EXAMPLES[style.name] || {};
     const beforeText = style.exampleBefore || example.before || 'Je... euh... je pense que c\'est bon.';
     const afterText = style.exampleAfter || example.after || 'Je confirme que c\'est valide.';
-    preview.innerHTML = `
-      <div class="style-preview-row">
-        <span class="style-preview-label">Avant</span>
-        <span class="style-preview-text">"${beforeText}"</span>
-      </div>
-      <div class="style-preview-row style-preview-after">
-        <span class="style-preview-label">Après</span>
-        <span class="style-preview-text">"${afterText}"</span>
-      </div>
-    `;
+    const buildPreviewRow = (label, text, extraClass = '') => {
+      const row = document.createElement('div');
+      row.className = `style-preview-row${extraClass ? ` ${extraClass}` : ''}`;
+      const labelEl = document.createElement('span');
+      labelEl.className = 'style-preview-label';
+      labelEl.textContent = label;
+      const textEl = document.createElement('span');
+      textEl.className = 'style-preview-text';
+      textEl.textContent = `"${text}"`;
+      row.appendChild(labelEl);
+      row.appendChild(textEl);
+      return row;
+    };
+    preview.appendChild(buildPreviewRow('Avant', beforeText));
+    preview.appendChild(buildPreviewRow('Après', afterText, 'style-preview-after'));
 
     const btn = document.createElement('button');
     btn.textContent = style.id === currentSettings.activeStyleId ? 'Style actuel' : 'Utiliser ce style';
@@ -1903,7 +1939,11 @@ function renderAuth(auth, syncReady) {
   const syncBtn = syncNowButton;
   setSyncStatusMessage('');
   if (!syncReady) {
-    authPanel.innerHTML = '<span class="sync-status error">Erreur de configuration serveur.</span>';
+    authPanel.innerHTML = '';
+    const errorSpan = document.createElement('span');
+    errorSpan.className = 'sync-status error';
+    errorSpan.textContent = 'Erreur de configuration serveur.';
+    authPanel.appendChild(errorSpan);
     if (syncBtn) {
       syncBtn.disabled = true;
     }
@@ -1915,16 +1955,24 @@ function renderAuth(auth, syncReady) {
     if (syncBtn) {
       syncBtn.disabled = false;
     }
-    authPanel.innerHTML = `
-      <div class="auth-card-panel">
-        <span class="auth-email">${auth.email}</span>
-        <button id="signOutButton" class="auth-action" type="button">Déconnexion</button>
-      </div>
-    `;
-    document.getElementById('signOutButton')?.addEventListener('click', async () => {
+    authPanel.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.className = 'auth-card-panel';
+    const email = document.createElement('span');
+    email.className = 'auth-email';
+    email.textContent = auth.email || '';
+    const signOutButton = document.createElement('button');
+    signOutButton.id = 'signOutButton';
+    signOutButton.className = 'auth-action';
+    signOutButton.type = 'button';
+    signOutButton.textContent = 'Déconnexion';
+    signOutButton.addEventListener('click', async () => {
       await window.electronAPI.authSignOut();
       await refreshDashboard();
     });
+    panel.appendChild(email);
+    panel.appendChild(signOutButton);
+    authPanel.appendChild(panel);
     setSyncStatusMessage('Synchronisation disponible.', 'ok');
     return;
   }
@@ -1932,22 +1980,32 @@ function renderAuth(auth, syncReady) {
   if (syncBtn) {
     syncBtn.disabled = true;
   }
-  authPanel.innerHTML = `
-    <div class="auth-actions-row">
-      <button id="authLoginButton" class="auth-login-btn" type="button">Se connecter</button>
-      <button id="authSignupButton" class="auth-signup-btn" type="button">Créer compte</button>
-    </div>
-  `;
-  document.getElementById('authLoginButton')?.addEventListener('click', async () => {
+  authPanel.innerHTML = '';
+  const actions = document.createElement('div');
+  actions.className = 'auth-actions-row';
+  const authLoginButton = document.createElement('button');
+  authLoginButton.id = 'authLoginButton';
+  authLoginButton.className = 'auth-login-btn';
+  authLoginButton.type = 'button';
+  authLoginButton.textContent = 'Se connecter';
+  authLoginButton.addEventListener('click', async () => {
     if (window.electronAPI?.openSignupUrl) {
       await window.electronAPI.openSignupUrl('login');
     }
   });
-  document.getElementById('authSignupButton')?.addEventListener('click', async () => {
+  const authSignupButton = document.createElement('button');
+  authSignupButton.id = 'authSignupButton';
+  authSignupButton.className = 'auth-signup-btn';
+  authSignupButton.type = 'button';
+  authSignupButton.textContent = 'Créer compte';
+  authSignupButton.addEventListener('click', async () => {
     if (window.electronAPI?.openSignupUrl) {
       await window.electronAPI.openSignupUrl('signup');
     }
   });
+  actions.appendChild(authLoginButton);
+  actions.appendChild(authSignupButton);
+  authPanel.appendChild(actions);
   setSyncStatusMessage('Connectez-vous pour synchroniser.');
 }
 
@@ -2496,6 +2554,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (noteFocusEditor) {
     noteFocusEditor.addEventListener('input', handleFocusedEditorInput);
+    noteFocusEditor.addEventListener('click', (event) => {
+      const link = event.target && event.target.closest ? event.target.closest('a') : null;
+      if (!link || !link.href) {
+        return;
+      }
+      event.preventDefault();
+      window.open(link.href, '_blank', 'noopener');
+    });
   }
 
   if (noteFocusToolbar) {
@@ -2503,8 +2569,8 @@ window.addEventListener('DOMContentLoaded', () => {
       event.preventDefault();
     });
     noteFocusToolbar.querySelectorAll('[data-format]').forEach((button) => {
-      button.addEventListener('click', () => {
-        applyFocusFormat(button.dataset.format);
+      button.addEventListener('click', async () => {
+        await applyFocusFormat(button.dataset.format);
       });
     });
   }

@@ -1199,6 +1199,38 @@ function ensureDashboardWindow() {
   createDashboardWindow();
 }
 
+function isExternalUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:';
+  } catch {
+    return false;
+  }
+}
+
+function attachExternalNavigationGuards(targetWindow) {
+  if (!targetWindow) {
+    return;
+  }
+  const { webContents } = targetWindow;
+  webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalUrl(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+  webContents.on('will-navigate', (event, url) => {
+    if (isExternalUrl(url)) {
+      event.preventDefault();
+      shell.openExternal(url);
+      return;
+    }
+    if (!url.startsWith('file://')) {
+      event.preventDefault();
+    }
+  });
+}
+
 function updateWindowVisibility() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -1237,6 +1269,7 @@ function createMainWindow() {
   });
   mainWindow.loadFile('index.html');
   mainWindow.setBackgroundColor('#00000000');
+  attachExternalNavigationGuards(mainWindow);
 
   updateWidgetBounds();
 
@@ -1276,6 +1309,7 @@ function createDashboardWindow() {
   dashboardWindow.setMenu(null);
 
   dashboardWindow.loadFile('dashboard.html');
+  attachExternalNavigationGuards(dashboardWindow);
   dashboardWindow.webContents.on('did-finish-load', () => {
     broadcastAuthState();
   });

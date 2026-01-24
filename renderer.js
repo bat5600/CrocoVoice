@@ -77,7 +77,7 @@ let widgetLanguageLabel = null;
 let widgetMicrophoneCurrent = null;
 let availableMicrophones = [];
 
-const CANCEL_UNDO_DURATION_MS = 5000;
+const CANCEL_UNDO_DURATION_MS = 4000;
 const AUDIO_RMS_ACTIVE_THRESHOLD = 0.018;
 const AUDIO_MIN_TOTAL_MS = 350;
 const AUDIO_MIN_ACTIVE_MS = 200;
@@ -158,7 +158,14 @@ function renderLanguageList(filterValue = '') {
       button.classList.add('selected');
     }
     button.dataset.language = option.code;
-    button.innerHTML = `<span class="submenu-text">${option.label}</span><span class="submenu-check">${isSelected ? '✓' : ''}</span>`;
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'submenu-text';
+    labelSpan.textContent = option.label;
+    const checkSpan = document.createElement('span');
+    checkSpan.className = 'submenu-check';
+    checkSpan.textContent = isSelected ? '✓' : '';
+    button.appendChild(labelSpan);
+    button.appendChild(checkSpan);
     widgetLanguageList.appendChild(button);
   });
 }
@@ -173,7 +180,14 @@ function renderMicrophoneList() {
   defaultButton.className = 'submenu-item';
   defaultButton.dataset.micId = '';
   const isDefault = !currentSettings.microphoneId;
-  defaultButton.innerHTML = `<span class="submenu-text">Detection auto</span><span class="submenu-check">${isDefault ? '✓' : ''}</span>`;
+  const defaultLabel = document.createElement('span');
+  defaultLabel.className = 'submenu-text';
+  defaultLabel.textContent = 'Detection auto';
+  const defaultCheck = document.createElement('span');
+  defaultCheck.className = 'submenu-check';
+  defaultCheck.textContent = isDefault ? '✓' : '';
+  defaultButton.appendChild(defaultLabel);
+  defaultButton.appendChild(defaultCheck);
   if (isDefault) {
     defaultButton.classList.add('selected');
   }
@@ -185,7 +199,14 @@ function renderMicrophoneList() {
     button.dataset.micId = mic.deviceId;
     const label = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
     const isSelected = currentSettings.microphoneId === mic.deviceId;
-    button.innerHTML = `<span class="submenu-text">${label}</span><span class="submenu-check">${isSelected ? '✓' : ''}</span>`;
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'submenu-text';
+    labelSpan.textContent = label;
+    const checkSpan = document.createElement('span');
+    checkSpan.className = 'submenu-check';
+    checkSpan.textContent = isSelected ? '✓' : '';
+    button.appendChild(labelSpan);
+    button.appendChild(checkSpan);
     if (isSelected) {
       button.classList.add('selected');
     }
