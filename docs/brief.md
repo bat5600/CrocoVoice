@@ -2,7 +2,7 @@
 
 Date: 2026-01-20  
 Version: v1.0 (YOLO draft)  
-Sources principales: `docs/CrocoVoice_new_idea_new_prd.md` (+ `docs/brainstorming-session-results.md`, `docs/ideas-for-later.md`, `docs/front-end-spec.md`, `docs/prd/intro-project-analysis-and-context.md`)
+Sources principales: `docs/archive/prd/CrocoVoice_new_idea_new_prd.md` (+ `docs/brainstorming-session-results.md`, `docs/ideas-for-later.md`, `docs/front-end-spec.md`, `docs/archive/prd-shards-20260120/intro-project-analysis-and-context.md`)
 
 ## Executive Summary
 
@@ -153,17 +153,17 @@ Le MVP est considere reussi si, sur un panel d’utilisateurs:
 ## Appendices
 
 ### References
-- Vision/roadmap/features: `docs/CrocoVoice_new_idea_new_prd.md`
+- Vision/roadmap/features: `docs/archive/prd/CrocoVoice_new_idea_new_prd.md`
 - Cadrage V1 + monetisation simple: `docs/brainstorming-session-results.md`
 - Backlog d’idees et pain points UX: `docs/ideas-for-later.md`
 - Direction UX premium: `docs/front-end-spec.md` et `docs/ux/cahier-des-charges-crocovoice-2-0.md`
-- Etat actuel du produit (brownfield): `docs/prd/intro-project-analysis-and-context.md`
+- Etat actuel du produit (brownfield): `docs/archive/prd-shards-20260120/intro-project-analysis-and-context.md`
 
 ## Next Steps
 
 1. Valider le scope MVP (must-have vs out-of-scope) et les hypotheses principales
 2. Choisir la cible platform “Phase 1” (macOS only ou cross-platform des le debut)
-3. Produire un **nouveau PRD vNext** structure (requirements + epics + stories) base sur ce brief et `docs/CrocoVoice_new_idea_new_prd.md`
+3. Produire un **nouveau PRD vNext** structure (requirements + epics + stories) base sur ce brief et `docs/archive/prd/CrocoVoice_new_idea_new_prd.md`
 4. Ecrire une roadmap 2–3 phases (MVP, Phase 2, Long-term) avec criteres d’entree/sortie par phase
 5. Mettre en place un plan de mesure (events + KPIs) et un plan de controle des couts IA.
 

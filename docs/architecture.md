@@ -95,7 +95,7 @@ graph TD
 - References Dictionary/Snippets for applied changes (optional)
 
 ### DictionaryEntry
-**Purpose:** Personal and team vocabulary corrections.
+**Purpose:** Personal vocabulary corrections and auto-learned entries.
 **Key Attributes:** phrase, replacement, source, last_used, frequency_used, is_snippet, auto_learned
 
 ### Snippet
@@ -114,6 +114,10 @@ graph TD
 **Purpose:** Insights and Wrapped.
 **Key Attributes:** top_apps, wpm, dictation_time, streaks
 
+### CrocOmniConversation
+**Purpose:** Store CrocOmni chats with optional context snapshots.
+**Key Attributes:** title, messages_json, context_summary, created_at, updated_at
+
 ## Components
 
 ### AudioCapture (Renderer)
@@ -129,7 +133,7 @@ graph TD
 **Key Interfaces:**
 - connect(), sendChunk(), close()
 **Dependencies:** FeatureFlagService, ASRProvider
-**Technology Stack:** WebSocket / gRPC
+**Technology Stack:** WebSocket
 
 ### ASRService
 **Responsibility:** Cloud or local transcription.
@@ -147,6 +151,11 @@ graph TD
 ### ContextCaptureService
 **Responsibility:** App/url/ax/textbox/screenshot capture.
 **Key Interfaces:** captureContext(), toggleSettings()
+
+### CrocOmniService
+**Responsibility:** Manage CrocOmni conversation sessions and summaries.
+**Key Interfaces:** startSession(), appendMessage(), listSessions()
+**Dependencies:** ContextCaptureService, StoreService
 
 ### DeliveryService
 **Responsibility:** Paste/type output safely.
@@ -178,6 +187,7 @@ graph LR
   MainCore --> PostProcessService
   MainCore --> DictionaryService
   MainCore --> ContextCaptureService
+  MainCore --> CrocOmniService
   MainCore --> DeliveryService
   MainCore --> StoreService
   MainCore --> SyncService
