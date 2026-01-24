@@ -59,6 +59,10 @@ let openai = null;
 let mainWindow = null;
 let dashboardWindow = null;
 let tray = null;
+let trayMenuWindow = null;
+let trayMenuOpen = false;
+let trayIconDefault = null;
+let trayIconHover = null;
 let isRecording = false;
 let recordingStartTime = null;
 let currentShortcut = null;
@@ -1362,6 +1366,113 @@ function sendDashboardEvent(channel, ...args) {
   }
 }
 
+function getVirtualScreenBounds() {
+  const displays = screen.getAllDisplays();
+  if (!displays.length) {
+    return screen.getPrimaryDisplay().bounds;
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  displays.forEach((display) => {
+    const { x, y, width, height } = display.bounds;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + width);
+    maxY = Math.max(maxY, y + height);
+  });
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function createTrayMenuWindow() {
+  if (trayMenuWindow && !trayMenuWindow.isDestroyed()) {
+    return trayMenuWindow;
+  }
+  trayMenuWindow = new BrowserWindow({
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+  trayMenuWindow.loadFile('tray-menu.html');
+  trayMenuWindow.setIgnoreMouseEvents(true, { forward: true });
+  trayMenuWindow.on('closed', () => {
+    trayMenuWindow = null;
+    trayMenuOpen = false;
+    setTrayHoverState(false);
+  });
+  return trayMenuWindow;
+}
+
+function setTrayHoverState(active) {
+  if (!tray || !trayIconDefault) {
+    return;
+  }
+  tray.setImage(active && trayIconHover ? trayIconHover : trayIconDefault);
+}
+
+function sendTrayMenuData() {
+  if (trayMenuWindow && !trayMenuWindow.isDestroyed()) {
+    trayMenuWindow.webContents.send('tray-menu:data', {
+      isRecording,
+    });
+  }
+}
+
+function showTrayMenu() {
+  if (!tray) {
+    return;
+  }
+  const menuWindow = createTrayMenuWindow();
+  const bounds = getVirtualScreenBounds();
+  const trayBounds = tray.getBounds();
+  menuWindow.setBounds(bounds, false);
+  menuWindow.setAlwaysOnTop(true, 'screen-saver');
+  menuWindow.setIgnoreMouseEvents(false);
+  menuWindow.showInactive();
+  trayMenuOpen = true;
+  setTrayHoverState(true);
+  const payload = { trayBounds, windowBounds: bounds };
+  if (menuWindow.webContents.isLoading()) {
+    menuWindow.webContents.once('did-finish-load', () => {
+      if (trayMenuWindow && !trayMenuWindow.isDestroyed()) {
+        trayMenuWindow.webContents.send('tray-menu:open', payload);
+        sendTrayMenuData();
+      }
+    });
+  } else {
+    menuWindow.webContents.send('tray-menu:open', payload);
+    sendTrayMenuData();
+  }
+}
+
+function hideTrayMenu() {
+  trayMenuOpen = false;
+  setTrayHoverState(false);
+  if (!trayMenuWindow || trayMenuWindow.isDestroyed()) {
+    return;
+  }
+  trayMenuWindow.setIgnoreMouseEvents(true, { forward: true });
+  trayMenuWindow.hide();
+  trayMenuWindow.setAlwaysOnTop(false);
+}
+
 function buildTrayMenu() {
   const startStopLabel = isRecording ? 'Stop Dictation' : 'Start Dictation';
   return Menu.buildFromTemplate([
@@ -1400,25 +1511,38 @@ function updateTrayMenu() {
   }
   const menu = buildTrayMenu();
   tray.setContextMenu(menu);
+  sendTrayMenuData();
   return menu;
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, 'assets', 'Logo CrocoVoice (tray).png');
+  const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
+  const legacyIconPath = path.join(__dirname, 'assets', 'Logo CrocoVoice (tray).png');
+  const hoverIconPath = path.join(__dirname, 'assets', 'tray-icon-hover.png');
 
-  let trayIcon;
   if (fs.existsSync(iconPath)) {
-    trayIcon = nativeImage.createFromPath(iconPath);
+    trayIconDefault = nativeImage.createFromPath(iconPath);
+  } else if (fs.existsSync(legacyIconPath)) {
+    trayIconDefault = nativeImage.createFromPath(legacyIconPath);
   } else {
-    trayIcon = nativeImage.createEmpty();
+    trayIconDefault = nativeImage.createEmpty();
+  }
+  if (fs.existsSync(hoverIconPath)) {
+    trayIconHover = nativeImage.createFromPath(hoverIconPath);
+  } else {
+    trayIconHover = trayIconDefault;
   }
 
-  tray = new Tray(trayIcon);
+  tray = new Tray(trayIconDefault);
 
   tray.setToolTip('CrocoVoice');
   updateTrayMenu();
 
   tray.on('click', () => {
+    if (trayMenuOpen) {
+      hideTrayMenu();
+      return;
+    }
     if (!isRecording) {
       startRecording();
     } else {
@@ -1427,8 +1551,12 @@ function createTray() {
   });
 
   tray.on('right-click', () => {
-    const menu = updateTrayMenu();
-    tray.popUpContextMenu(menu || undefined);
+    if (trayMenuOpen) {
+      hideTrayMenu();
+      return;
+    }
+    updateTrayMenu();
+    showTrayMenu();
   });
 
   tray.on('double-click', () => {
@@ -1906,6 +2034,30 @@ ipcMain.on('toggle-recording', () => {
     startRecording();
   } else {
     stopRecording();
+  }
+});
+
+ipcMain.on('tray-menu:close', () => {
+  hideTrayMenu();
+});
+
+ipcMain.on('tray-menu:action', (event, action) => {
+  hideTrayMenu();
+  if (action === 'toggle-recording') {
+    if (!isRecording) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
+    return;
+  }
+  if (action === 'open-settings') {
+    createDashboardWindow();
+    return;
+  }
+  if (action === 'quit') {
+    app.isQuitting = true;
+    app.quit();
   }
 });
 

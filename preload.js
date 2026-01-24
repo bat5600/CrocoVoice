@@ -110,6 +110,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openDashboardView: (viewName) => ipcRenderer.send('dashboard:open-view', viewName),
   sendWindowControl: (action) => ipcRenderer.send('dashboard:window-control', action),
   getPlatform: () => process.platform,
+  onTrayMenuOpen: (callback) => {
+    return registerListener('tray-menu:open', (event, payload) => callback(payload));
+  },
+  onTrayMenuData: (callback) => {
+    return registerListener('tray-menu:data', (event, payload) => callback(payload));
+  },
+  sendTrayMenuAction: (action) => ipcRenderer.send('tray-menu:action', action),
+  closeTrayMenu: () => ipcRenderer.send('tray-menu:close'),
 
   onShortcutUpdated: (callback) => {
     return registerListener('shortcut-updated', (event, shortcut) => callback(shortcut));
