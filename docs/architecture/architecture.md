@@ -1,235 +1,315 @@
-# CrocoVoice Brownfield Enhancement Architecture
+# CrocoVoice Architecture Document
 
 ## Introduction
-This document outlines the architectural approach for enhancing CrocoVoice with stabilization, internal structuring, and robustness improvements across the record -> transcribe -> post-process -> type flow. Its primary goal is to serve as the guiding architectural blueprint for AI-driven development of these stability enhancements while ensuring seamless integration with the existing system.
+This document outlines the overall architecture for CrocoVoice as it evolves toward FakeWispr-level robustness. It focuses on low-latency audio streaming, rich context capture, personalization, and multi-window UX while preserving a local-first, offline-friendly core.
 
-**Relationship to Existing Architecture:**
-This document supplements the current project architecture by defining how new structure, state management, and resilience patterns will integrate with the existing Electron main/renderer split, IPC flows, and data persistence. Where conflicts arise between new and existing patterns, this document provides guidance on maintaining consistency while implementing enhancements.
+**Relationship to Frontend Architecture:**
+CrocoVoice is a desktop Electron app. Renderer UX (hub/status/context menu) is described here only to the extent it impacts system architecture, IPC, and data flows.
 
-**Scope and Assessment:**
-This is a cross-cutting stability and structuring enhancement with moderate impact across multiple subsystems, warranting architectural planning.
-
-**Required Inputs:**
-- PRD: docs/prd.md (brownfield PRD)
-- Repo analysis of core files (main.js, renderer.js, preload.js, store.js, sync.js)
-- Existing technical docs: none found in docs/
-
-## Existing Project Analysis
-
-### Current Project State
-- **Primary Purpose:** Electron desktop app for rapid voice dictation: MediaRecorder -> OpenAI Whisper -> optional post-process -> keyboard typing, plus tray widget and settings dashboard.
-- **Current Tech Stack:** Electron (main/renderer/preload), Node.js, OpenAI SDK, @nut-tree-fork/nut-js (robotjs fallback), SQLite local storage, Supabase sync (optional).
-- **Architecture Style:** Single-process Electron app with main process orchestration, renderer handling recording + UI, IPC bridge via preload.js, local services (store.js, sync.js).
-- **Deployment Method:** Local Electron runtime via npm start / npm run dev (no packaging pipeline observed).
-
-### Available Documentation
-- README (project overview, run instructions, high-level structure)
-- docs/prd.md (brownfield PRD)
-- docs/brainstorming-session-results.md
-- supabase/ (schema files present)
-
-### Identified Constraints
-- No formal coding standards or architecture doc found in docs/.
-- No automated test harness present; quality relies on manual testing.
-- OS-level permissions (microphone/keyboard accessibility) are critical and platform-specific.
-- External dependencies introduce runtime fragility (OpenAI API, Supabase connectivity, nut-js/robotjs availability).
-- IPC-driven state is split between main/renderer; must keep state transitions consistent.
-- SQLite local storage is the source of truth; cloud sync is optional and should not block.
+### Starter Template or Existing Project
+Existing Electron codebase (main.js, renderer.js, preload.js, store.js, sync.js). No starter template.
 
 ### Change Log
-| Change | Date | Version | Description | Author |
-| --- | --- | --- | --- | --- |
-| Initial draft | 2026-01-15 | v0.1 | Brownfield PRD draft from repo analysis | PM |
+| Date | Version | Description | Author |
+| --- | --- | --- | --- |
+| 2026-01-24 | v1.0 | Architecture updated for robustness parity roadmap | Architect |
 
-## Enhancement Scope and Integration Strategy
+## High Level Architecture
 
-### Enhancement Overview
-**Enhancement Type:** Bug Fix and Stability Improvements
-**Scope:** Stabilize and structure the existing record -> transcribe -> post-process -> type flow, plus state management between main/renderer and resilience around external integrations.
-**Integration Impact:** Moderate (touches multiple existing modules without replacing system boundaries).
+### Technical Summary
+CrocoVoice remains a monolithic Electron app with modular services in the main process and multiple renderer windows (hub, status, context menu). Audio capture uses an AudioWorklet path for low-latency streaming with a file-upload fallback. Data is stored locally in SQLite and optionally synced via Supabase. Feature flags, telemetry, and diagnostics enable safe rollouts and supportability.
 
-### Integration Approach
-**Code Integration Strategy:** Refactor/structure within existing main.js, renderer.js, preload.js, and service modules (store.js, sync.js) while preserving current IPC channels and UI behavior.
-**Database Integration:** Keep SQLite (flow.sqlite) as local source of truth; schema compatibility preserved; Supabase sync remains optional and non-blocking.
-**API Integration:** Keep OpenAI Whisper + post-process calls in main process with improved error handling and timeouts.
-**UI Integration:** Preserve widget + dashboard UX; renderer only reflects state; main remains the single source of truth.
+### High Level Overview
+- **Style:** Modular monolith in Electron (main/renderer split).
+- **Repo:** Monorepo (current structure).
+- **Service Architecture:** Main process orchestrates pipeline; renderer focuses on UX and capture.
+- **Primary Flow:** Audio capture -> streaming transport -> ASR -> post-process/personalization -> history persistence -> delivery.
+- **Key Decisions:** Keep local-first SQLite source of truth; add streaming transport with fallback; isolate IPC by domain.
 
-### Compatibility Requirements
-- **Existing API Compatibility:** IPC channels for start/stop recording, settings, history, and sync remain stable.
-- **Database Schema Compatibility:** No destructive changes to local SQLite schema.
-- **UI/UX Consistency:** Preserve existing widget and dashboard interactions/labels.
-- **Performance Impact:** Maintain startup and transcription latency comparable to current behavior.
+### High Level Project Diagram
+```mermaid
+graph TD
+  User[User] --> Status[Status Bubble]
+  User --> Hub[Hub UI]
+  Status --> Renderer[Renderer Audio Capture]
+  Renderer --> Main[Main Orchestrator]
+  Main --> ASR[ASR Service]
+  Main --> Post[Post-Process]
+  Main --> Dict[Dictionary/Snippets]
+  Main --> Store[SQLite Store]
+  Main --> Delivery[Paste/Type]
+  Main --> Flags[Feature Flags]
+  Main --> Telemetry[Telemetry/Diagnostics]
+  Main --> Sync[Supabase Sync]
+  ASR --> Cloud[ASR Provider]
+  Sync --> Supabase[Supabase]
+  Hub --> IPC[IPC Bridge]
+  Status --> IPC
+  IPC --> Main
+```
+
+### Architectural and Design Patterns
+- **Modular Service Layer:** Split main process into focused services (Audio, ASR, Delivery, Store, Sync) for maintainability.
+- **Repository Pattern:** Abstract DB access for History, Dictionary, Notes, Snippets, Flags.
+- **Feature Flag Gating:** Central flag service to enable safe rollout and kill-switch.
+- **Local-First Data Model:** SQLite is the source of truth; sync is best-effort.
 
 ## Tech Stack
 
-### Existing Technology Stack
-| Category | Current Technology | Version | Usage in Enhancement | Notes |
+### Cloud Infrastructure
+- **Provider:** Supabase
+- **Key Services:** Auth, Postgres, Edge Functions, Storage (optional)
+- **Deployment Regions:** Supabase-managed (TBD)
+
+### Technology Stack Table
+| Category | Technology | Version | Purpose | Rationale |
 | --- | --- | --- | --- | --- |
-| Runtime | Node.js | 16+ (README) | Core runtime | Maintains Electron compatibility |
-| Desktop Framework | Electron | ^35.7.5 | Main/renderer + IPC | Keep main/renderer split |
-| Language | JavaScript | ES standard | All modules | No TS present |
-| Audio Capture | MediaRecorder (renderer) | Browser API | Recording pipeline | Requires OS mic permissions |
-| Transcription | OpenAI Whisper | openai ^4.20.1 | Audio -> text | External API dependency |
-| Post-process | OpenAI Chat | openai ^4.20.1 | Text cleanup | Optional via setting |
-| Keyboard Automation | @nut-tree-fork/nut-js | ^4.1.0 | Typing output | robotjs fallback |
-| Local DB | SQLite | sqlite3 ^5.1.7 | Settings/history/styles/dictionary | Local source of truth |
-| Cloud Sync | Supabase JS | ^2.45.4 | Optional sync | Must be non-blocking |
-| Config | dotenv | ^16.3.1 | Env secrets | No secrets in logs |
+| Desktop Framework | Electron | ^35.7.5 | App runtime | Existing stack, supports multi-window UX |
+| Runtime | Node.js | 20.x | Main process runtime | Modern LTS for Electron 35 |
+| Language | JavaScript (CJS) | ES2020+ | App code | Consistent with current codebase |
+| Audio Capture | Web Audio + AudioWorklet | N/A | Low-latency capture | Required for streaming chunks |
+| Streaming Transport | WebSocket (ws) | TBD | Streaming audio/text | Low latency and simple integration |
+| ASR | OpenAI Whisper | openai ^4.20.1 | Cloud transcription | Existing provider |
+| Post-process | OpenAI Chat | openai ^4.20.1 | Formatting/polish | Existing provider |
+| Local DB | SQLite | sqlite3 ^5.1.7 | Local source of truth | Existing storage |
+| Sync | Supabase JS | ^2.45.4 | Optional sync | Existing stack |
+| Telemetry | Sentry/PostHog | TBD | Error + product analytics | Required for robustness |
+| Feature Flags | Custom + Supabase | TBD | Remote config | Safe rollout |
+| Input Automation | nut-js | ^4.1.0 | Typing/paste | Existing mechanism |
 
-### New Technology Additions
-None required for this enhancement; improvements should be achieved within the existing stack.
+## Data Models
 
-## Data Models and Schema Changes
+### HistoryEntry
+**Purpose:** Store transcripts, context, metrics, and versions.
+**Key Attributes:**
+- id, created_at, updated_at
+- raw_text, formatted_text, edited_text
+- app, url, window_title
+- ax_text, ax_html, textbox_snapshot
+- screenshot_path (optional)
+- latency_ms, divergence_score
+- mic_device, language
 
-### New Data Models
-No new entities required for this enhancement.
+**Relationships:**
+- Belongs to User (optional sync)
+- References Dictionary/Snippets for applied changes (optional)
 
-### Schema Integration Strategy
-**Database Changes Required:**
-- **New Tables:** None
-- **Modified Tables:** None
-- **New Indexes:** None
-- **Migration Strategy:** No migration needed; maintain current schema for settings, history, dictionary, styles.
+### DictionaryEntry
+**Purpose:** Personal and team vocabulary corrections.
+**Key Attributes:** phrase, replacement, source, last_used, frequency_used, is_snippet, auto_learned
 
-**Backward Compatibility:**
-- Preserve current SQLite schema and data to avoid breaking existing installs.
-- Any new runtime state should remain in-memory or within existing settings keys if necessary.
+### Snippet
+**Purpose:** Voice cue to template expansion.
+**Key Attributes:** cue, template, description, last_used
 
-## Component Architecture
+### FeatureFlag
+**Purpose:** Gate behaviors and UX.
+**Key Attributes:** key, enabled, payload, updated_at, source
 
-### New Components
+### Notification
+**Purpose:** Remote and local notifications.
+**Key Attributes:** type, title, body, read, archived, created_at
 
-**Recording State Orchestrator (main process)**
-**Responsibility:** Centralize recording lifecycle state and transitions (idle -> recording -> processing -> error) and enforce debouncing/locking rules.
-**Integration Points:** main.js recording controls, IPC status updates, renderer start/stop commands.
+### StatsSnapshot
+**Purpose:** Insights and Wrapped.
+**Key Attributes:** top_apps, wpm, dictation_time, streaks
 
+## Components
+
+### AudioCapture (Renderer)
+**Responsibility:** Capture audio via Web Audio + AudioWorklet and stream chunks to main.
 **Key Interfaces:**
-- startRecording() / stopRecording() entrypoints (main)
-- sendStatus(state, message) IPC broadcast
+- startCapture(), stopCapture()
+- onAudioChunk(buffer)
+**Dependencies:** IPC Bridge
+**Technology Stack:** Web Audio API
 
-**Dependencies:**
-- **Existing Components:** IPC (preload.js), renderer recording, tray/shortcut handlers
-- **New Components:** none (implemented as structured module or function block within main.js)
-**Technology Stack:** Electron main process, JS
-
-**Transcription Pipeline Controller (main process)**
-**Responsibility:** Orchestrate transcribe -> post-process -> dictionary -> type pipeline with error handling and timeouts.
-**Integration Points:** handleAudioPayload, OpenAI client, keyboard automation, store history.
-
+### StreamingTransport (Main)
+**Responsibility:** Send chunks to ASR provider; manage fallback.
 **Key Interfaces:**
-- handleAudioPayload(event, audioData)
-- transcribeAudio() / postProcessText() / applyDictionary() / typeText()
+- connect(), sendChunk(), close()
+**Dependencies:** FeatureFlagService, ASRProvider
+**Technology Stack:** WebSocket / gRPC
 
-**Dependencies:**
-- **Existing Components:** OpenAI SDK, keyboard library, Store
-- **New Components:** none (structured separation within main)
+### ASRService
+**Responsibility:** Cloud or local transcription.
+**Key Interfaces:** transcribeStream(), transcribeFile()
+**Dependencies:** Transport, OpenAI client
 
-**Renderer Recording Handler (renderer)**
-**Responsibility:** Manage MediaRecorder lifecycle, audio chunking, and waveform; send audio payload to main.
-**Integration Points:** renderer.js MediaRecorder setup, IPC sendAudioReady.
+### PostProcessService
+**Responsibility:** Formatting, polish, style application.
+**Key Interfaces:** postProcess(text, style)
 
-**Key Interfaces:**
-- initializeMediaRecorder()
-- startRecording() / stopRecording()
-- sendAudioReady({ buffer, mimeType })
+### DictionaryService
+**Responsibility:** Apply dictionary and snippets; manage auto-learn.
+**Key Interfaces:** apply(text), upsert(entry), list()
 
-**Dependencies:**
-- **Existing Components:** MediaRecorder API, preload.js IPC
-- **New Components:** none
+### ContextCaptureService
+**Responsibility:** App/url/ax/textbox/screenshot capture.
+**Key Interfaces:** captureContext(), toggleSettings()
 
-### Component Interaction Diagram
+### DeliveryService
+**Responsibility:** Paste/type output safely.
+**Key Interfaces:** deliver(text, mode)
+
+### StoreService
+**Responsibility:** Local persistence for History/Dictionary/Notes/Snippets/Flags.
+**Key Interfaces:** CRUD per entity
+
+### SyncService
+**Responsibility:** Optional sync to Supabase with conflict safety.
+**Key Interfaces:** pull(), push(), reconcile()
+
+### FeatureFlagService
+**Responsibility:** Load and cache flags from local/remote.
+**Key Interfaces:** getFlag(key)
+
+### TelemetryService
+**Responsibility:** Error reporting and product metrics.
+**Key Interfaces:** captureError(), captureEvent()
+
+### Component Diagram
 ```mermaid
-graph TD
-  Tray[Tray/Shortcut] --> MainState[Recording State Orchestrator]
-  MainState -->|start/stop| Renderer[Renderer Recording Handler]
-  Renderer -->|audio-ready| Pipeline[Transcription Pipeline Controller]
-  Pipeline --> OpenAI[OpenAI Whisper + Post-process]
-  Pipeline --> Keyboard[Typing (nut-js/robotjs)]
-  Pipeline --> Store[SQLite Store]
-  MainState -->|status-change| UI[Widget/Dashboard Renderer]
+graph LR
+  Renderer --> IPC
+  IPC --> AudioCapture
+  IPC --> MainCore
+  MainCore --> ASRService
+  MainCore --> PostProcessService
+  MainCore --> DictionaryService
+  MainCore --> ContextCaptureService
+  MainCore --> DeliveryService
+  MainCore --> StoreService
+  MainCore --> SyncService
+  MainCore --> FeatureFlagService
+  MainCore --> TelemetryService
+```
+
+## External APIs
+
+### OpenAI API
+- **Purpose:** Transcription and text post-processing
+- **Base URL:** https://api.openai.com
+- **Authentication:** API key in env
+- **Rate Limits:** Provider-defined
+
+### Supabase API
+- **Purpose:** Auth and optional sync
+- **Base URL:** Supabase project URL
+- **Authentication:** JWT
+- **Notes:** Local-first; sync is best-effort
+
+### Stripe API
+- **Purpose:** Billing and subscriptions
+- **Base URL:** https://api.stripe.com
+- **Authentication:** Secret key server-side
+
+## Core Workflows
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant R as Renderer
+  participant M as Main
+  participant T as Transport
+  participant A as ASR
+  participant S as Store
+  U->>R: start dictation
+  R->>M: audioChunk (AudioWorklet)
+  M->>T: sendChunk
+  T->>A: stream chunk
+  A-->>M: partial text
+  M-->>R: partial update
+  A-->>M: final text
+  M->>S: persist history
+  M->>R: deliver text
+```
+
+## Database Schema (SQLite sketch)
+```sql
+-- history
+CREATE TABLE history (
+  id TEXT PRIMARY KEY,
+  text TEXT,
+  raw_text TEXT,
+  formatted_text TEXT,
+  edited_text TEXT,
+  app TEXT,
+  url TEXT,
+  ax_text TEXT,
+  ax_html TEXT,
+  screenshot_path TEXT,
+  latency_ms INTEGER,
+  divergence_score REAL,
+  mic_device TEXT,
+  language TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- dictionary
+CREATE TABLE dictionary (
+  id TEXT PRIMARY KEY,
+  phrase TEXT,
+  replacement TEXT,
+  source TEXT,
+  last_used TEXT,
+  frequency_used INTEGER,
+  is_snippet INTEGER,
+  auto_learned INTEGER
+);
+
+-- snippets
+CREATE TABLE snippets (
+  id TEXT PRIMARY KEY,
+  cue TEXT,
+  template TEXT,
+  description TEXT,
+  last_used TEXT
+);
 ```
 
 ## Source Tree
-
-### Existing Project Structure
-```plaintext
-CrocoVoice/
+```text
+.
 ├── main.js
 ├── renderer.js
 ├── preload.js
 ├── store.js
 ├── sync.js
-├── index.html
-├── dashboard.html
-├── dashboard.js
-├── assets/
-└── supabase/
+├── services/
+│   ├── audio-capture.js
+│   ├── streaming-transport.js
+│   ├── asr-service.js
+│   ├── post-process.js
+│   ├── dictionary-service.js
+│   ├── context-capture.js
+│   ├── delivery-service.js
+│   ├── feature-flags.js
+│   └── telemetry.js
+├── windows/
+│   ├── hub/
+│   ├── status/
+│   └── context-menu/
+└── docs/
 ```
 
-### New File Organization
-No new folders/files required for this enhancement; changes will be made within existing core files.
+## Infrastructure and Deployment
+- **IaC:** Not required currently.
+- **Strategy:** Standard Electron packaging; Supabase functions deployed separately.
+- **Environments:** local dev, production.
 
-### Integration Guidelines
-- **File Naming:** Keep existing lower-case filenames; no new conventions introduced.
-- **Folder Organization:** Preserve current flat root structure for core runtime files.
-- **Import/Export Patterns:** Continue CommonJS require pattern as used across main.js, store.js, and sync.js.
-
-## Infrastructure and Deployment Integration
-
-### Existing Infrastructure
-**Current Deployment:** Local Electron runtime launched via npm start / npm run dev.
-**Infrastructure Tools:** Node.js + Electron; no packaging pipeline observed.
-**Environments:** Local user machine; OS permissions for mic and accessibility.
-
-### Enhancement Deployment Strategy
-**Deployment Approach:** Ship as a standard app update (same runtime), with no additional services required.
-**Infrastructure Changes:** None.
-**Pipeline Integration:** No pipeline changes; continue local npm start for dev.
-
-### Rollback Strategy
-**Rollback Method:** Revert to previous app build (code rollback).
-**Risk Mitigation:** Keep changes isolated to core flow; avoid schema changes to maintain backward compatibility.
-**Monitoring:** Use existing console logging; add targeted logs for state transitions and errors if needed.
+## Error Handling Strategy
+- **Error Model:** Typed error objects with category + severity.
+- **Logging:** Structured logs with redaction.
+- **External API Errors:** Retry with backoff and timeouts; fall back to file-based ASR.
+- **Data Consistency:** Local-first; sync retries and reconciliation on conflict.
 
 ## Coding Standards
+- **Languages & Runtimes:** JS (CommonJS), Node 20, Electron 35.
+- **Style:** Keep existing code style; minimal refactors per change.
+- **Critical Rules:** No secrets in logs; IPC channels must be whitelisted and documented; local-first always.
 
-### Existing Standards Compliance
-**Code Style:** Plain JavaScript, CommonJS require, camelCase variables, minimal inline comments.
-**Linting Rules:** None observed.
-**Testing Patterns:** No automated test harness; manual testing + runtime logs.
-**Documentation Style:** README + PRD; sparse inline docs.
-
-### Enhancement-Specific Standards
-None required beyond reinforcing consistent state transition and error-handling patterns.
-
-### Critical Integration Rules
-- **Existing API Compatibility:** Do not break IPC channel names or payload shapes (status-change, start/stop-recording, audio-ready, etc.).
-- **Database Integration:** No schema changes; keep flow.sqlite as-is.
-- **Error Handling:** Always return to a stable state (idle or error -> idle) after failures; avoid stuck processing.
-- **Logging Consistency:** Do not log secrets (OpenAI/Supabase keys). Keep logs concise and actionable.
-
-## Testing Strategy
-
-### Integration with Existing Tests
-**Existing Test Framework:** None observed.
-**Test Organization:** N/A.
-**Coverage Requirements:** N/A; rely on manual regression scenarios.
-
-### New Testing Requirements
-
-**Unit Tests for New Components**
-- **Framework:** None required unless introduced later.
-- **Location:** N/A.
-- **Coverage Target:** Focus on critical path behaviors (state transitions, error handling).
-- **Integration with Existing:** Manual test scripts and repeatable steps.
-
-**Integration Tests**
-- **Scope:** End-to-end recording -> transcription -> typing pipeline.
-- **Existing System Verification:** Confirm no regression in widget state, IPC flow, and keyboard typing.
-- **New Feature Testing:** Verify error handling and recovery across start/stop, OpenAI failures, and typing failures.
-
-**Regression Testing**
-- **Existing Feature Verification:** Repeat core flows (start/stop, settings change, history save, sync optional).
-- **Automated Regression Suite:** None; optional to add later.
-- **Manual Testing Requirements:** Multi-OS checks for mic + keyboard permissions and global shortcuts.
-
+## Test Strategy
+- **Approach:** Test-after with unit + integration coverage on pipeline.
+- **Unit Tests:** Core services (dictionary, snippets, feature flags, transport).
+- **Integration Tests:** Dictation pipeline with mocked ASR and transport.

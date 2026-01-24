@@ -110,6 +110,7 @@ Evolution notable :
 Lecture fonctionnelle :
 - Le dictionnaire est un systeme de personnalisation robuste (corrections + snippets).
 - Support multi equipers + sync + suivi des usages.
+- Indices hub : auto-add to dictionary, autoLearned, tri newest/oldest, team dictionary ops.
 
 #### Table Notes
 - id, title, content, contentPreview
@@ -166,6 +167,7 @@ Indices forts :
 - toneMatchPairs + toneMatchedText.
 - dictionary/snippets avec usage frequency.
 - flags : style-detection, style-personalization, contextual-nudge, wiggle-contextual-reminder.
+- hub : selection de "polish rules" + autoOpenDiff (diff auto).
 
 Lecture fonctionnelle :
 - FakeWispr adapte le style (pro/perso/email) et garde des paires tone match.
@@ -193,6 +195,9 @@ Assets indiquent :
 - videos par cas d usage (gmail, slack, documentation, etc).
 - wrapped2025 (stats/analyse annuelle type Spotify Wrapped).
 - diff viewer (avant/apres) dans le context menu (visualisation des edits/polish).
+- status bubble avec indicateurs temps reel (audio level, WPM, command mode, mic active).
+- flow bar typing reminder (nudge + snooze).
+- mic selection dialog avec volume indicator.
 
 ### 1.7 Surfaces UI (multi-fenetres)
 
@@ -231,7 +236,78 @@ Ops/telemetrie :
 Lecture fonctionnelle :
 - FakeWispr pilote de nombreux comportements par flags, ce qui permet un rollout progressif, des A/B tests, et du kill-switch.
 
-### 1.9 Interconnexion (schema conceptuel)
+### 1.9 IPC et services (observes via hub renderer)
+
+History :
+- history:getTranscript / getTranscriptAllColumns / getAudioForTranscript
+- history:toggleAiEdit / retryTranscript / sendTranscriptFeedback
+- history:getTopApps / getBulkAppWordCounts / initializeStatistics
+- history:archiveAll / deleteAllTranscripts / setArchiveTranscript
+
+Notes :
+- notes:create / edit / delete / get / getAll / refresh / hardRefresh
+
+Dictation pipeline :
+- dictation:audioSetup / audioStart / audioChunk / audioStop / audioClose
+- dictation:setStreamingTextState / setAppTypeManually / pasteLastTranscript
+
+Dictionary/memory :
+- memory:addManualWord / editManualWord / removeManualWord
+- memory:addManualTeamWord / editManualTeamWord / removeManualTeamWord
+- memory:getWords / getTeamWords / getStrippedSnippets / syncDictionary
+
+Teams / billing / referrals :
+- teams:* (invites, join requests, eligibility, members, enterprise refresh)
+- billing:* (pricing, checkout, manage subscription, update status)
+- referral:sendInvites / sendIPhoneDownloadLink / cacheReferralInfo
+
+Notifications :
+- notification:* (local OS notifications)
+- remoteNotification:* (remote inbox + callbacks)
+
+Shared settings :
+- sharedSettings:getAudioDevices / updateAudioDevices / signHipaaBaa
+
+Flow state & hub UX :
+- flowState:getFlowState / updateFlowState / clearFlowState
+- hub:openSettings / openStats / openPolishDialog / openShortcutsDialog
+- status:* (audio level, dictation status, polish diff, flow bar)
+
+Lecture fonctionnelle :
+- Le hub renderer orchestre une large surface de services IPC, avec separation claire par domaine.
+
+### 1.10 Modules produit observes (hub)
+
+- Onboarding multi-etapes (welcome, login, permissions, mic test, shortcuts, use-cases, trial opt-in).
+- Personalization (Style + Dictionary + Snippets + auto-learn).
+- History (audio playback, archive, AI edit toggle, report).
+- Notes (preview, inline editor, CRUD complet).
+- Polish (post-process du texte avec diff viewer).
+- Flow Wrapped (year in review) + Stats (Top apps, WPM, usage).
+- Billing/Plans (pricing, checkout, manage subscription).
+- Teams/Enterprise (invites, domain eligibility, admin contact).
+- Notifications (local + remote inbox).
+- Settings (audio devices, share usage data, flow bar typing reminder).
+
+### 1.11 App detection / integrations
+
+Indices d une taxonomie app :
+- Messagerie : Slack, Teams, Discord, Telegram, WhatsApp, Signal.
+- Email : Apple Mail, Outlook, Superhuman, Spark.
+- IDEs : VSCode, JetBrains, Sublime, Cursor, Windsurf.
+- Navigateurs : Chrome, Edge, Brave, Firefox, Safari, Vivaldi, Opera.
+- Notes/docs : Apple Notes, OneNote, Scrivener, Pages.
+
+Lecture fonctionnelle :
+- Detection par bundleId + app categories pour adapter UX, style, onboarding et stats.
+
+### 1.12 Enterprise / compliance
+
+- Sign HIPAA BAA (sharedSettings:signHipaaBaa).
+- Team billing, admin contact, enterprise trials, SSO/SOC2 mentionnes dans UI.
+- Data usage policy + share usage data opt-in.
+
+### 1.13 Interconnexion (schema conceptuel)
 
 ```
 [Audio Capture] --> [AudioWorklet chunker] --> [Encoder: Opus/MsgPack] --> [Transport: WS/gRPC/Baseten] --> [ASR primary]
@@ -255,6 +331,8 @@ Lecture fonctionnelle :
 [Telemetry]  --> [Sentry/PostHog]
 [Feature Flags/Remote Config] --> [Pipeline + UX + Telemetry + Transport]
 [Scheduler/Daemon] --> [Remote notifications + daily streak + wrapped]
+[Teams/Billing/Referral] <--> [Backend]
+[Stats/TopApps/WPM] --> [Flow Wrapped + Hub dashboards]
 [Hub UI] <--> [Status UI] <--> [ContextMenu UI] <--> [Main process]
 ```
 
@@ -353,9 +431,12 @@ Pipeline (main.js + renderer.js) :
 | Feature flags | systeme de flags tres riche (transport/UX/ops) | pas de flags | FakeWispr peut experimenter + kill-switch |
 | UI surfaces | hub + status + contextMenu | 1 dashboard + widget | FakeWispr separer les UI selon usage |
 | Notes | Notes structurees + sync + deleted flag | Notes locales + sync simple | FakeWispr plus mature pour la gestion de notes |
-| Notifications | RemoteNotifications + sync | absent | FakeWispr a un canal produit/ops |
+| Notifications | local + remote notifications | absent | FakeWispr a un canal produit/ops |
 | Flow Lens | conversation historique + tools + contexte | absent | FakeWispr propose un mode assistant/contextual AI |
 | UX | sons A/B, assets riches, onboarding guide, videos | UI claire mais plus minimale | FakeWispr travaille beaucoup l experience et la pedagogie |
+| Onboarding | multi-step + nudges + trial opt-in | simple | FakeWispr optimise activation et retention |
+| Stats/Insights | top apps, WPM, Flow Wrapped | minimal | FakeWispr capitalise sur data pour engagement |
+| Teams/Enterprise | teams, invites, domain eligibility, HIPAA BAA | individuel | FakeWispr couvre use-cases entreprise |
 
 ---
 
@@ -416,16 +497,31 @@ Pipeline (main.js + renderer.js) :
 12) Taches background
    - Scheduler (cron) pour remote notifications, daily streak, wrapped.
 
+13) Onboarding approfondi
+    - Parcours multi-etapes (permissions, mic test, shortcuts, use-cases, trial opt-in).
+    - Ameliore activation + retention.
+
+14) Insights / Stats
+    - Top apps, WPM, usage time, Flow Wrapped.
+    - Encourage engagement et donne des preuves de valeur.
+
+15) Status bubble riche
+    - Audio level, WPM, command mode, mic active, polish diff.
+
 ### 4.3 Priorite basse / long terme
 
-13) Remote notifications
+16) Remote notifications
    - Canal produit (annonces, aide, features).
 
-14) Wrapped / stats annuels
+17) Wrapped / stats annuels
    - Exploiter history pour insights (mots, heures, apps, style).
 
-15) Pipeline multi-ASR
+18) Pipeline multi-ASR
    - Ajouter fallback local (onnx) ou provider alternatif.
+
+19) Teams / enterprise
+   - Teams, invites, domain eligibility, billing pro/enterprise.
+   - Option HIPAA BAA + data usage policy.
 
 ---
 
@@ -478,6 +574,21 @@ Pipeline (main.js + renderer.js) :
 
 - Cron local pour daily streak / wrapped / remote notifications.
 - Batch upload des metrics (latence, erreurs, quality scores).
+
+### 5.9 Onboarding robuste
+
+- Wizard multi-etapes (permissions, mic test, shortcuts, use-cases).
+- Stocker progression + replays (resume).
+
+### 5.10 Insights / stats
+
+- Calcul local: top apps, WPM, temps dicte, streak.
+- Export/partage (Flow Wrapped light).
+
+### 5.11 Teams / enterprise
+
+- Mode team: invites, domain eligibility, team dictionary.
+- Billing pro/enterprise + contact admin.
 
 ---
 
