@@ -74,6 +74,7 @@ let widgetLanguageSearch = null;
 let widgetLanguageList = null;
 let widgetMicrophoneLabel = null;
 let widgetLanguageLabel = null;
+let widgetMicrophoneCurrent = null;
 let availableMicrophones = [];
 
 const CANCEL_UNDO_DURATION_MS = 5000;
@@ -134,6 +135,7 @@ function renderLanguageList(filterValue = '') {
   }
   const filter = filterValue.trim().toLowerCase();
   widgetLanguageList.innerHTML = '';
+  const currentLanguage = currentSettings.language || 'fr';
   const matches = LANGUAGE_OPTIONS.filter((option) => {
     if (!filter) {
       return true;
@@ -151,11 +153,12 @@ function renderLanguageList(filterValue = '') {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'submenu-item';
-    if (currentSettings.language === option.code) {
+    const isSelected = currentLanguage === option.code;
+    if (isSelected) {
       button.classList.add('selected');
     }
     button.dataset.language = option.code;
-    button.innerHTML = `<span>${option.label}</span><span class="menu-muted">${option.code}</span>`;
+    button.innerHTML = `<span class="submenu-text">${option.label}</span><span class="submenu-check">${isSelected ? '✓' : ''}</span>`;
     widgetLanguageList.appendChild(button);
   });
 }
@@ -169,8 +172,9 @@ function renderMicrophoneList() {
   defaultButton.type = 'button';
   defaultButton.className = 'submenu-item';
   defaultButton.dataset.micId = '';
-  defaultButton.textContent = 'Defaut systeme';
-  if (!currentSettings.microphoneId) {
+  const isDefault = !currentSettings.microphoneId;
+  defaultButton.innerHTML = `<span class="submenu-text">Detection auto</span><span class="submenu-check">${isDefault ? '✓' : ''}</span>`;
+  if (isDefault) {
     defaultButton.classList.add('selected');
   }
   widgetMicrophoneList.appendChild(defaultButton);
@@ -180,8 +184,9 @@ function renderMicrophoneList() {
     button.className = 'submenu-item';
     button.dataset.micId = mic.deviceId;
     const label = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
-    button.textContent = label;
-    if (currentSettings.microphoneId === mic.deviceId) {
+    const isSelected = currentSettings.microphoneId === mic.deviceId;
+    button.innerHTML = `<span class="submenu-text">${label}</span><span class="submenu-check">${isSelected ? '✓' : ''}</span>`;
+    if (isSelected) {
       button.classList.add('selected');
     }
     widgetMicrophoneList.appendChild(button);
@@ -190,11 +195,15 @@ function renderMicrophoneList() {
 
 function updateMenuLabels() {
   if (widgetLanguageLabel) {
-    const current = resolveLanguageLabel(currentSettings.language || 'fr');
-    widgetLanguageLabel.textContent = current ? `Langue (${current})` : 'Langue';
+    widgetLanguageLabel.textContent = 'Choisir la langue';
   }
   if (widgetMicrophoneLabel) {
     widgetMicrophoneLabel.textContent = 'Changer le micro';
+  }
+  if (widgetMicrophoneCurrent) {
+    const selected = availableMicrophones.find((mic) => mic.deviceId === currentSettings.microphoneId);
+    const label = selected ? (selected.label || `Micro ${selected.deviceId.slice(0, 4)}...`) : 'Detection auto';
+    widgetMicrophoneCurrent.textContent = label;
   }
 }
 
@@ -1135,6 +1144,7 @@ document.addEventListener('DOMContentLoaded', () => {
     widgetLanguageList = document.getElementById('widgetLanguageList');
     widgetMicrophoneLabel = document.getElementById('widgetMicrophoneLabel');
     widgetLanguageLabel = document.getElementById('widgetLanguageLabel');
+    widgetMicrophoneCurrent = document.getElementById('widgetMicrophoneCurrent');
     let isContextOpen = false;
     let isHovering = false;
     let hoverOutTimeout = null;
@@ -1152,6 +1162,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const updateExpandedState = () => {
+      const menuOpen = widgetContainer.classList.contains('context-open');
+      isContextOpen = menuOpen;
       if (cancelUndoActive) {
         if (window.electronAPI && window.electronAPI.setWidgetExpanded) {
           window.electronAPI.setWidgetExpanded(false);
@@ -1159,7 +1171,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       if (window.electronAPI && window.electronAPI.setWidgetExpanded) {
-        window.electronAPI.setWidgetExpanded(isContextOpen || isHovering);
+        window.electronAPI.setWidgetExpanded(menuOpen || isHovering);
       }
     };
 
@@ -1198,6 +1210,45 @@ document.addEventListener('DOMContentLoaded', () => {
       openSubmenu = isOpen ? submenuName : null;
     };
 
+    const submenuItems = widgetContextMenu?.querySelectorAll('.menu-item[data-submenu]') || [];
+    submenuItems.forEach((item) => {
+      item.addEventListener('mouseenter', () => {
+        if (!isContextOpen) {
+          return;
+        }
+        const submenuName = item.dataset.submenu;
+        if (!submenuName) {
+          return;
+        }
+        if (openSubmenu && openSubmenu !== submenuName) {
+          const openItem = widgetContextMenu.querySelector(`.menu-item[data-submenu="${openSubmenu}"]`);
+          openItem?.classList.remove('submenu-open');
+        }
+        item.classList.add('submenu-open');
+        openSubmenu = submenuName;
+      });
+      item.addEventListener('mouseleave', () => {
+        if (!isContextOpen) {
+          return;
+        }
+        item.classList.remove('submenu-open');
+        if (openSubmenu === item.dataset.submenu) {
+          openSubmenu = null;
+        }
+      });
+    });
+
+    if (widgetContextMenu) {
+      widgetContextMenu.addEventListener('mouseleave', () => {
+        if (!isContextOpen) {
+          return;
+        }
+        const openItem = widgetContextMenu.querySelector('.menu-item.submenu-open');
+        openItem?.classList.remove('submenu-open');
+        openSubmenu = null;
+      });
+    }
+
     widgetContainer.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       widgetContainer.classList.toggle('context-open');
@@ -1225,8 +1276,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 150);
     });
 
-    document.addEventListener('click', (event) => {
+    document.addEventListener('pointerdown', (event) => {
       if (!isContextOpen) {
+        return;
+      }
+      if (event.button !== 0) {
         return;
       }
       if (!widgetContextMenu || !widgetContextMenu.contains(event.target)) {

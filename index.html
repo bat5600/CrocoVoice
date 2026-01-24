@@ -689,16 +689,31 @@
       background: var(--menu-hover);
     }
 
+    .menu-item > button {
+      border-radius: 10px;
+    }
+
+    .menu-item.submenu-open > button,
+    .menu-item:hover > button {
+      background: var(--menu-hover);
+    }
+
     .submenu-panel {
-      position: static;
-      width: calc(100% - 24px);
-      margin: 6px 12px 10px;
+      position: absolute;
+      top: 50%;
+      left: calc(100% + 12px);
+      transform: translateY(-50%);
+      width: max-content;
+      min-width: 240px;
+      max-width: 600px;
       background: var(--menu-bg);
       border: 1px solid var(--menu-border);
-      border-radius: 12px;
+      border-radius: 14px;
       box-shadow: var(--shadow);
-      padding: 8px;
+      padding: 10px;
       display: none;
+      z-index: 5;
+      box-sizing: border-box;
     }
 
     .menu-item.submenu-open .submenu-panel {
@@ -731,7 +746,7 @@
     }
 
     .submenu-list {
-      max-height: 190px;
+      max-height: 220px;
       overflow-y: auto;
       display: grid;
       gap: 4px;
@@ -752,6 +767,22 @@
       font-family: inherit;
     }
 
+    .submenu-text {
+      flex: 1;
+      min-width: 0;
+      white-space: normal;
+      line-height: 1.2;
+      padding-right: 8px;
+    }
+
+    .submenu-check {
+      font-size: 12px;
+      color: var(--pill-text);
+      opacity: 0.9;
+      min-width: 14px;
+      text-align: right;
+    }
+
     .submenu-item:hover {
       background: var(--menu-hover);
     }
@@ -766,6 +797,26 @@
       color: var(--pill-muted);
       padding: 8px 4px;
       text-align: center;
+    }
+
+    .submenu-footer {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: grid;
+      gap: 4px;
+    }
+
+    .submenu-footer-label {
+      font-size: 11px;
+      color: var(--pill-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .submenu-footer-value {
+      font-size: 12px;
+      color: var(--pill-text);
     }
 
     .menu-muted {
@@ -843,11 +894,15 @@
           <div class="submenu-panel" data-submenu-panel="microphone">
             <div class="submenu-header">Microphone</div>
             <div class="submenu-list" id="widgetMicrophoneList"></div>
+            <div class="submenu-footer">
+              <div class="submenu-footer-label">Micro en cours :</div>
+              <div class="submenu-footer-value" id="widgetMicrophoneCurrent">—</div>
+            </div>
           </div>
         </div>
         <div class="menu-item" data-submenu="language">
           <button type="button" role="menuitem" data-action="toggle-language">
-            <span id="widgetLanguageLabel">Langue</span>
+            <span id="widgetLanguageLabel">Choisir la langue</span>
             <span class="menu-muted">&gt;</span>
           </button>
           <div class="submenu-panel" data-submenu-panel="language">

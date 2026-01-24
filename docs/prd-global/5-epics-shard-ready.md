@@ -154,7 +154,7 @@ Each epic below includes: goal, scope boundaries, shard plan, exit criteria, dep
 
 ## Epic 6 — Long Form: Uploads & Exports (`NEXT`)
 **Goal**
-- Support long recordings (file uploads) and practical exports.
+- Support long recordings (file uploads) and practical exports with Local processing (instead of cloud).
 
 **In scope**
 - Upload + processing status + saved results in history.

@@ -131,7 +131,7 @@ function scheduleReturnToIdle(delayMs = 3000) {
 const compactWindowSize = { width: 220, height: 52 };
 const undoWindowSize = { width: 420, height: 120 };
 const errorWindowSize = { width: 420, height: 120 };
-const expandedWindowSize = { width: 360, height: 420 };
+const expandedWindowSize = { width: 900, height: 420 };
 let widgetExpanded = false;
 let widgetUndoVisible = false;
 let widgetErrorVisible = false;
@@ -143,7 +143,6 @@ const defaultSettings = {
     || (process.platform === 'darwin' ? 'Command+Shift+R' : 'Ctrl+Shift+R'),
   microphoneId: '',
   postProcessEnabled: true,
-  deliveryMode: 'paste',
   onboarding: {
     step: 'welcome',
     completed: false,
@@ -826,6 +825,9 @@ async function refreshSettingsFromStore() {
     return;
   }
   settings = await store.getSettings();
+  if (settings && Object.prototype.hasOwnProperty.call(settings, 'deliveryMode')) {
+    delete settings.deliveryMode;
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('settings-updated', settings);
   }
@@ -1166,6 +1168,12 @@ function updateWidgetBounds() {
     ? undoWindowSize
     : (widgetErrorVisible ? errorWindowSize : (widgetExpanded ? expandedWindowSize : compactWindowSize));
   const display = getWidgetDisplay();
+  if (display && widgetExpanded) {
+    const maxWidth = Math.max(compactWindowSize.width, display.workArea.width - 20);
+    const clampedWidth = Math.min(targetSize.width, maxWidth);
+    setMainWindowBounds({ width: clampedWidth, height: targetSize.height }, display);
+    return;
+  }
   setMainWindowBounds(targetSize, display);
 }
 
@@ -1535,7 +1543,7 @@ async function triggerPasteShortcut() {
 
 async function pasteText(text, options = {}) {
   let previousClipboard = '';
-  const mode = options.mode || settings.deliveryMode || 'paste';
+  const mode = options.mode || 'paste';
   const shouldPaste = mode !== 'clipboard';
   const allowTargetChange = options.allowTargetChange !== false;
   try {
@@ -1823,6 +1831,9 @@ ipcMain.handle('settings:save', async (event, nextSettings) => {
   const payload = { ...(nextSettings || {}) };
   delete payload.apiKeyPresent;
   const candidate = { ...settings, ...payload };
+  if (Object.prototype.hasOwnProperty.call(candidate, 'deliveryMode')) {
+    delete candidate.deliveryMode;
+  }
   if (candidate.shortcut !== settings.shortcut) {
     const ok = registerGlobalShortcut(candidate.shortcut);
     if (!ok) {
@@ -2290,6 +2301,9 @@ app.whenReady().then(async () => {
   store = new Store({ userDataPath: app.getPath('userData'), defaults: defaultSettings });
   await store.init();
   settings = await store.getSettings();
+  if (settings && Object.prototype.hasOwnProperty.call(settings, 'deliveryMode')) {
+    delete settings.deliveryMode;
+  }
   await ensureDefaultStyle();
   const retentionDays = getHistoryRetentionDays(getSubscriptionSnapshot());
   if (retentionDays > 0) {

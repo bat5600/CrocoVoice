@@ -23,6 +23,14 @@ const modalBody = document.getElementById('modalBody');
 const modalCancel = document.getElementById('modalCancel');
 const modalConfirm = document.getElementById('modalConfirm');
 const createNoteButton = document.getElementById('createNoteButton');
+const noteFocusOverlay = document.getElementById('noteFocusOverlay');
+const noteFocusBack = document.getElementById('noteFocusBack');
+const noteFocusTitle = document.getElementById('noteFocusTitle');
+const noteFocusEditor = document.getElementById('noteFocusEditor');
+const noteFocusToolbar = document.getElementById('noteFocusToolbar');
+const noteFocusTimestamp = document.getElementById('noteFocusTimestamp');
+const noteFocusSource = document.getElementById('noteFocusSource');
+const noteFocusStatus = document.getElementById('noteFocusStatus');
 const toastContainer = document.getElementById('toastContainer');
 const searchInput = document.getElementById('dashboardSearchInput');
 const breadcrumbPrimary = document.getElementById('breadcrumbPrimary');
@@ -96,7 +104,6 @@ let currentView = 'home';
 let searchTerm = '';
 let historyData = [];
 let notesData = [];
-let noteCaptureActive = false;
 let modalResolver = null;
 let platform = 'win32';
 let shortcutCaptureActive = false;
@@ -159,7 +166,10 @@ const MIC_NOISE_FLOOR = 0.012;
 const MIC_READY_THRESHOLD = 0.018;
 const MIC_READY_HOLD_MS = 500;
 const MIC_IGNORE_AFTER_CHANGE_MS = 1000;
-let noteEditorState = null;
+let focusedNote = null;
+let focusedNoteDirty = false;
+let focusedNoteSaving = false;
+let focusedNoteTimer = null;
 
 function setButtonLoading(button, isLoading, label) {
   if (!button) {
@@ -329,9 +339,6 @@ function applyOnboardingStateFromSettings(settings) {
     onboardingMicLastActiveAt = 0;
     onboardingDeliveryReady = false;
     onboardingMicIgnoreUntil = 0;
-  }
-  if (settings?.deliveryMode === 'clipboard') {
-    onboardingDeliveryReady = true;
   }
   updateOnboardingUI();
 }
@@ -562,6 +569,7 @@ function updateBreadcrumb(viewName) {
   const map = {
     home: { primary: 'Dashboard', secondary: 'Historique' },
     notes: { primary: 'Notes', secondary: 'Bibliothèque' },
+    'note-focus': { primary: 'Notes', secondary: 'Focus' },
     dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
     style: { primary: 'Styles', secondary: 'Persona' },
     settings: { primary: 'Réglages', secondary: 'Général' },
@@ -574,7 +582,7 @@ function updateBreadcrumb(viewName) {
 }
 
 function setActiveView(viewName) {
-  const supportedViews = new Set(['home', 'notes', 'dictionary', 'style', 'settings', 'account']);
+  const supportedViews = new Set(['home', 'notes', 'note-focus', 'dictionary', 'style', 'settings', 'account']);
   const nextView = supportedViews.has(viewName) ? viewName : 'home';
   views.forEach((view) => {
     view.classList.toggle('active', view.id === `view-${nextView}`);
@@ -713,6 +721,7 @@ async function deleteNoteWithUndo(entry) {
 function sanitizeSettingsForSave(value) {
   const settings = { ...(value || {}) };
   delete settings.apiKeyPresent;
+  delete settings.deliveryMode;
   return settings;
 }
 
@@ -815,27 +824,6 @@ function renderHistoryError(message) {
   );
 }
 
-function insertMarkdown(syntax, targetInput) {
-  if (!targetInput) {
-    return;
-  }
-  const start = targetInput.selectionStart || 0;
-  const end = targetInput.selectionEnd || 0;
-  const value = targetInput.value || '';
-  const before = value.slice(0, start);
-  const selection = value.slice(start, end);
-  const after = value.slice(end);
-  if (syntax === '- ') {
-    targetInput.value = `${before}\n${syntax}${selection}${after}`;
-    targetInput.selectionStart = targetInput.selectionEnd = end + syntax.length + 1;
-  } else {
-    targetInput.value = `${before}${syntax}${selection}${syntax}${after}`;
-    targetInput.selectionStart = start + syntax.length;
-    targetInput.selectionEnd = end + syntax.length;
-  }
-  targetInput.focus();
-}
-
 function extractNoteTitle(text) {
   if (!text) {
     return 'Sans titre';
@@ -858,39 +846,258 @@ function getNotePreview(text) {
   return `${collapsed.slice(0, 160)}…`;
 }
 
-function resetNoteEditorState() {
-  if (noteEditorState?.saveTimer) {
-    clearTimeout(noteEditorState.saveTimer);
+function normalizeNoteMetadata(metadata) {
+  if (!metadata) {
+    return {};
   }
-  if (noteEditorState?.keyHandler) {
-    document.removeEventListener('keydown', noteEditorState.keyHandler);
+  if (typeof metadata === 'object') {
+    return metadata;
   }
-  noteEditorState = null;
-  noteCaptureActive = false;
+  try {
+    return JSON.parse(metadata);
+  } catch {
+    return {};
+  }
 }
 
-function setNoteStatus(state, detail) {
-  if (!noteEditorState?.statusEl || !noteEditorState?.statusDetailEl) {
+function formatDateTimeLabel(iso) {
+  if (!iso) {
+    return '—';
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  return date.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatInlineMarkdown(text) {
+  let safe = escapeHtml(text);
+  safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+  safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+  return safe;
+}
+
+function renderMarkdownLite(text) {
+  if (!text) {
+    return '';
+  }
+  const lines = text.split(/\r?\n/);
+  const html = [];
+  let inList = false;
+  let inCode = false;
+  let codeLines = [];
+  let paragraphLines = [];
+
+  const closeList = () => {
+    if (inList) {
+      html.push('</ul>');
+      inList = false;
+    }
+  };
+
+  const closeCode = () => {
+    if (inCode) {
+      html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+      inCode = false;
+      codeLines = [];
+    }
+  };
+
+  const flushParagraph = () => {
+    if (paragraphLines.length) {
+      html.push(`<p>${formatInlineMarkdown(paragraphLines.join(' '))}</p>`);
+      paragraphLines = [];
+    }
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      if (inCode) {
+        closeCode();
+      } else {
+        closeList();
+        inCode = true;
+      }
+      flushParagraph();
+      return;
+    }
+    if (inCode) {
+      codeLines.push(line);
+      return;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      return;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      closeList();
+      const level = headingMatch[1].length;
+      html.push(`<h${level}>${formatInlineMarkdown(headingMatch[2])}</h${level}>`);
+      return;
+    }
+
+    const quoteMatch = trimmed.match(/^>\s+(.*)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      closeList();
+      html.push(`<blockquote>${formatInlineMarkdown(quoteMatch[1])}</blockquote>`);
+      return;
+    }
+
+    const listMatch = trimmed.match(/^[-*]\s+(.*)$/);
+    if (listMatch) {
+      flushParagraph();
+      if (!inList) {
+        html.push('<ul>');
+        inList = true;
+      }
+      html.push(`<li>${formatInlineMarkdown(listMatch[1])}</li>`);
+      return;
+    }
+
+    closeList();
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  closeList();
+  closeCode();
+
+  return html.join('\n');
+}
+
+function setFocusedNoteStatus(state, detail) {
+  if (!noteFocusStatus) {
     return;
   }
-  const statusEl = noteEditorState.statusEl;
-  statusEl.classList.remove('is-dirty', 'is-saving', 'is-error');
+  noteFocusStatus.classList.remove('is-dirty', 'is-saving', 'is-error');
   let label = 'Enregistré';
   if (state === 'dirty') {
     label = 'Modifications non sauvegardées';
-    statusEl.classList.add('is-dirty');
+    noteFocusStatus.classList.add('is-dirty');
   } else if (state === 'saving') {
     label = 'Enregistrement...';
-    statusEl.classList.add('is-saving');
+    noteFocusStatus.classList.add('is-saving');
   } else if (state === 'error') {
     label = 'Erreur';
-    statusEl.classList.add('is-error');
+    noteFocusStatus.classList.add('is-error');
   } else if (state === 'empty') {
     label = 'Vide';
-    statusEl.classList.add('is-dirty');
+    noteFocusStatus.classList.add('is-dirty');
   }
-  statusEl.textContent = label;
-  noteEditorState.statusDetailEl.textContent = detail || '';
+  noteFocusStatus.textContent = label;
+  if (noteFocusTimestamp && detail !== undefined) {
+    noteFocusTimestamp.textContent = detail || '—';
+  }
+}
+
+function htmlToMarkdownLite(html) {
+  if (!html) {
+    return '';
+  }
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+
+  const serializeInline = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent || '';
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return '';
+    }
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'strong' || tag === 'b') {
+      return `**${serializeChildren(node)}**`;
+    }
+    if (tag === 'em' || tag === 'i') {
+      return `*${serializeChildren(node)}*`;
+    }
+    if (tag === 's' || tag === 'del') {
+      return `~~${serializeChildren(node)}~~`;
+    }
+    if (tag === 'code') {
+      return `\`${serializeChildren(node)}\``;
+    }
+    if (tag === 'a') {
+      const href = node.getAttribute('href') || '';
+      const label = serializeChildren(node) || href;
+      return href ? `[${label}](${href})` : label;
+    }
+    if (tag === 'br') {
+      return '\n';
+    }
+    return serializeChildren(node);
+  };
+
+  const serializeChildren = (node) => {
+    return Array.from(node.childNodes).map(serializeInline).join('');
+  };
+
+  const blocks = [];
+
+  const serializeBlock = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || '';
+      return text.trim() ? text : '';
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return '';
+    }
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'h1') {
+      return `# ${serializeChildren(node)}`;
+    }
+    if (tag === 'h2') {
+      return `## ${serializeChildren(node)}`;
+    }
+    if (tag === 'h3') {
+      return `### ${serializeChildren(node)}`;
+    }
+    if (tag === 'blockquote') {
+      return serializeChildren(node).split('\n').map((line) => `> ${line}`).join('\n');
+    }
+    if (tag === 'ul') {
+      return Array.from(node.querySelectorAll('li')).map((li) => `- ${serializeChildren(li)}`).join('\n');
+    }
+    if (tag === 'pre') {
+      const code = node.querySelector('code');
+      const content = code ? code.textContent || '' : node.textContent || '';
+      return `\`\`\`\n${content}\n\`\`\``;
+    }
+    if (tag === 'p' || tag === 'div') {
+      const content = serializeChildren(node).trim();
+      return content ? content : '';
+    }
+    return serializeChildren(node).trim();
+  };
+
+  Array.from(wrapper.childNodes).forEach((node) => {
+    const block = serializeBlock(node);
+    if (block) {
+      blocks.push(block);
+    }
+  });
+
+  return blocks.join('\n\n').trim();
 }
 
 function updateNotesData(record) {
@@ -909,240 +1116,242 @@ function updateNotesData(record) {
   renderNotesList();
 }
 
-async function saveNote({ force = false } = {}) {
-  if (!noteEditorState || !noteEditorState.bodyInput) {
+function handleFocusedTitleInput() {
+  if (focusedNoteSaving) {
+    return;
+  }
+  focusedNoteDirty = true;
+  setFocusedNoteStatus('dirty');
+  scheduleFocusedSave();
+}
+
+function handleFocusedEditorInput() {
+  if (focusedNoteSaving) {
+    return;
+  }
+  focusedNoteDirty = true;
+  const rawText = noteFocusEditor?.textContent || '';
+  const hasContent = Boolean(rawText.trim());
+  if (!hasContent && noteFocusEditor) {
+    noteFocusEditor.innerHTML = '';
+  }
+  if (!hasContent && !focusedNote?.id) {
+    setFocusedNoteStatus('empty');
+  } else {
+    setFocusedNoteStatus('dirty');
+  }
+  scheduleFocusedSave();
+}
+
+function scheduleFocusedSave() {
+  if (focusedNoteTimer) {
+    clearTimeout(focusedNoteTimer);
+  }
+  focusedNoteTimer = setTimeout(() => {
+    saveFocusedNote();
+  }, 800);
+}
+
+function isSelectionInsideFocusedEditor() {
+  if (!noteFocusEditor) {
+    return false;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return false;
+  }
+  const range = selection.getRangeAt(0);
+  if (selection.isCollapsed) {
+    return false;
+  }
+  return noteFocusEditor.contains(range.commonAncestorContainer);
+}
+
+function positionFocusToolbar() {
+  if (!noteFocusToolbar) {
+    return;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    noteFocusToolbar.classList.remove('is-visible');
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  if (!rect || rect.width === 0) {
+    noteFocusToolbar.classList.remove('is-visible');
+    return;
+  }
+  const top = Math.max(rect.top + window.scrollY, 12);
+  const left = rect.left + rect.width / 2 + window.scrollX;
+  noteFocusToolbar.style.top = `${top}px`;
+  noteFocusToolbar.style.left = `${left}px`;
+  noteFocusToolbar.classList.add('is-visible');
+}
+
+function hideFocusToolbar() {
+  if (!noteFocusToolbar) {
+    return;
+  }
+  noteFocusToolbar.classList.remove('is-visible');
+}
+
+function applyFocusFormat(format) {
+  if (!noteFocusEditor) {
+    return;
+  }
+  noteFocusEditor.focus();
+  switch (format) {
+    case 'bold':
+      document.execCommand('bold', false);
+      break;
+    case 'italic':
+      document.execCommand('italic', false);
+      break;
+    case 'strike':
+      document.execCommand('strikeThrough', false);
+      break;
+    case 'code': {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount) {
+        const text = selection.toString();
+        if (text) {
+          document.execCommand('insertHTML', false, `<code>${escapeHtml(text)}</code>`);
+        }
+      }
+      break;
+    }
+    case 'quote':
+      document.execCommand('formatBlock', false, 'blockquote');
+      break;
+    case 'list':
+      document.execCommand('insertUnorderedList', false);
+      break;
+    case 'h1':
+      document.execCommand('formatBlock', false, 'h1');
+      break;
+    case 'h2':
+      document.execCommand('formatBlock', false, 'h2');
+      break;
+    case 'h3':
+      document.execCommand('formatBlock', false, 'h3');
+      break;
+    case 'p':
+      document.execCommand('formatBlock', false, 'p');
+      break;
+    case 'link': {
+      const url = window.prompt('URL du lien');
+      if (url) {
+        document.execCommand('createLink', false, url);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  handleFocusedEditorInput();
+  positionFocusToolbar();
+}
+
+async function saveFocusedNote({ force = false } = {}) {
+  if (!noteFocusEditor || !noteFocusTitle) {
     return null;
   }
   if (!window.electronAPI?.upsertNote) {
-    setNoteStatus('error', 'API indisponible');
+    setFocusedNoteStatus('error');
     return null;
   }
-  const text = noteEditorState.bodyInput.value || '';
+  const html = noteFocusEditor.innerHTML || '';
+  const text = htmlToMarkdownLite(html);
   const hasContent = Boolean(text.trim());
-  if (!hasContent && !noteEditorState.note?.id) {
-    setNoteStatus('empty', 'Ajoutez du contenu pour sauvegarder.');
+  if (!hasContent && !focusedNote?.id) {
+    setFocusedNoteStatus('empty');
     return null;
   }
-  if (!force && !noteEditorState.dirty) {
-    return noteEditorState.note || null;
+  if (!force && !focusedNoteDirty) {
+    return focusedNote;
   }
-
-  noteEditorState.saving = true;
-  setNoteStatus('saving', 'Enregistrement en cours...');
+  focusedNoteSaving = true;
+  setFocusedNoteStatus('saving');
 
   const now = new Date().toISOString();
-  const titleInput = noteEditorState.titleInput?.value.trim();
+  const titleInput = noteFocusTitle.value.trim();
   const title = titleInput || extractNoteTitle(text);
   const payload = {
-    id: noteEditorState.note?.id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`),
-    user_id: noteEditorState.note?.user_id || null,
+    id: focusedNote?.id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`),
+    user_id: focusedNote?.user_id || null,
     title,
     text,
-    metadata: noteEditorState.note?.metadata || { source: 'manual' },
-    created_at: noteEditorState.note?.created_at || now,
+    metadata: focusedNote?.metadata || { source: 'manual' },
+    created_at: focusedNote?.created_at || now,
     updated_at: now,
   };
 
   try {
     const record = await window.electronAPI.upsertNote(payload);
-    noteEditorState.note = record;
-    noteEditorState.dirty = false;
-    noteEditorState.saving = false;
+    focusedNote = record;
+    focusedNoteDirty = false;
+    focusedNoteSaving = false;
     updateNotesData(record);
-    setNoteStatus('saved', `Enregistré à ${formatTime(record.updated_at)}`);
+    setFocusedNoteStatus('saved', formatDateTimeLabel(record.updated_at));
     return record;
   } catch (error) {
-    noteEditorState.saving = false;
-    setNoteStatus('error', 'Sauvegarde impossible.');
+    focusedNoteSaving = false;
+    setFocusedNoteStatus('error');
     return null;
   }
 }
 
-function scheduleNoteAutosave() {
-  if (!noteEditorState) {
+function openFocusedNote(note = null) {
+  if (!noteFocusEditor || !noteFocusTitle) {
     return;
   }
-  if (noteEditorState.saveTimer) {
-    clearTimeout(noteEditorState.saveTimer);
+  focusedNote = note ? { ...note } : null;
+  focusedNoteDirty = false;
+  focusedNoteSaving = false;
+
+  const metadata = normalizeNoteMetadata(note?.metadata);
+  const source = metadata.source === 'dictation' ? 'Dictée' : metadata.source ? 'Manuel' : '';
+  if (noteFocusSource) {
+    noteFocusSource.textContent = source ? `Source: ${source}` : '';
   }
-  noteEditorState.saveTimer = setTimeout(() => {
-    saveNote();
-  }, 800);
+  if (noteFocusTimestamp) {
+    const stamp = note?.updated_at || note?.created_at || null;
+    noteFocusTimestamp.textContent = formatDateTimeLabel(stamp);
+  }
+  noteFocusTitle.value = note?.title || '';
+  noteFocusEditor.innerHTML = note?.text ? renderMarkdownLite(note.text) : '';
+  if ((note?.text || '').trim()) {
+    setFocusedNoteStatus('saved', formatDateTimeLabel(note?.updated_at || note?.created_at));
+  } else {
+    setFocusedNoteStatus('empty');
+  }
+
+  document.body.classList.add('note-focus-active');
+  if (noteFocusOverlay) {
+    noteFocusOverlay.setAttribute('aria-hidden', 'false');
+  }
+  setActiveView('note-focus');
+  setTimeout(() => noteFocusTitle.focus(), 0);
 }
 
-function openNoteEditor(note = null) {
-  if (!modalBackdrop || !modalBody || !modalTitle || !modalCancel || !modalConfirm) {
-    return;
+async function closeFocusedNote() {
+  if (focusedNoteDirty) {
+    await saveFocusedNote({ force: true });
   }
-
-  resetNoteEditorState();
-  modalTitle.textContent = note ? 'Modifier la note' : 'Nouvelle note';
-  modalConfirm.textContent = 'Fermer';
-  modalBody.innerHTML = '';
-  modalBackdrop.classList.add('is-visible', 'notes-modal');
-  modalBackdrop.setAttribute('aria-hidden', 'false');
-
-  const editor = document.createElement('div');
-  editor.className = 'note-editor';
-
-  const titleInput = document.createElement('input');
-  titleInput.type = 'text';
-  titleInput.className = 'note-title-input';
-  titleInput.placeholder = 'Titre de la note...';
-  titleInput.value = note?.title || '';
-
-  const statusRow = document.createElement('div');
-  statusRow.className = 'note-status-row';
-  const statusPill = document.createElement('span');
-  statusPill.className = 'note-status';
-  const statusDetail = document.createElement('span');
-  statusDetail.className = 'note-status-detail';
-  const hint = document.createElement('span');
-  hint.textContent = platform === 'darwin' ? 'Cmd+S pour enregistrer' : 'Ctrl+S pour enregistrer';
-  statusRow.appendChild(statusPill);
-  statusRow.appendChild(statusDetail);
-  statusRow.appendChild(hint);
-
-  const toolbar = document.createElement('div');
-  toolbar.className = 'editor-toolbar';
-  toolbar.setAttribute('role', 'toolbar');
-  toolbar.setAttribute('aria-label', 'Formatage');
-  toolbar.innerHTML = `
-    <button class="editor-tool" type="button" data-md="**" aria-label="Gras">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg>
-    </button>
-    <button class="editor-tool" type="button" data-md="*" aria-label="Italique">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line></svg>
-    </button>
-    <div class="editor-sep" aria-hidden="true"></div>
-    <button class="editor-tool" type="button" data-md="- " aria-label="Liste">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-    </button>
-  `;
-
-  const bodyInput = document.createElement('textarea');
-  bodyInput.className = 'input-textarea';
-  bodyInput.placeholder = 'Commencez à écrire votre note...';
-  bodyInput.value = note?.text || '';
-
-  const actions = document.createElement('div');
-  actions.className = 'note-editor-actions';
-  const recordBadge = document.createElement('div');
-  recordBadge.className = 'recording-feedback';
-  recordBadge.innerHTML = `
-    <div class="audio-bars">
-      <span class="audio-bar" style="animation-duration: 420ms;"></span>
-      <span class="audio-bar" style="animation-duration: 460ms;"></span>
-      <span class="audio-bar" style="animation-duration: 390ms;"></span>
-      <span class="audio-bar" style="animation-duration: 430ms;"></span>
-    </div>
-    En écoute...
-  `;
-  const actionGroup = document.createElement('div');
-  actionGroup.style.display = 'flex';
-  actionGroup.style.gap = '12px';
-  actionGroup.style.alignItems = 'center';
-  actionGroup.style.flexWrap = 'wrap';
-  const dictateButton = document.createElement('button');
-  dictateButton.className = 'btn-secondary';
-  dictateButton.type = 'button';
-  dictateButton.textContent = 'Dictée';
-  actionGroup.appendChild(dictateButton);
-  actions.appendChild(recordBadge);
-  actions.appendChild(actionGroup);
-
-  editor.appendChild(titleInput);
-  editor.appendChild(statusRow);
-  editor.appendChild(toolbar);
-  editor.appendChild(bodyInput);
-  editor.appendChild(actions);
-  modalBody.appendChild(editor);
-
-  noteEditorState = {
-    note,
-    titleInput,
-    bodyInput,
-    statusEl: statusPill,
-    statusDetailEl: statusDetail,
-    dictateButton,
-    recordBadge,
-    dirty: false,
-    saving: false,
-    saveTimer: null,
-    keyHandler: null,
-  };
-
-  const initialDetail = note?.updated_at ? `Dernière sauvegarde à ${formatTime(note.updated_at)}` : '';
-  if ((note?.text || '').trim()) {
-    setNoteStatus('saved', initialDetail);
-  } else {
-    setNoteStatus('empty', 'Ajoutez du contenu pour sauvegarder.');
+  document.body.classList.remove('note-focus-active');
+  if (noteFocusOverlay) {
+    noteFocusOverlay.setAttribute('aria-hidden', 'true');
   }
-
-  const onInput = () => {
-    noteEditorState.dirty = true;
-    setNoteStatus('dirty', 'Sauvegarde automatique en cours...');
-    scheduleNoteAutosave();
-  };
-  titleInput.addEventListener('input', onInput);
-  bodyInput.addEventListener('input', onInput);
-  toolbar.querySelectorAll('.editor-tool').forEach((button) => {
-    button.addEventListener('click', () => {
-      const md = button.dataset.md;
-      if (md) {
-        insertMarkdown(md, bodyInput);
-        onInput();
-      }
-    });
-  });
-
-  dictateButton.addEventListener('click', async () => {
-    if (!window.electronAPI?.toggleRecording || !window.electronAPI?.setRecordingTarget) {
-      return;
-    }
-    if (noteCaptureActive) {
-      noteCaptureActive = false;
-      recordBadge.classList.remove('active');
-      dictateButton.textContent = 'Dictée';
-      window.electronAPI.toggleRecording();
-      return;
-    }
-    noteCaptureActive = true;
-    recordBadge.classList.add('active');
-    dictateButton.textContent = 'Arrêter';
-    bodyInput.focus();
-    await window.electronAPI.setRecordingTarget('notes-editor');
-    window.electronAPI.toggleRecording();
-  });
-
-  noteEditorState.keyHandler = (event) => {
-    const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's';
-    if (isSave) {
-      event.preventDefault();
-      saveNote({ force: true });
-    }
-  };
-  document.addEventListener('keydown', noteEditorState.keyHandler);
-
-  modalResolver = () => {};
-  const closeEditor = async () => {
-    if (noteEditorState?.dirty) {
-      await saveNote({ force: true });
-    }
-    if (noteCaptureActive && window.electronAPI?.toggleRecording) {
-      window.electronAPI.toggleRecording();
-    }
-    toggleRecordingVisuals(false);
-    modalBackdrop.classList.remove('is-visible', 'notes-modal');
-    modalBackdrop.setAttribute('aria-hidden', 'true');
-    modalBody.innerHTML = '';
-    modalResolver = null;
-    resetNoteEditorState();
-  };
-
-  modalCancel.onclick = () => closeEditor();
-  modalConfirm.onclick = () => closeEditor();
-  setTimeout(() => titleInput.focus(), 0);
+  hideFocusToolbar();
+  focusedNote = null;
+  focusedNoteDirty = false;
+  focusedNoteSaving = false;
+  if (focusedNoteTimer) {
+    clearTimeout(focusedNoteTimer);
+    focusedNoteTimer = null;
+  }
+  setActiveView('notes');
 }
 
 function buildEntryRow(entry, type) {
@@ -1151,11 +1360,11 @@ function buildEntryRow(entry, type) {
   if (type === 'notes') {
     row.role = 'button';
     row.tabIndex = 0;
-    row.addEventListener('click', () => openNoteEditor(entry));
+    row.addEventListener('click', () => openFocusedNote(entry));
     row.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        openNoteEditor(entry);
+        openFocusedNote(entry);
       }
     });
   }
@@ -1286,17 +1495,10 @@ function refreshActiveList() {
     renderNotesList();
     return;
   }
+  if (currentView === 'note-focus') {
+    return;
+  }
   renderHistoryList();
-}
-
-function toggleRecordingVisuals(active) {
-  noteCaptureActive = active;
-  if (noteEditorState?.recordBadge) {
-    noteEditorState.recordBadge.classList.toggle('active', active);
-  }
-  if (noteEditorState?.dictateButton) {
-    noteEditorState.dictateButton.textContent = active ? 'Arrêter' : 'Dictée';
-  }
 }
 
 async function handleOnboardingDictation() {
@@ -1327,7 +1529,7 @@ async function handleOnboardingDictation() {
 }
 
 async function handleCreateNote() {
-  openNoteEditor(null);
+  openFocusedNote(null);
 }
 
 function renderStats(stats) {
@@ -2054,6 +2256,34 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  document.addEventListener('keydown', (event) => {
+    if (!document.body.classList.contains('note-focus-active')) {
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeFocusedNote();
+      return;
+    }
+    const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's';
+    if (isSave) {
+      event.preventDefault();
+      saveFocusedNote({ force: true });
+    }
+  });
+
+  document.addEventListener('selectionchange', () => {
+    if (!document.body.classList.contains('note-focus-active')) {
+      hideFocusToolbar();
+      return;
+    }
+    if (isSelectionInsideFocusedEditor()) {
+      positionFocusToolbar();
+      return;
+    }
+    hideFocusToolbar();
+  });
+
   navItems.forEach((item) => {
     item.addEventListener('click', () => {
       setActiveView(item.dataset.view);
@@ -2254,6 +2484,31 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (noteFocusBack) {
+    noteFocusBack.addEventListener('click', () => {
+      closeFocusedNote();
+    });
+  }
+
+  if (noteFocusTitle) {
+    noteFocusTitle.addEventListener('input', handleFocusedTitleInput);
+  }
+
+  if (noteFocusEditor) {
+    noteFocusEditor.addEventListener('input', handleFocusedEditorInput);
+  }
+
+  if (noteFocusToolbar) {
+    noteFocusToolbar.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+    });
+    noteFocusToolbar.querySelectorAll('[data-format]').forEach((button) => {
+      button.addEventListener('click', () => {
+        applyFocusFormat(button.dataset.format);
+      });
+    });
+  }
+
   if (upgradePlanButton) {
     upgradePlanButton.addEventListener('click', async () => {
       await triggerCheckout(upgradePlanButton);
@@ -2329,7 +2584,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       if (action === 'note-editor') {
         setActiveView('notes');
-        openNoteEditor(null);
+        openFocusedNote(null);
         return;
       }
       if (action === 'dictionary') {
@@ -2527,24 +2782,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (window.electronAPI?.onDashboardTranscription) {
     window.electronAPI.onDashboardTranscription((text, target) => {
-      if (target === 'notes' || target === 'notes-editor') {
+      if (target === 'notes') {
         const add = (text || '').trim();
         if (!add) {
-          toggleRecordingVisuals(false);
           return;
         }
-        if (target === 'notes-editor' && noteEditorState?.bodyInput) {
-          const existing = noteEditorState.bodyInput.value.trim();
-          noteEditorState.bodyInput.value = existing ? `${existing}\n${add}` : add;
-          noteEditorState.dirty = true;
-          setNoteStatus('dirty', 'Sauvegarde automatique en cours...');
-          scheduleNoteAutosave();
-          showToast('Texte reçu.');
-        } else {
-          showToast('Note ajoutée.');
-          refreshDashboard();
-        }
-        toggleRecordingVisuals(false);
+        showToast('Note ajoutée.');
+        refreshDashboard();
         return;
       }
 
@@ -2576,11 +2820,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (window.electronAPI?.onDashboardTranscriptionError) {
     window.electronAPI.onDashboardTranscriptionError((error) => {
-      if (noteCaptureActive) {
-        showToast(error?.message || 'La dictée a échoué.', 'error');
-        toggleRecordingVisuals(false);
-        return;
-      }
       if (onboardingRecordingActive) {
         const message = typeof error === 'string' ? error : error?.message;
         onboardingRecordingActive = false;

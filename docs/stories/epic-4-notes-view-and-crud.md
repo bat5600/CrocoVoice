@@ -46,6 +46,7 @@ Ready for Review
 | --- | --- | --- | --- |
 | 2026-01-20 | v0.1 | Story created from global PRD Epic 4 shard plan | PO |
 | 2026-01-21 | v0.2 | Notes modal editor, autosave, dictation target save, undo delete | Dev |
+| 2026-01-21 | v0.3 | Focused note view with markdown preview and centered layout | Dev |
 
 ## Dev Agent Record
 ### Agent Model Used
@@ -55,7 +56,10 @@ GPT-5
 N/A
 
 ### Completion Notes List
-- Notes editor moved to large modal with autosave, save state, and Ctrl/Cmd+S.
+- Focused note view with centered layout, hidden sidebar, and Esc/back exit.
+- Inline note editing with autosave, save state, and Ctrl/Cmd+S.
+- Rendu Markdown inline (titres, listes, citations, code, liens).
+- Sélection de texte affiche une barre flottante pour le formatage (style Notion).
 - Notes dictation target now persists notes without delivery typing and updates the list.
 - Delete actions now offer undo with immediate UI updates.
 - Tests non exécutés (pas de harness automatisé).
