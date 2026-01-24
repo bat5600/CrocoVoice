@@ -107,7 +107,7 @@ class SyncService {
     const response = await fetch(`${this.supabaseUrl}/functions/v1/${name}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ ...(body || {}), token: accessToken }),
+      body: JSON.stringify(body || {}),
     });
     if (!response.ok) {
       const detail = await response.text();

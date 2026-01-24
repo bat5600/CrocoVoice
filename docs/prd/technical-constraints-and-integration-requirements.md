@@ -1,31 +1,32 @@
 # Technical Constraints and Integration Requirements
 
 ## Existing Technology Stack
-**Languages**: JavaScript (ES standard)  
-**Frameworks**: Electron ^35.7.5 (main/renderer + IPC)  
-**Database**: SQLite (sqlite3 ^5.1.7)  
-**Infrastructure**: Local Electron runtime (npm start / npm run dev)  
-**External Dependencies**: Supabase JS (auth/sync), OpenAI SDK, @nut-tree-fork/nut-js  
+**Languages**: JavaScript (ES standard, CommonJS)
+**Frameworks**: Electron ^35.7.5, Node.js 16+
+**Database**: SQLite (local), Postgres via Supabase (remote)
+**Infrastructure**: Supabase Edge Functions (Deno), Electron desktop app
+**External Dependencies**: OpenAI (Whisper + Chat), Supabase JS, Stripe, @nut-tree-fork/nut-js, robotjs fallback
 
 ## Integration Approach
-**Database Integration Strategy**: Eviter toute migration SQLite; stocker les quotas ailleurs (Supabase ou fichier local).  
-**API Integration Strategy**: Utiliser Supabase auth pour reset password et eventuellement functions pour quotas.  
-**Frontend Integration Strategy**: Integrer les etats paywall dans `docs/signup.html` et dans la surface d'upsell choisie.  
-**Testing Integration Strategy**: Tests manuels (signup/login/reset, quota, upgrade) sur plusieurs scenarii.  
+**Database Integration Strategy**: Add SQLite indexes with CREATE INDEX IF NOT EXISTS. Add Supabase migrations for missing tables and RLS policies; keep all schema changes additive.
+**API Integration Strategy**: Centralize Edge Function auth verification in shared helper and update Stripe and quota functions to use it.
+**Frontend Integration Strategy**: Replace innerHTML use with DOM construction and textContent; add navigation/window-open guards in main process.
+**Testing Integration Strategy**: Add a lightweight unit-test harness (minimal new deps). Mock external APIs and keep tests focused on core logic modules.
 
 ## Code Organization and Standards
-**File Structure Approach**: Reutiliser les fichiers existants (pas de nouveaux frameworks).  
-**Naming Conventions**: camelCase JS, ID HTML existants.  
-**Coding Standards**: Suivre `docs/architecture/coding-standards.md`.  
-**Documentation Standards**: Mettre a jour `docs/brainstorming-session-results.md` si besoin.  
+**File Structure Approach**: Keep root entry points (main.js, renderer.js, preload.js, sync.js, store.js) and introduce small root-level modules with clear prefixes (e.g., main-auth.js, main-recording.js, utils.js) to minimize churn.
+**Naming Conventions**: camelCase, lower-case filenames.
+**Coding Standards**: Follow existing code style, avoid large-format changes. CommonJS only.
+**Documentation Standards**: Update README/PRD or relevant docs when behaviors change; keep comments minimal and focused.
 
 ## Deployment and Operations
-**Build Process Integration**: Pas de changement de pipeline.  
-**Deployment Strategy**: Update app standard; services externes via Supabase/Stripe.  
-**Monitoring and Logging**: Logs client minimalistes; pas de secrets en clair.  
+**Build Process Integration**: No change to existing build pipeline; modifications should remain compatible with current Electron packaging.
+**Deployment Strategy**: No behavioral flags required; release as normal app update.
+**Monitoring and Logging**: Add minimal error reporting hook if feasible (or document as a follow-up).
+**Configuration Management**: Use existing dotenv pattern; ensure no secrets logged.
 
 ## Risk Assessment and Mitigation
-**Technical Risks**: Enforcement du quota uniquement cote client => contournable.  
-**Integration Risks**: Stripe + Supabase peuvent requerir des fonctions serveur.  
-**Deployment Risks**: Incoherence entre statut d'abonnement et acces reel.  
-**Mitigation Strategies**: Centraliser l'entitlement cote serveur (Supabase), verifier au demarrage, fallback lisible.  
+**Technical Risks**: Edge Function auth changes could break existing token flows; sync changes may reveal RLS or schema gaps.
+**Integration Risks**: Refactoring main.js could introduce regressions if behavior changes.
+**Deployment Risks**: Supabase schema updates might affect existing data if not additive or if RLS is misconfigured.
+**Mitigation Strategies**: Add targeted tests, stage changes in small stories, use feature-flag-like rollout where possible, and keep schema changes additive with backfill scripts if needed.

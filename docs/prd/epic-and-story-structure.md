@@ -1,4 +1,3 @@
 # Epic and Story Structure
-This enhancement is placed as Epic 3 in the overall roadmap, covering auth + paywall + quota as a cohesive scope sharing the same integration points.
 
-**Epic Structure Decision**: Epic 3 focused on paywall and authentication flows.
+**Epic Structure Decision**: Single epic. Rationale: the fixes are tightly coupled under a stabilization theme (security, sync integrity, correctness, performance, maintainability) and should be sequenced to minimize risk while preserving existing behavior.
