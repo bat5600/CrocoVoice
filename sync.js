@@ -173,11 +173,20 @@ class SyncService {
   }
 
   async deleteRemote(table, id) {
-    this._ensureClient();
-    if (!this.user) {
+    if (!this.user || !id) {
       return;
     }
-    await this.client.from(table).delete().eq('id', id).eq('user_id', this.user.id);
+    if (!this.client) {
+      await this._queuePendingDelete(table, id, this.user.id);
+      return;
+    }
+    try {
+      await this.client.from(table).delete().eq('id', id).eq('user_id', this.user.id);
+      await this._removePendingDelete(table, id, this.user.id);
+    } catch (error) {
+      await this._queuePendingDelete(table, id, this.user.id);
+      console.warn(`Remote delete failed for ${table}:${id}; queued for retry.`, error);
+    }
   }
 
   async deleteAllHistory() {
@@ -318,14 +327,13 @@ class SyncService {
       await this.client.from('user_settings').upsert(settingsRows, { onConflict: 'id' });
     }
 
-    let remoteQuery = this.client.from('user_settings').select('*').eq('user_id', this.user.id);
-    if (cursor) {
-      remoteQuery = remoteQuery.gte('updated_at', cursor);
-    }
-    const { data: remoteRows, error } = await remoteQuery;
-    if (error) {
-      throw error;
-    }
+    const remoteRows = await this._fetchPagedRows(() => {
+      let remoteQuery = this.client.from('user_settings').select('*').eq('user_id', this.user.id);
+      if (cursor) {
+        remoteQuery = remoteQuery.gte('updated_at', cursor);
+      }
+      return remoteQuery.order('updated_at', { ascending: true });
+    });
 
     const localByKey = settingsMeta;
     for (const row of remoteRows || []) {
@@ -334,7 +342,14 @@ class SyncService {
         await this.store.setSettingWithTimestamp(row.key, JSON.parse(row.value), row.updated_at);
       }
     }
-    await this.store.setSyncCursor('settings', new Date().toISOString());
+    const maxRemote = this._maxUpdatedAt(remoteRows, cursor);
+    const maxLocal = this._maxUpdatedAt(Object.values(settingsMeta).map((meta) => ({
+      updated_at: meta.updated_at,
+    })), cursor);
+    const nextCursor = this._maxIso(maxRemote, maxLocal);
+    if (nextCursor) {
+      await this.store.setSyncCursor('settings', nextCursor);
+    }
   }
 
   async _syncSubscription() {
@@ -379,6 +394,12 @@ class SyncService {
     if (this.syncAbort) {
       return;
     }
+    const pendingDeletes = await this._flushPendingDeletes(config.table);
+    const pendingDeleteIds = new Set(
+      (pendingDeletes || [])
+        .filter((entry) => entry && entry.user_id === this.user?.id)
+        .map((entry) => entry.id),
+    );
     const localUpdates = cursor
       ? localRows.filter((row) => row.updated_at >= cursor)
       : localRows;
@@ -391,19 +412,21 @@ class SyncService {
       return;
     }
 
-    let remoteQuery = this.client.from(config.table).select('*').eq('user_id', this.user.id);
-    if (cursor) {
-      remoteQuery = remoteQuery.gte('updated_at', cursor);
-    }
-    const { data: remoteRows, error } = await remoteQuery;
-    if (error) {
-      throw error;
-    }
+    const remoteRows = await this._fetchPagedRows(() => {
+      let remoteQuery = this.client.from(config.table).select('*').eq('user_id', this.user.id);
+      if (cursor) {
+        remoteQuery = remoteQuery.gte('updated_at', cursor);
+      }
+      return remoteQuery.order('updated_at', { ascending: true });
+    });
 
     const localById = new Map(localRows.map((row) => [row.id, row]));
     for (const row of remoteRows || []) {
       if (this.syncAbort) {
         return;
+      }
+      if (pendingDeleteIds.has(row.id)) {
+        continue;
       }
       const local = localById.get(row.id);
       if (!local || row.updated_at > local.updated_at) {
@@ -411,7 +434,12 @@ class SyncService {
       }
     }
 
-    await this.store.setSyncCursor(config.key, new Date().toISOString());
+    const maxRemote = this._maxUpdatedAt(remoteRows, cursor);
+    const maxLocal = this._maxUpdatedAt(localUpdates, cursor);
+    const nextCursor = this._maxIso(maxRemote, maxLocal);
+    if (nextCursor) {
+      await this.store.setSyncCursor(config.key, nextCursor);
+    }
   }
 
   async _purgeRemoteHistory(days) {
@@ -419,7 +447,101 @@ class SyncService {
       return;
     }
     const cutoff = new Date(Date.now() - days * DAY_MS).toISOString();
-    await this.client.from('history').delete().lt('created_at', cutoff);
+    if (!this.user) {
+      return;
+    }
+    await this.client.from('history').delete().lt('created_at', cutoff).eq('user_id', this.user.id);
+  }
+
+  _maxIso(a, b) {
+    if (!a) {
+      return b || '';
+    }
+    if (!b) {
+      return a || '';
+    }
+    return a > b ? a : b;
+  }
+
+  _maxUpdatedAt(rows, seed) {
+    let max = seed || '';
+    (rows || []).forEach((row) => {
+      if (row && row.updated_at && row.updated_at > max) {
+        max = row.updated_at;
+      }
+    });
+    return max;
+  }
+
+  async _fetchPagedRows(buildQuery, pageSize = 1000) {
+    const results = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await buildQuery().range(from, from + pageSize - 1);
+      if (error) {
+        throw error;
+      }
+      if (!data || data.length === 0) {
+        break;
+      }
+      results.push(...data);
+      if (data.length < pageSize) {
+        break;
+      }
+      from += pageSize;
+    }
+    return results;
+  }
+
+  async _queuePendingDelete(table, id, userId) {
+    if (!table || !id || !userId) {
+      return;
+    }
+    const key = `sync:pending_deletes:${table}`;
+    const current = (await this.store.getSetting(key, [])) || [];
+    const exists = current.some((item) => item.id === id && item.user_id === userId);
+    if (!exists) {
+      current.push({ id, user_id: userId });
+      await this.store.setSetting(key, current);
+    }
+  }
+
+  async _removePendingDelete(table, id, userId) {
+    if (!table || !id || !userId) {
+      return;
+    }
+    const key = `sync:pending_deletes:${table}`;
+    const current = (await this.store.getSetting(key, [])) || [];
+    const next = current.filter((item) => item.id !== id || item.user_id !== userId);
+    if (next.length !== current.length) {
+      await this.store.setSetting(key, next);
+    }
+  }
+
+  async _flushPendingDeletes(table) {
+    const key = `sync:pending_deletes:${table}`;
+    const pending = (await this.store.getSetting(key, [])) || [];
+    if (!pending.length) {
+      return [];
+    }
+    const remaining = [];
+    for (const entry of pending) {
+      if (!entry || !entry.user_id || !entry.id) {
+        remaining.push(entry);
+        continue;
+      }
+      if (!this.client || !this.user || entry.user_id !== this.user.id) {
+        remaining.push(entry);
+        continue;
+      }
+      try {
+        await this.client.from(table).delete().eq('id', entry.id).eq('user_id', this.user.id);
+      } catch {
+        remaining.push(entry);
+      }
+    }
+    await this.store.setSetting(key, remaining);
+    return remaining;
   }
 
   async _storeSession(session) {

@@ -1196,7 +1196,20 @@ function positionFocusToolbar() {
     return;
   }
   const top = Math.max(rect.top + window.scrollY, 12);
-  const left = rect.left + rect.width / 2 + window.scrollX;
+  const viewportWidth = document.documentElement.clientWidth;
+  const toolbarWidth = noteFocusToolbar.offsetWidth || 0;
+  const pageLeft = window.scrollX;
+  let left = rect.left + rect.width / 2 + pageLeft;
+  if (toolbarWidth > 0 && viewportWidth > 0) {
+    const padding = 12;
+    const minLeft = pageLeft + padding + toolbarWidth / 2;
+    const maxLeft = pageLeft + viewportWidth - padding - toolbarWidth / 2;
+    if (minLeft <= maxLeft) {
+      left = Math.min(Math.max(left, minLeft), maxLeft);
+    } else {
+      left = pageLeft + viewportWidth / 2;
+    }
+  }
   noteFocusToolbar.style.top = `${top}px`;
   noteFocusToolbar.style.left = `${left}px`;
   noteFocusToolbar.classList.add('is-visible');

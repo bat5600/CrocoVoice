@@ -716,6 +716,16 @@
       box-sizing: border-box;
     }
 
+    .submenu-panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -12px;
+      width: 12px;
+      pointer-events: auto;
+    }
+
     .menu-item.submenu-open .submenu-panel {
       display: block;
       animation: menuIn 0.18s ease;
@@ -750,6 +760,28 @@
       overflow-y: auto;
       display: grid;
       gap: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+    }
+
+    .submenu-list::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .submenu-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .submenu-list::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.5);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+
+    .submenu-list::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.8);
+      background-clip: padding-box;
     }
 
     .submenu-item {
@@ -770,7 +802,8 @@
     .submenu-text {
       flex: 1;
       min-width: 0;
-      white-space: normal;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
       line-height: 1.2;
       padding-right: 8px;
     }
@@ -817,6 +850,8 @@
     .submenu-footer-value {
       font-size: 12px;
       color: var(--pill-text);
+      white-space: pre-line;
+      overflow-wrap: anywhere;
     }
 
     .menu-muted {

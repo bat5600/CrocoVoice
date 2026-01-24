@@ -2067,6 +2067,10 @@
       padding: 10px;
       font-weight: 600;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
     }
 
     .auth-actions .primary {
@@ -2091,6 +2095,11 @@
     .modal-backdrop.is-visible {
       display: flex;
       opacity: 1;
+    }
+
+    .modal-backdrop.notes-modal {
+      background: rgba(15, 23, 42, 0.18);
+      backdrop-filter: blur(2px);
     }
 
     .modal-card {

@@ -85,6 +85,7 @@ const AUDIO_MIN_PEAK_RMS = 0.012;
 const RECORDING_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const RECORDING_MAX_DURATION_MS = 60 * 60 * 1000;
 const MIC_MONITOR_SEND_INTERVAL_MS = 80;
+const MIC_LABEL_MAX_CHARS = 28;
 const LANGUAGE_OPTIONS = [
   { code: 'fr', label: 'Francais' },
   { code: 'en', label: 'Anglais' },
@@ -201,7 +202,7 @@ function renderMicrophoneList() {
     const isSelected = currentSettings.microphoneId === mic.deviceId;
     const labelSpan = document.createElement('span');
     labelSpan.className = 'submenu-text';
-    labelSpan.textContent = label;
+    labelSpan.textContent = wrapLabel(label, MIC_LABEL_MAX_CHARS);
     const checkSpan = document.createElement('span');
     checkSpan.className = 'submenu-check';
     checkSpan.textContent = isSelected ? '✓' : '';
@@ -224,8 +225,55 @@ function updateMenuLabels() {
   if (widgetMicrophoneCurrent) {
     const selected = availableMicrophones.find((mic) => mic.deviceId === currentSettings.microphoneId);
     const label = selected ? (selected.label || `Micro ${selected.deviceId.slice(0, 4)}...`) : 'Detection auto';
-    widgetMicrophoneCurrent.textContent = label;
+    widgetMicrophoneCurrent.textContent = wrapLabel(label, MIC_LABEL_MAX_CHARS);
   }
+}
+
+function wrapLabel(label, maxChars) {
+  if (!label || label.length <= maxChars) {
+    return label || '';
+  }
+  const words = label.split(/\s+/);
+  const lines = [];
+  let current = '';
+
+  const pushLine = () => {
+    if (current) {
+      lines.push(current);
+      current = '';
+    }
+  };
+
+  words.forEach((word) => {
+    if (!word) {
+      return;
+    }
+    if (!current) {
+      if (word.length <= maxChars) {
+        current = word;
+        return;
+      }
+      for (let i = 0; i < word.length; i += maxChars) {
+        lines.push(word.slice(i, i + maxChars));
+      }
+      return;
+    }
+    if (current.length + 1 + word.length <= maxChars) {
+      current = `${current} ${word}`;
+      return;
+    }
+    pushLine();
+    if (word.length <= maxChars) {
+      current = word;
+      return;
+    }
+    for (let i = 0; i < word.length; i += maxChars) {
+      lines.push(word.slice(i, i + maxChars));
+    }
+  });
+
+  pushLine();
+  return lines.join('\n');
 }
 
 async function refreshMicrophones() {
@@ -1248,12 +1296,20 @@ document.addEventListener('DOMContentLoaded', () => {
         item.classList.add('submenu-open');
         openSubmenu = submenuName;
       });
-      item.addEventListener('mouseleave', () => {
+      item.addEventListener('mouseleave', (event) => {
         if (!isContextOpen) {
           return;
         }
+        const submenuName = item.dataset.submenu;
+        if (!submenuName) {
+          return;
+        }
+        const panel = widgetContextMenu?.querySelector(`[data-submenu-panel="${submenuName}"]`);
+        if (panel && event.relatedTarget && panel.contains(event.relatedTarget)) {
+          return;
+        }
         item.classList.remove('submenu-open');
-        if (openSubmenu === item.dataset.submenu) {
+        if (openSubmenu === submenuName) {
           openSubmenu = null;
         }
       });
