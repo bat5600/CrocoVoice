@@ -12,6 +12,8 @@ This folder contains project documentation. Keep the canonical files in their cu
 - docs/analysis/      Research and competitive analysis
 - docs/archive/       Archived PRDs, shards, and deprecated docs
 - docs/architecture/  Reference artifacts (tech stack, source tree, coding standards)
+- docs/epics/         Epic overviews and story shard maps
 - docs/qa/            QA assessments and gate results
 - docs/stories/       Backlog stories
+- docs/stories/done/  Completed stories
 - docs/ux/            UX discovery and specs

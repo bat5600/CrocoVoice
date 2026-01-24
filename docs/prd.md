@@ -101,8 +101,8 @@ Unit + Integration; light E2E where feasible.
 
 ## Epic List (aligned with docs/stories)
 
-1. Epic 4: Dictionary / History / Notes / Snippets (existing stories 4.1-4.4)
-2. Epic 5: Context Signals + Privacy + Retention (existing stories 5.2-5.4)
+1. Epic 4: Dictionary / History / Notes / Snippets (stories 4.1-4.5)
+2. Epic 5: Context Signals + Profiles + Adaptive Formatting + Privacy + Retention (stories 5.1-5.4)
 3. Epic 7: Permissions & Diagnostics (existing story 7.2)
 4. Epic 8: Low-Latency Streaming Pipeline (stories 8.1-8.2)
 5. Epic 9: Status Bubble + Context Menu (story 9.1)
@@ -113,17 +113,17 @@ Unit + Integration; light E2E where feasible.
 
 ## Epic Mapping to Story Files
 
-| Epic | Scope | Story Files |
-| --- | --- | --- |
-| Epic 4 | Dictionary/History/Notes/Snippets | docs/stories/4.1-dictionary-v1.md, 4.2-history-search-and-actions.md, 4.3-notes-view-and-crud.md, 4.4-snippets-v1.md |
-| Epic 5 | Context + Privacy + Retention | docs/stories/5.2-context-privacy-and-controls.md, 5.3-context-signals-and-profiles.md, 5.4-context-capture-retention-and-redaction.md |
-| Epic 7 | Permissions & Diagnostics | docs/stories/7.2-permissions-and-diagnostics.md |
-| Epic 8 | Streaming Pipeline | docs/stories/8.1-low-latency-streaming.md, 8.2-streaming-transport-contract-and-reliability.md |
-| Epic 9 | Status Bubble + Context Menu | docs/stories/9.1-status-bubble-and-context-menu.md |
-| Epic 10 | Flags + Telemetry + Metrics + Notifications | docs/stories/10.1-feature-flags-and-telemetry.md, 10.2-telemetry-and-quality-metrics.md, 10.3-notifications-inbox.md |
-| Epic 11 | Onboarding + Insights | docs/stories/11.1-onboarding-and-insights.md |
-| Epic 12 | CrocOmni Assistant | docs/stories/12.1-crocomni-conversation-mode.md |
-| Epic 13 | Local Inference | docs/stories/13.1-local-inference-fallback.md |
+| Epic | Scope | Story Files | Epic Overview |
+| --- | --- | --- | --- |
+| Epic 4 | Dictionary/History/Notes/Snippets | docs/stories/4.1-dictionary-v2.md, 4.2-history-search-and-actions.md, 4.3-notes-view-and-crud.md, 4.4-snippets-v1.md, 4.5-history-metadata-and-quality-metrics.md | docs/epics/epic-4-dictionary-history-notes-snippets.md |
+| Epic 5 | Context + Profiles + Adaptive Formatting + Privacy + Retention | docs/stories/5.1-adaptive-transcript-formatting-v1.md, 5.2-context-privacy-and-controls.md, 5.3-context-signals-and-profiles.md, 5.4-context-capture-retention-and-redaction.md | docs/epics/epic-5-context-privacy-retention.md |
+| Epic 7 | Permissions & Diagnostics | docs/stories/7.2-permissions-and-diagnostics.md | docs/epics/epic-7-permissions-and-diagnostics.md |
+| Epic 8 | Streaming Pipeline | docs/stories/8.1-low-latency-streaming.md, 8.2-streaming-transport-contract-and-reliability.md | docs/epics/epic-8-low-latency-streaming.md |
+| Epic 9 | Status Bubble + Context Menu | docs/stories/9.1-status-bubble-and-context-menu.md | docs/epics/epic-9-status-bubble-and-context-menu.md |
+| Epic 10 | Flags + Telemetry + Metrics + Notifications | docs/stories/10.1-feature-flags-and-telemetry.md, 10.2-telemetry-and-quality-metrics.md, 10.3-notifications-inbox.md | docs/epics/epic-10-feature-flags-telemetry-notifications.md |
+| Epic 11 | Onboarding + Insights | docs/stories/11.1-onboarding-and-insights.md | docs/epics/epic-11-onboarding-and-insights.md |
+| Epic 12 | CrocOmni Assistant | docs/stories/12.1-crocomni-conversation-mode.md | docs/epics/epic-12-crocomni-assistant.md |
+| Epic 13 | Local Inference | docs/stories/13.1-local-inference-fallback.md | docs/epics/epic-13-local-inference-fallback.md |
 
 ## Checklist Results Report
 Pending after PM checklist.

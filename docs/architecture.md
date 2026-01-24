@@ -67,7 +67,7 @@ graph TD
 | Desktop Framework | Electron | ^35.7.5 | App runtime | Existing stack, supports multi-window UX |
 | Runtime | Node.js | 20.x | Main process runtime | Modern LTS for Electron 35 |
 | Language | JavaScript (CJS) | ES2020+ | App code | Consistent with current codebase |
-| Audio Capture | Web Audio + AudioWorklet | N/A | Low-latency capture | Required for streaming chunks |
+| Audio Capture | Web Audio + AudioWorklet (+ optional Opus encoding) | N/A | Low-latency capture | Required for streaming chunks |
 | Streaming Transport | WebSocket (ws) | TBD | Streaming audio/text | Low latency and simple integration |
 | ASR | OpenAI Whisper | openai ^4.20.1 | Cloud transcription | Existing provider |
 | Post-process | OpenAI Chat | openai ^4.20.1 | Formatting/polish | Existing provider |
@@ -133,7 +133,7 @@ graph TD
 **Key Interfaces:**
 - connect(), sendChunk(), close()
 **Dependencies:** FeatureFlagService, ASRProvider
-**Technology Stack:** WebSocket
+**Technology Stack:** WebSocket (optional Opus encoding)
 
 ### ASRService
 **Responsibility:** Cloud or local transcription.
