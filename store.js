@@ -4,6 +4,84 @@ const sqlite3 = require('sqlite3').verbose();
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function countWords(text) {
+  if (!text) {
+    return 0;
+  }
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function isProSubscription(subscription) {
+  const plan = subscription?.plan || 'free';
+  const status = subscription?.status || 'inactive';
+  return plan === 'pro' && (status === 'active' || status === 'trialing');
+}
+
+function getHistoryRetentionDays(subscription, freeDays = 14, proDays = 365) {
+  return isProSubscription(subscription) ? proDays : freeDays;
+}
+
+function getWeekStartUTC(date = new Date()) {
+  const utcDay = date.getUTCDay();
+  const offset = (utcDay + 6) % 7;
+  return new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() - offset,
+    0,
+    0,
+    0,
+    0,
+  ));
+}
+
+function getNextWeekStartUTC(date = new Date()) {
+  const start = getWeekStartUTC(date);
+  return new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+}
+
+function applyDictionaryEntries(text, entries) {
+  if (text === null || text === undefined) {
+    return text;
+  }
+  if (!entries || !entries.length) {
+    return text;
+  }
+  let result = text;
+  entries.forEach((entry) => {
+    if (!entry || !entry.from_text) {
+      return;
+    }
+    result = result.split(entry.from_text).join(entry.to_text);
+  });
+  return result;
+}
+
+function maxUpdatedAt(rows, seed = '') {
+  let max = seed || '';
+  (rows || []).forEach((row) => {
+    if (row && row.updated_at && row.updated_at > max) {
+      max = row.updated_at;
+    }
+  });
+  return max;
+}
+
+function recordingStateReducer(current, action) {
+  switch (action) {
+    case 'start':
+      return 'recording';
+    case 'stop':
+      return 'processing';
+    case 'error':
+      return 'error';
+    case 'idle':
+      return 'idle';
+    default:
+      return current;
+  }
+}
+
 class Store {
   constructor({ userDataPath, defaults }) {
     this.userDataPath = userDataPath;
@@ -20,6 +98,7 @@ class Store {
     this.db.serialize();
     await this._run('PRAGMA foreign_keys = ON;');
     await this._createSchema();
+    await this._createIndexes();
     await this._migrateFromJsonSettings();
   }
 
@@ -210,7 +289,7 @@ class Store {
   async getHistoryStats(days = 14) {
     const cutoff = new Date(Date.now() - days * DAY_MS).toISOString();
     const rows = await this._all('SELECT text, created_at FROM history WHERE created_at >= ?', [cutoff]);
-    const words = rows.reduce((acc, row) => acc + this._countWords(row.text), 0);
+    const words = rows.reduce((acc, row) => acc + countWords(row.text), 0);
     const dayKeys = rows.map((row) => row.created_at.slice(0, 10));
     const activeDays = new Set(dayKeys);
     const daysActive = activeDays.size;
@@ -373,6 +452,13 @@ class Store {
     )`);
   }
 
+  async _createIndexes() {
+    await this._run('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_dictionary_updated_at ON dictionary(updated_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_styles_updated_at ON styles(updated_at)');
+  }
+
   async _ensureColumn(table, columnName, definition) {
     const rows = await this._all(`PRAGMA table_info(${table})`);
     const exists = rows.some((row) => row.name === columnName);
@@ -393,13 +479,6 @@ class Store {
     } catch (error) {
       console.error('Failed to migrate settings.json:', error);
     }
-  }
-
-  _countWords(text) {
-    if (!text) {
-      return 0;
-    }
-    return text.trim().split(/\s+/).filter(Boolean).length;
   }
 
   _ensureDir(dirPath) {
@@ -448,5 +527,14 @@ class Store {
     }));
   }
 }
+
+Store.countWords = countWords;
+Store.isProSubscription = isProSubscription;
+Store.getHistoryRetentionDays = getHistoryRetentionDays;
+Store.getWeekStartUTC = getWeekStartUTC;
+Store.getNextWeekStartUTC = getNextWeekStartUTC;
+Store.applyDictionaryEntries = applyDictionaryEntries;
+Store.maxUpdatedAt = maxUpdatedAt;
+Store.recordingStateReducer = recordingStateReducer;
 
 module.exports = Store;

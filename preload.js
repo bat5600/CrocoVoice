@@ -1,15 +1,33 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const listenerRegistry = new Map();
+
+function registerListener(channel, handler) {
+  const existing = listenerRegistry.get(channel);
+  if (existing) {
+    ipcRenderer.removeListener(channel, existing);
+  }
+  ipcRenderer.on(channel, handler);
+  listenerRegistry.set(channel, handler);
+  return () => {
+    const current = listenerRegistry.get(channel);
+    ipcRenderer.removeListener(channel, handler);
+    if (current === handler) {
+      listenerRegistry.delete(channel);
+    }
+  };
+}
+
 /**
  * Expose safe APIs to the renderer process for IPC
  */
 contextBridge.exposeInMainWorld('electronAPI', {
   onStartRecording: (callback) => {
-    ipcRenderer.on('start-recording', callback);
+    return registerListener('start-recording', callback);
   },
 
   onStopRecording: (callback) => {
-    ipcRenderer.on('stop-recording', callback);
+    return registerListener('stop-recording', callback);
   },
 
   sendAudioData: (audioBuffer) => {
@@ -20,11 +38,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onTranscriptionSuccess: (callback) => {
-    ipcRenderer.on('transcription-success', (event, text) => callback(text));
+    return registerListener('transcription-success', (event, text) => callback(text));
   },
 
   onTranscriptionError: (callback) => {
-    ipcRenderer.on('transcription-error', (event, error) => callback(error));
+    return registerListener('transcription-error', (event, error) => callback(error));
   },
 
   sendRecordingError: (error) => {
@@ -35,7 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onStatusChange: (callback) => {
-    ipcRenderer.on('status-change', (event, status, message) => callback(status, message));
+    return registerListener('status-change', (event, status, message) => callback(status, message));
   },
 
   toggleRecording: () => {
@@ -94,47 +112,47 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => process.platform,
 
   onShortcutUpdated: (callback) => {
-    ipcRenderer.on('shortcut-updated', (event, shortcut) => callback(shortcut));
+    return registerListener('shortcut-updated', (event, shortcut) => callback(shortcut));
   },
   onSettingsUpdated: (callback) => {
-    ipcRenderer.on('settings-updated', (event, nextSettings) => callback(nextSettings));
+    return registerListener('settings-updated', (event, nextSettings) => callback(nextSettings));
   },
   onDashboardView: (callback) => {
-    ipcRenderer.on('dashboard:set-view', (event, viewName) => callback(viewName));
+    return registerListener('dashboard:set-view', (event, viewName) => callback(viewName));
   },
 
   onDashboardDataUpdated: (callback) => {
-    ipcRenderer.on('dashboard:data-updated', () => callback());
+    return registerListener('dashboard:data-updated', () => callback());
   },
   onDashboardTranscription: (callback) => {
-    ipcRenderer.on('dashboard:transcription-success', (event, text, target) => callback(text, target));
+    return registerListener('dashboard:transcription-success', (event, text, target) => callback(text, target));
   },
   onDashboardTranscriptionError: (callback) => {
-    ipcRenderer.on('dashboard:transcription-error', (event, message) => callback(message));
+    return registerListener('dashboard:transcription-error', (event, message) => callback(message));
   },
   onAuthState: (callback) => {
-    ipcRenderer.on('auth:state', (event, state) => callback(state));
+    return registerListener('auth:state', (event, state) => callback(state));
   },
   onAuthRequired: (callback) => {
-    ipcRenderer.on('auth:required', (event, message) => callback(message));
+    return registerListener('auth:required', (event, message) => callback(message));
   },
   onQuotaBlocked: (callback) => {
-    ipcRenderer.on('quota:blocked', (event, payload) => callback(payload));
+    return registerListener('quota:blocked', (event, payload) => callback(payload));
   },
   startOnboardingMic: () => ipcRenderer.invoke('onboarding:mic-start'),
   stopOnboardingMic: () => ipcRenderer.invoke('onboarding:mic-stop'),
   runOnboardingDeliveryCheck: (sampleText) => ipcRenderer.invoke('onboarding:delivery-check', sampleText),
   onOnboardingMicLevel: (callback) => {
-    ipcRenderer.on('onboarding:mic-level', (event, payload) => callback(payload));
+    return registerListener('onboarding:mic-level', (event, payload) => callback(payload));
   },
   onOnboardingMicError: (callback) => {
-    ipcRenderer.on('onboarding:mic-error', (event, message) => callback(message));
+    return registerListener('onboarding:mic-error', (event, message) => callback(message));
   },
   onMicMonitorStart: (callback) => {
-    ipcRenderer.on('mic-monitor:start', callback);
+    return registerListener('mic-monitor:start', callback);
   },
   onMicMonitorStop: (callback) => {
-    ipcRenderer.on('mic-monitor:stop', callback);
+    return registerListener('mic-monitor:stop', callback);
   },
   sendMicMonitorLevel: (payload) => {
     ipcRenderer.send('mic-monitor:level', payload);

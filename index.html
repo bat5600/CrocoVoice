@@ -292,6 +292,15 @@
       opacity: 1;
     }
 
+    .widget-container.idle.context-open .pill-button {
+      width: 92px;
+      height: 28px;
+      background: linear-gradient(180deg, #101217 0%, #050607 100%);
+      border: 1px solid var(--pill-edge);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 22px rgba(0, 0, 0, 0.35);
+      opacity: 1;
+    }
+
     .widget-container.recording .pill-button {
       width: 190px;
       padding: 0 8px;
@@ -299,6 +308,11 @@
     }
 
     .widget-container:hover .pill-button {
+      transform: translateY(-1px);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .widget-container.context-open .pill-button {
       transform: translateY(-1px);
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 30px rgba(0, 0, 0, 0.4);
     }

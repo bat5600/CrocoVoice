@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, clipboard, shell } = require('electron');
 
 app.disableHardwareAcceleration();
@@ -7,6 +8,15 @@ const crypto = require('crypto');
 const { OpenAI } = require('openai');
 const Store = require('./store');
 const SyncService = require('./sync');
+const {
+  countWords,
+  isProSubscription,
+  getHistoryRetentionDays,
+  getWeekStartUTC,
+  getNextWeekStartUTC,
+  applyDictionaryEntries,
+  recordingStateReducer,
+} = Store;
 let getAuthConfig = null;
 try {
   ({ getAuthConfig } = require('./config/auth-config'));
@@ -16,7 +26,6 @@ try {
     signupUrl: process.env.AUTH_SIGNUP_URL || 'https://app.supabase.com/project/your-project-id/auth/signup',
   });
 }
-require('dotenv').config();
 
 // Keyboard input library: try nut-js first, then robotjs fallback
 let keyboardLib = null;
@@ -87,6 +96,7 @@ let transitionLock = false;
 let processingTimeoutId = null;
 let idleResetTimeoutId = null;
 let pendingPasteBuffer = '';
+let pasteMutex = Promise.resolve();
 let typingTarget = null;
 let pendingSync = null;
 let syncInFlight = null;
@@ -157,6 +167,80 @@ const defaultSettings = {
   },
 };
 let settings = { ...defaultSettings };
+const DICTIONARY_CACHE_TTL_MS = 60000;
+let dictionaryCache = { entries: null, updatedAt: 0 };
+
+function areSettingValuesEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  const bothObjects = a && b && typeof a === 'object' && typeof b === 'object';
+  if (!bothObjects) {
+    return false;
+  }
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+function getChangedSettingKeys(previous, next) {
+  const keys = new Set([
+    ...Object.keys(previous || {}),
+    ...Object.keys(next || {}),
+  ]);
+  const changed = [];
+  keys.forEach((key) => {
+    if (!areSettingValuesEqual(previous?.[key], next?.[key])) {
+      changed.push(key);
+    }
+  });
+  return changed;
+}
+
+async function persistSettings(candidate) {
+  if (!store) {
+    settings = candidate;
+    return settings;
+  }
+  const changedKeys = getChangedSettingKeys(settings, candidate);
+  if (!changedKeys.length) {
+    settings = candidate;
+    return settings;
+  }
+  if (changedKeys.length === 1) {
+    const key = changedKeys[0];
+    await store.setSetting(key, candidate[key]);
+  } else {
+    await store.saveSettings(candidate);
+  }
+  settings = candidate;
+  return settings;
+}
+
+function setSettingValue(key, value) {
+  const candidate = { ...settings, [key]: value };
+  return persistSettings(candidate);
+}
+
+function invalidateDictionaryCache() {
+  dictionaryCache = { entries: null, updatedAt: 0 };
+}
+
+async function getDictionaryEntriesCached() {
+  if (!store) {
+    return [];
+  }
+  const now = Date.now();
+  if (dictionaryCache.entries && (now - dictionaryCache.updatedAt) < DICTIONARY_CACHE_TTL_MS) {
+    return dictionaryCache.entries;
+  }
+  const entries = await store.listDictionary();
+  const sorted = [...entries].sort((a, b) => b.from_text.length - a.from_text.length);
+  dictionaryCache = { entries: sorted, updatedAt: now };
+  return sorted;
+}
 
 function normalizeText(value) {
   return value
@@ -181,38 +265,12 @@ function isNoAudioTranscription(text) {
   return looksLikeSubtitleHallucination;
 }
 
-function countWords(text) {
-  if (!text) {
-    return 0;
-  }
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function getWeekStartUTC(date = new Date()) {
-  const utcDay = date.getUTCDay();
-  const offset = (utcDay + 6) % 7;
-  return new Date(Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate() - offset,
-    0,
-    0,
-    0,
-    0,
-  ));
-}
-
-function getNextWeekStartUTC(date = new Date()) {
-  const start = getWeekStartUTC(date);
-  return new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
-}
-
 function getSubscriptionSnapshot() {
   const subscription = settings.subscription || {};
   const plan = subscription.plan || 'free';
   const status = subscription.status || 'inactive';
   const currentPeriodEnd = subscription.currentPeriodEnd || subscription.current_period_end || null;
-  const isPro = plan === 'pro' && (status === 'active' || status === 'trialing');
+  const isPro = isProSubscription(subscription);
   return {
     ...subscription,
     plan,
@@ -220,17 +278,6 @@ function getSubscriptionSnapshot() {
     currentPeriodEnd,
     isPro,
   };
-}
-
-function isProSubscription() {
-  return getSubscriptionSnapshot().isPro;
-}
-
-function getHistoryRetentionDays(subscriptionSnapshot) {
-  if (subscriptionSnapshot?.isPro) {
-    return HISTORY_RETENTION_DAYS_PRO;
-  }
-  return HISTORY_RETENTION_DAYS_FREE;
 }
 
 async function setSubscriptionState(nextSubscription) {
@@ -253,7 +300,7 @@ async function normalizeQuotaState() {
   if (!syncService || !syncService.getUser()) {
     return null;
   }
-  if (isProSubscription()) {
+  if (isProSubscription(settings.subscription)) {
     return null;
   }
   const weekStart = getWeekStartUTC();
@@ -355,7 +402,7 @@ async function incrementQuotaUsage(text) {
   if (!syncService || !syncService.getUser()) {
     return null;
   }
-  if (isProSubscription()) {
+  if (isProSubscription(settings.subscription)) {
     return null;
   }
   const words = countWords(text);
@@ -402,7 +449,7 @@ async function getQuotaSnapshot() {
       unlimited: false,
     };
   }
-  if (isProSubscription()) {
+  if (isProSubscription(settings.subscription)) {
     return {
       limit: null,
       used: 0,
@@ -516,6 +563,7 @@ function setRecordingState(state, message) {
   isRecording = state === RecordingState.RECORDING;
   lastStatusMessage = message || '';
   sendStatus(state, message);
+  updateTrayMenu();
   if (state === RecordingState.IDLE && pendingSync) {
     const deferred = pendingSync;
     pendingSync = null;
@@ -983,19 +1031,11 @@ async function applyDictionary(text) {
   if (!store) {
     return text;
   }
-  const entries = await store.listDictionary();
+  const entries = await getDictionaryEntriesCached();
   if (!entries.length) {
     return text;
   }
-  let result = text;
-  const sorted = [...entries].sort((a, b) => b.from_text.length - a.from_text.length);
-  sorted.forEach((entry) => {
-    if (!entry.from_text) {
-      return;
-    }
-    result = result.split(entry.from_text).join(entry.to_text);
-  });
-  return result;
+  return applyDictionaryEntries(text, entries);
 }
 
 function compactTextForTitle(text) {
@@ -1061,8 +1101,7 @@ async function getActiveStylePrompt() {
   const activeId = settings.activeStyleId;
   const active = styles.find((style) => style.id === activeId) || styles[0];
   if (active && active.id !== settings.activeStyleId) {
-    settings.activeStyleId = active.id;
-    await store.saveSettings(settings);
+    await setSettingValue('activeStyleId', active.id);
   }
   return active.prompt;
 }
@@ -1136,8 +1175,7 @@ async function ensureDefaultStyle() {
     const nextStyles = await store.listStyles();
     const defaultStyle = nextStyles.find((style) => style.name === 'Default') || nextStyles[0];
     if (defaultStyle) {
-      settings.activeStyleId = defaultStyle.id;
-      await store.saveSettings(settings);
+      await setSettingValue('activeStyleId', defaultStyle.id);
     }
   }
 }
@@ -1324,6 +1362,47 @@ function sendDashboardEvent(channel, ...args) {
   }
 }
 
+function buildTrayMenu() {
+  const startStopLabel = isRecording ? 'Stop Dictation' : 'Start Dictation';
+  return Menu.buildFromTemplate([
+    { label: 'CrocoVoice', enabled: false },
+    { type: 'separator' },
+    {
+      label: startStopLabel,
+      click: () => {
+        if (!isRecording) {
+          startRecording();
+        } else {
+          stopRecording();
+        }
+      },
+    },
+    {
+      label: 'Settings',
+      click: () => {
+        createDashboardWindow();
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit CrocoVoice',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+}
+
+function updateTrayMenu() {
+  if (!tray) {
+    return null;
+  }
+  const menu = buildTrayMenu();
+  tray.setContextMenu(menu);
+  return menu;
+}
+
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'Logo CrocoVoice (tray).png');
 
@@ -1336,40 +1415,8 @@ function createTray() {
 
   tray = new Tray(trayIcon);
 
-  const buildMenu = () => {
-    const startStopLabel = isRecording ? 'Stop Dictation' : 'Start Dictation';
-    return Menu.buildFromTemplate([
-      { label: 'CrocoVoice', enabled: false },
-      { type: 'separator' },
-      {
-        label: startStopLabel,
-        click: () => {
-          if (!isRecording) {
-            startRecording();
-          } else {
-            stopRecording();
-          }
-        },
-      },
-      {
-        label: 'Settings',
-        click: () => {
-          createDashboardWindow();
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit CrocoVoice',
-        click: () => {
-          app.isQuitting = true;
-          app.quit();
-        },
-      },
-    ]);
-  };
-
   tray.setToolTip('CrocoVoice');
-  tray.setContextMenu(buildMenu());
+  updateTrayMenu();
 
   tray.on('click', () => {
     if (!isRecording) {
@@ -1380,7 +1427,8 @@ function createTray() {
   });
 
   tray.on('right-click', () => {
-    tray.popUpContextMenu(buildMenu());
+    const menu = updateTrayMenu();
+    tray.popUpContextMenu(menu || undefined);
   });
 
   tray.on('double-click', () => {
@@ -1451,22 +1499,27 @@ async function startRecording() {
   }
 
   transitionLock = true;
-  const quotaAllowed = await ensureQuotaAvailable();
-  if (!quotaAllowed) {
+  try {
+    const quotaAllowed = await ensureQuotaAvailable();
+    if (!quotaAllowed) {
+      return;
+    }
+    clearIdleResetTimeout();
+    clearProcessingTimeout();
+    recordingStartTime = Date.now();
+    setRecordingState(recordingStateReducer(recordingState, 'start'));
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('start-recording');
+    }
+  } catch (error) {
+    console.error('Failed to start recording:', error);
+    setRecordingState(RecordingState.ERROR, error?.message || 'Erreur de demarrage.');
+    scheduleReturnToIdle(3000);
+  } finally {
     transitionLock = false;
     refreshRendererState();
-    return;
   }
-  clearIdleResetTimeout();
-  clearProcessingTimeout();
-  recordingStartTime = Date.now();
-  setRecordingState(RecordingState.RECORDING);
-
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('start-recording');
-  }
-
-  transitionLock = false;
 }
 
 async function stopRecording() {
@@ -1480,17 +1533,27 @@ async function stopRecording() {
   }
 
   transitionLock = true;
-  clearIdleResetTimeout();
-  await captureTypingTarget();
-  const recordingDuration = recordingStartTime ? Date.now() - recordingStartTime : 0;
+  try {
+    clearIdleResetTimeout();
+    await captureTypingTarget();
+    const recordingDuration = recordingStartTime ? Date.now() - recordingStartTime : 0;
 
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('stop-recording');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('stop-recording');
+    }
+    setRecordingState(recordingStateReducer(recordingState, 'stop'));
+    armProcessingTimeout();
+
+    return recordingDuration;
+  } catch (error) {
+    console.error('Failed to stop recording:', error);
+    setRecordingState(RecordingState.ERROR, error?.message || 'Erreur lors de l\'arret.');
+    scheduleReturnToIdle(3000);
+    return 0;
+  } finally {
+    transitionLock = false;
+    refreshRendererState();
   }
-  setRecordingState(RecordingState.PROCESSING);
-  armProcessingTimeout();
-
-  transitionLock = false;
 }
 
 function getAudioExtension(mimeType) {
@@ -1576,40 +1639,46 @@ async function triggerPasteShortcut() {
 }
 
 async function pasteText(text, options = {}) {
-  let previousClipboard = '';
-  const mode = options.mode || 'paste';
-  const shouldPaste = mode !== 'clipboard';
-  const allowTargetChange = options.allowTargetChange !== false;
-  try {
-    if (!keyboardLib && shouldPaste) {
-      throw new Error('Keyboard automation unavailable.');
-    }
-    if (!text) {
-      return;
-    }
-    if (shouldPaste) {
-      await assertTypingTargetStillActive({ allowMismatch: allowTargetChange });
-    }
-    previousClipboard = clipboard.readText();
-    pendingPasteBuffer = text;
+  const runPaste = async () => {
+    let previousClipboard = '';
+    const mode = options.mode || 'paste';
+    const shouldPaste = mode !== 'clipboard';
+    const allowTargetChange = options.allowTargetChange !== false;
+    try {
+      if (!keyboardLib && shouldPaste) {
+        throw new Error('Keyboard automation unavailable.');
+      }
+      if (!text) {
+        return;
+      }
+      if (shouldPaste) {
+        await assertTypingTargetStillActive({ allowMismatch: allowTargetChange });
+      }
+      previousClipboard = clipboard.readText();
+      pendingPasteBuffer = text;
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    clipboard.writeText(pendingPasteBuffer);
-    if (shouldPaste) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      await triggerPasteShortcut();
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      clipboard.writeText(pendingPasteBuffer);
+      if (shouldPaste) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await triggerPasteShortcut();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    } catch (error) {
+      console.error('Paste error:', error);
+      throw new Error(error.message || 'Echec du collage');
+    } finally {
+      if (shouldPaste && previousClipboard !== null && previousClipboard !== undefined) {
+        clipboard.writeText(previousClipboard);
+      }
+      pendingPasteBuffer = '';
+      typingTarget = null;
     }
-  } catch (error) {
-    console.error('Paste error:', error);
-    throw new Error(error.message || 'Echec du collage');
-  } finally {
-    if (shouldPaste && previousClipboard !== null && previousClipboard !== undefined) {
-      clipboard.writeText(previousClipboard);
-    }
-    pendingPasteBuffer = '';
-    typingTarget = null;
-  }
+  };
+
+  const next = pasteMutex.then(runPaste, runPaste);
+  pasteMutex = next.catch(() => {});
+  return next;
 }
 
 // Critical flow: record -> transcribe -> post-process -> dictionary -> persist -> type.
@@ -1878,7 +1947,7 @@ ipcMain.handle('settings:save', async (event, nextSettings) => {
     }
   }
 
-  settings = await store.saveSettings(candidate);
+  settings = await persistSettings(candidate);
   scheduleDebouncedSync({ refreshSettings: true });
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('settings-updated', settings);
@@ -1965,12 +2034,14 @@ ipcMain.handle('dictionary:upsert', async (event, entry) => {
     created_at: entry.created_at || now,
     updated_at: now,
   });
+  invalidateDictionaryCache();
   scheduleDebouncedSync();
   return record;
 });
 
 ipcMain.handle('dictionary:delete', async (event, id) => {
   await store.deleteDictionary(id);
+  invalidateDictionaryCache();
   if (syncService && syncService.isReady()) {
     await syncService.deleteRemote('dictionary', id);
   }
@@ -1990,8 +2061,7 @@ ipcMain.handle('styles:upsert', async (event, entry) => {
     updated_at: now,
   });
   if (!settings.activeStyleId) {
-    settings.activeStyleId = record.id;
-    await store.saveSettings(settings);
+    await setSettingValue('activeStyleId', record.id);
     scheduleDebouncedSync({ refreshSettings: true });
   }
   scheduleDebouncedSync();
@@ -2004,8 +2074,7 @@ ipcMain.handle('styles:delete', async (event, id) => {
     await syncService.deleteRemote('styles', id);
   }
   if (settings.activeStyleId === id) {
-    settings.activeStyleId = '';
-    await store.saveSettings(settings);
+    await setSettingValue('activeStyleId', '');
     scheduleDebouncedSync({ refreshSettings: true });
   }
   scheduleDebouncedSync();
@@ -2013,8 +2082,7 @@ ipcMain.handle('styles:delete', async (event, id) => {
 });
 
 ipcMain.handle('styles:activate', async (event, id) => {
-  settings.activeStyleId = id;
-  await store.saveSettings(settings);
+  await setSettingValue('activeStyleId', id);
   scheduleDebouncedSync({ refreshSettings: true });
   return { ok: true };
 });
@@ -2339,7 +2407,11 @@ app.whenReady().then(async () => {
     delete settings.deliveryMode;
   }
   await ensureDefaultStyle();
-  const retentionDays = getHistoryRetentionDays(getSubscriptionSnapshot());
+  const retentionDays = getHistoryRetentionDays(
+    settings.subscription,
+    HISTORY_RETENTION_DAYS_FREE,
+    HISTORY_RETENTION_DAYS_PRO,
+  );
   if (retentionDays > 0) {
     console.info(`History retention policy: keep last ${retentionDays} days; purge older entries on startup/sync.`);
     await store.purgeHistory(retentionDays);

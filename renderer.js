@@ -878,7 +878,7 @@ async function initializeMediaRecorder() {
     window.mediaRecorder.onstop = async () => {
       const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
       const ab = await blob.arrayBuffer();
-      const payload = { buffer: Array.from(new Uint8Array(ab)), mimeType: blob.type };
+      const payload = { buffer: ab, mimeType: blob.type };
       if (pendingWarningMessage) {
         payload.warningMessage = pendingWarningMessage;
         pendingWarningMessage = '';
@@ -1353,11 +1353,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 150);
     });
 
+    window.addEventListener('blur', () => {
+      if (!isContextOpen) {
+        return;
+      }
+      closeContextMenu();
+    });
+
     document.addEventListener('pointerdown', (event) => {
       if (!isContextOpen) {
         return;
       }
-      if (event.button !== 0) {
+      if (event.button !== 0 && event.button !== 2) {
         return;
       }
       if (!widgetContextMenu || !widgetContextMenu.contains(event.target)) {

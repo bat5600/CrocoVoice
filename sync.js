@@ -1,4 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
+const Store = require('./store');
+const { isProSubscription, getHistoryRetentionDays, maxUpdatedAt } = Store;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const parsedHistoryRetentionFree = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_FREE || '14', 10);
@@ -10,14 +12,8 @@ const HISTORY_SYNC_LIMIT_FREE = Number.isFinite(parsedHistorySyncLimitFree) ? pa
 const parsedHistorySyncLimitPro = Number.parseInt(process.env.CROCOVOICE_HISTORY_SYNC_LIMIT_PRO || '5000', 10);
 const HISTORY_SYNC_LIMIT_PRO = Number.isFinite(parsedHistorySyncLimitPro) ? parsedHistorySyncLimitPro : 5000;
 
-function isProSubscription(subscription) {
-  const plan = subscription?.plan || 'free';
-  const status = subscription?.status || 'inactive';
-  return plan === 'pro' && (status === 'active' || status === 'trialing');
-}
-
-function getHistoryRetentionDays(subscription) {
-  return isProSubscription(subscription) ? HISTORY_RETENTION_DAYS_PRO : HISTORY_RETENTION_DAYS_FREE;
+function resolveHistoryRetentionDays(subscription) {
+  return getHistoryRetentionDays(subscription, HISTORY_RETENTION_DAYS_FREE, HISTORY_RETENTION_DAYS_PRO);
 }
 
 function getHistorySyncLimit(subscription) {
@@ -204,7 +200,7 @@ class SyncService {
     }
     this.syncAbort = false;
     const subscription = await this.store.getSetting('subscription');
-    const retentionDays = getHistoryRetentionDays(subscription);
+    const retentionDays = resolveHistoryRetentionDays(subscription);
     logHistoryRetentionPolicy('sync', retentionDays);
     if (retentionDays > 0) {
       await this.store.purgeHistory(retentionDays);
@@ -342,8 +338,8 @@ class SyncService {
         await this.store.setSettingWithTimestamp(row.key, JSON.parse(row.value), row.updated_at);
       }
     }
-    const maxRemote = this._maxUpdatedAt(remoteRows, cursor);
-    const maxLocal = this._maxUpdatedAt(Object.values(settingsMeta).map((meta) => ({
+    const maxRemote = maxUpdatedAt(remoteRows, cursor);
+    const maxLocal = maxUpdatedAt(Object.values(settingsMeta).map((meta) => ({
       updated_at: meta.updated_at,
     })), cursor);
     const nextCursor = this._maxIso(maxRemote, maxLocal);
@@ -434,8 +430,8 @@ class SyncService {
       }
     }
 
-    const maxRemote = this._maxUpdatedAt(remoteRows, cursor);
-    const maxLocal = this._maxUpdatedAt(localUpdates, cursor);
+    const maxRemote = maxUpdatedAt(remoteRows, cursor);
+    const maxLocal = maxUpdatedAt(localUpdates, cursor);
     const nextCursor = this._maxIso(maxRemote, maxLocal);
     if (nextCursor) {
       await this.store.setSyncCursor(config.key, nextCursor);
@@ -461,16 +457,6 @@ class SyncService {
       return a || '';
     }
     return a > b ? a : b;
-  }
-
-  _maxUpdatedAt(rows, seed) {
-    let max = seed || '';
-    (rows || []).forEach((row) => {
-      if (row && row.updated_at && row.updated_at > max) {
-        max = row.updated_at;
-      }
-    });
-    return max;
   }
 
   async _fetchPagedRows(buildQuery, pageSize = 1000) {
