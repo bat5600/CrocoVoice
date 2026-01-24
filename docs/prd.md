@@ -45,6 +45,8 @@ CrocoVoice is a local-first Electron dictation app with a clear pipeline but lim
 20. FR20: Data usage controls must allow opting out of telemetry and context capture.
 21. FR21: Sync must remain non-blocking and offline-friendly (local is source of truth).
 22. FR22: Optional local inference/VAD must be supported as a fallback path.
+23. FR23: The app must support local transcription of uploaded audio files with visible progress.
+24. FR24: Users must be able to export transcripts as txt/md/json with optional timestamps.
 
 ### Non Functional
 1. NFR1: End-to-end latency (start -> first partial text) should be < 700ms on supported machines.
@@ -103,13 +105,14 @@ Unit + Integration; light E2E where feasible.
 
 1. Epic 4: Dictionary / History / Notes / Snippets (stories 4.1-4.5)
 2. Epic 5: Context Signals + Profiles + Adaptive Formatting + Privacy + Retention (stories 5.1-5.4)
-3. Epic 7: Permissions & Diagnostics (existing story 7.2)
-4. Epic 8: Low-Latency Streaming Pipeline (stories 8.1-8.2)
-5. Epic 9: Status Bubble + Context Menu (story 9.1)
-6. Epic 10: Feature Flags, Telemetry, Metrics, Notifications (stories 10.1-10.3)
-7. Epic 11: Onboarding & Insights (story 11.1)
-8. Epic 12: CrocOmni Assistant (story 12.1)
-9. Epic 13: Local Inference Fallback (story 13.1)
+3. Epic 6: Long-Form Uploads + Exports (stories 6.1-6.2)
+4. Epic 7: Permissions & Diagnostics (existing story 7.2)
+5. Epic 8: Low-Latency Streaming Pipeline (stories 8.1-8.2)
+6. Epic 9: Status Bubble + Context Menu (story 9.1)
+7. Epic 10: Feature Flags, Telemetry, Metrics, Notifications (stories 10.1-10.3)
+8. Epic 11: Onboarding & Insights (story 11.1)
+9. Epic 12: CrocOmni Assistant (story 12.1)
+10. Epic 13: Local Inference Fallback (story 13.1)
 
 ## Epic Mapping to Story Files
 
@@ -117,6 +120,7 @@ Unit + Integration; light E2E where feasible.
 | --- | --- | --- | --- |
 | Epic 4 | Dictionary/History/Notes/Snippets | docs/stories/4.1-dictionary-v2.md, 4.2-history-search-and-actions.md, 4.3-notes-view-and-crud.md, 4.4-snippets-v1.md, 4.5-history-metadata-and-quality-metrics.md | docs/epics/epic-4-dictionary-history-notes-snippets.md |
 | Epic 5 | Context + Profiles + Adaptive Formatting + Privacy + Retention | docs/stories/5.1-adaptive-transcript-formatting-v1.md, 5.2-context-privacy-and-controls.md, 5.3-context-signals-and-profiles.md, 5.4-context-capture-retention-and-redaction.md | docs/epics/epic-5-context-privacy-retention.md |
+| Epic 6 | Long-Form Uploads + Exports | docs/stories/6.1-upload-flow-and-status.md, 6.2-exports-v1.md | docs/epics/epic-6-long-form-uploads-exports.md |
 | Epic 7 | Permissions & Diagnostics | docs/stories/7.2-permissions-and-diagnostics.md | docs/epics/epic-7-permissions-and-diagnostics.md |
 | Epic 8 | Streaming Pipeline | docs/stories/8.1-low-latency-streaming.md, 8.2-streaming-transport-contract-and-reliability.md | docs/epics/epic-8-low-latency-streaming.md |
 | Epic 9 | Status Bubble + Context Menu | docs/stories/9.1-status-bubble-and-context-menu.md | docs/epics/epic-9-status-bubble-and-context-menu.md |

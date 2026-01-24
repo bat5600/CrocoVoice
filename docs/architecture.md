@@ -114,6 +114,10 @@ graph TD
 **Purpose:** Insights and Wrapped.
 **Key Attributes:** top_apps, wpm, dictation_time, streaks
 
+### FileTranscriptionJob
+**Purpose:** Track long-form file transcription progress and outcomes.
+**Key Attributes:** file_path, file_name, duration_ms, status, progress, error_code
+
 ### CrocOmniConversation
 **Purpose:** Store CrocOmni chats with optional context snapshots.
 **Key Attributes:** title, messages_json, context_summary, created_at, updated_at
@@ -139,6 +143,11 @@ graph TD
 **Responsibility:** Cloud or local transcription.
 **Key Interfaces:** transcribeStream(), transcribeFile()
 **Dependencies:** Transport, OpenAI client
+
+### FileTranscriptionService
+**Responsibility:** Orchestrate long-form file transcription and progress tracking.
+**Key Interfaces:** startJob(file), cancelJob(id), getStatus(id)
+**Dependencies:** ASRService, StoreService
 
 ### PostProcessService
 **Responsibility:** Formatting, polish, style application.
@@ -184,6 +193,7 @@ graph LR
   IPC --> AudioCapture
   IPC --> MainCore
   MainCore --> ASRService
+  MainCore --> FileTranscriptionService
   MainCore --> PostProcessService
   MainCore --> DictionaryService
   MainCore --> ContextCaptureService

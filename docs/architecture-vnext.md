@@ -4,7 +4,7 @@ This document aligns architecture guidance with the **global PRD roadmap** (`doc
 
 - **M1 (NOW):** Epic 4 + Epic 7 + Epic 9 (Daily Driver data + permissions/diagnostics + status bubble)
 - **M2 (NEXT):** Epic 5 + Epic 8 + Epic 10 + Epic 11 (context capture + streaming + telemetry/flags + onboarding/insights)
-- **M3 (LATER):** Epic 12 + Epic 13 (CrocOmni + local inference fallback)
+- **M3 (LATER):** Epic 6 + Epic 12 + Epic 13 (long-form uploads + CrocOmni + local inference fallback)
 
 It complements (does not replace) the existing brownfield stability architecture in `docs/architecture.md`.
 
@@ -25,6 +25,7 @@ It complements (does not replace) the existing brownfield stability architecture
 - Capture context with explicit privacy controls and per-app opt-in.
 - Add feature flags, telemetry, and notifications for safe rollout and supportability.
 - Prepare CrocOmni conversation surfaces with local-first storage.
+- Enable local long-form file transcription with export workflows.
 
 ## 3) High-Level Component Map
 
@@ -44,6 +45,7 @@ graph TD
   Main --> Notify[Notifications Inbox]
   Main --> Deliver[Delivery (nut-js/robotjs/paste/clipboard)]
   Main --> CrocOmni[CrocOmni (M3)]
+  Main --> FileTx[File Transcription (M3)]
 ```
 
 ## 4) Data Model (local-first)
@@ -145,7 +147,14 @@ Key requirements:
 - CrocOmni sessions stored locally with optional context summaries.
 - Local inference/VAD as a safe fallback path when cloud is unavailable.
 
-## 11) Open Questions (to resolve before sharding M1/M2)
+## 11) Long-Form Uploads and Exports (Epic 6)
+
+Key requirements:
+- File upload flow with progress and cancel.
+- Local-only processing by default; cloud fallback is opt-in.
+- Export formats: txt/md/json with optional timestamps.
+
+## 12) Open Questions (to resolve before sharding M1/M2)
 
 - Where should “snippets” live (new SQLite table vs settings blob)?
 - How should the PRO entitlement TTL be stored and enforced (settings vs server-provided expiry, and what is the exact TTL configuration surface)?
