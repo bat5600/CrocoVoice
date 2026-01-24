@@ -6,13 +6,38 @@ Draft
 ## Goal
 Provide a safe offline or degraded-mode fallback for transcription and VAD.
 
-## Scope
-- Local VAD / inference path
-- Seamless fallback when cloud is unavailable
+## User Value
+- Dictation still works when network is unreliable
+- Predictable behavior in low-connectivity environments
+
+## In Scope
+- Local VAD and fallback transcription path
 - Clear user messaging when fallback is active
+- Performance safeguards (CPU limits, max duration)
 
-## Stories (Shards)
-- `docs/stories/13.1-local-inference-fallback.md`
+## Out of Scope
+- Full offline LLM post-processing
+- Multi-language model selection UI
 
-## Sharding
-Single-story (1).
+## Dependencies
+- Streaming pipeline (Epic 8) for fallback triggers
+- Long-form file transcription (Epic 6) if local is required
+
+## Risks
+- High CPU usage on low-end devices
+- Lower transcription quality vs cloud
+
+## Success Criteria
+- Fallback activates automatically when cloud fails
+- Users can complete dictations offline with clear messaging
+
+## KPIs
+- Fallback activation rate
+- User-reported quality in fallback mode
+
+## Shard Plan (Stories)
+- `docs/stories/13.1-local-inference-fallback.md` — VAD + local transcription
+
+## Anti-Duplication Notes
+- Streaming protocol and transport are Epic 8
+- Upload flow and exports are Epic 6
