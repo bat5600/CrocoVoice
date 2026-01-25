@@ -26,6 +26,34 @@ CrocoVoice remains a monolithic Electron app with modular services in the main p
 - **Primary Flow:** Audio capture -> streaming transport -> ASR -> post-process/personalization -> history persistence -> delivery.
 - **Key Decisions:** Keep local-first SQLite source of truth; add streaming transport with fallback; isolate IPC by domain.
 
+### Requirements Traceability (PRD → Components)
+| PRD Requirement | Primary Components |
+| --- | --- |
+| FR1 AudioWorklet chunking | AudioCapture (Renderer) |
+| FR2 Streaming transport + fallback | StreamingTransport (Main), ASRService |
+| FR3 Optional Opus encoding | StreamingTransport (Main) |
+| FR4 Partial transcript updates in status bubble | Status Bubble UI, IPC Bridge, ASRService |
+| FR5 App/window/URL context capture | ContextCaptureService |
+| FR6 Opt-in ax/textbox/screenshot | ContextCaptureService |
+| FR7 History stages + metrics | StoreService, HistoryEntry |
+| FR8 Dictionary v2 metadata | DictionaryService, StoreService |
+| FR9 Snippets | DictionaryService, StoreService |
+| FR10 Styles/profiles | PostProcessService |
+| FR11 Polish diff viewer | Hub UI, PostProcessService |
+| FR12 Multi-window UX | Hub UI, Status Bubble UI, Context Menu UI |
+| FR13 Status bubble controls | Status Bubble UI, AudioCapture |
+| FR14 Feature flags | FeatureFlagService |
+| FR15 Diagnostics | TelemetryService |
+| FR16 Notifications | Notification model, TelemetryService |
+| FR17 Insights | StatsSnapshot, StoreService |
+| FR18 Onboarding | Hub UI, Renderer flows |
+| FR19 CrocOmni | CrocOmniService |
+| FR20 Data usage controls | FeatureFlagService, ContextCaptureService |
+| FR21 Offline-first sync | SyncService, StoreService |
+| FR22 Local inference fallback | ASRService |
+| FR23 File transcription | FileTranscriptionService |
+| FR24 Export transcripts | Hub UI, StoreService |
+
 ### High Level Project Diagram
 ```mermaid
 graph TD
