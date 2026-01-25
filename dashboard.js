@@ -8,6 +8,13 @@ const notesList = document.getElementById('notesList');
 const notesEmpty = document.getElementById('notesEmpty');
 const dictionaryList = document.getElementById('dictionaryList');
 const dictionaryEmpty = document.getElementById('dictionaryEmpty');
+const snippetsList = document.getElementById('snippetsList');
+const snippetsEmpty = document.getElementById('snippetsEmpty');
+const snippetCueInput = document.getElementById('snippetCueInput');
+const snippetTemplateInput = document.getElementById('snippetTemplateInput');
+const snippetDescriptionInput = document.getElementById('snippetDescriptionInput');
+const snippetCancelButton = document.getElementById('snippetCancelButton');
+const snippetAddButton = document.getElementById('snippetAddButton');
 const styleList = document.getElementById('styleList');
 const styleEmpty = document.getElementById('styleEmpty');
 const authPanel = document.getElementById('authPanel');
@@ -104,12 +111,15 @@ let currentView = 'home';
 let searchTerm = '';
 let historyData = [];
 let notesData = [];
+let snippetsData = [];
+let dictionaryData = [];
 let modalResolver = null;
 let platform = 'win32';
 let shortcutCaptureActive = false;
 let shortcutBeforeCapture = '';
 let shortcutInvalidShown = false;
 let historyLoadError = false;
+let searchDebounceId = null;
 let quotaSnapshot = null;
 let currentSubscription = null;
 let currentAuth = null;
@@ -571,6 +581,7 @@ function updateBreadcrumb(viewName) {
     notes: { primary: 'Notes', secondary: 'Bibliothèque' },
     'note-focus': { primary: 'Notes', secondary: 'Focus' },
     dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
+    snippets: { primary: 'Snippets', secondary: 'Templates' },
     style: { primary: 'Styles', secondary: 'Persona' },
     settings: { primary: 'Réglages', secondary: 'Général' },
     account: { primary: 'Profil', secondary: 'Facturation' },
@@ -582,7 +593,7 @@ function updateBreadcrumb(viewName) {
 }
 
 function setActiveView(viewName) {
-  const supportedViews = new Set(['home', 'notes', 'note-focus', 'dictionary', 'style', 'settings', 'account']);
+  const supportedViews = new Set(['home', 'notes', 'note-focus', 'dictionary', 'snippets', 'style', 'settings', 'account']);
   const nextView = supportedViews.has(viewName) ? viewName : 'home';
   views.forEach((view) => {
     view.classList.toggle('active', view.id === `view-${nextView}`);
@@ -610,16 +621,83 @@ function formatDateLabel(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return '';
+  }
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
+}
+
+function deriveHistoryTitle(entry) {
+  const text = (entry && (entry.text || entry.raw_text)) || '';
+  const firstLine = text.split(/\r?\n/).find((line) => line && line.trim()) || '';
+  const sentence = firstLine.split(/[.!?]/).find((part) => part && part.trim()) || firstLine;
+  const trimmed = sentence.trim();
+  if (!trimmed) {
+    return 'Untitled';
+  }
+  return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
+}
+
+function normalizeSnippetCue(value) {
+  if (!value) {
+    return '';
+  }
+  return value
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[\s\p{P}]+$/gu, '');
+}
+
 function filterEntries(entries, query) {
   if (!query) {
     return entries || [];
   }
   const lower = query.toLowerCase();
-  return (entries || []).filter((entry) => [entry.title, entry.text, entry.raw_text]
+  return (entries || []).filter((entry) => [entry.title, entry.text, entry.raw_text, entry.formatted_text, entry.edited_text]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
     .includes(lower));
+}
+
+function filterSnippets(entries, query) {
+  if (!query) {
+    return entries || [];
+  }
+  const lower = query.toLowerCase();
+  return (entries || []).filter((entry) => [entry.cue, entry.template, entry.description]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(lower));
+}
+
+async function copyTextWithFallback(text) {
+  if (!text) {
+    return false;
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (error) {
+    console.warn('Clipboard API failed, falling back to main process.', error);
+  }
+  if (window.electronAPI?.writeClipboard) {
+    const result = await window.electronAPI.writeClipboard(text);
+    return Boolean(result && result.ok);
+  }
+  return false;
 }
 
 function showToast(message, type = 'success') {
@@ -728,6 +806,39 @@ async function deleteNoteWithUndo(entry) {
     };
     const record = await window.electronAPI.upsertNote(payload);
     updateNotesData(record);
+  });
+}
+
+async function deleteHistoryWithUndo(entry) {
+  if (!window.electronAPI?.deleteHistory || !window.electronAPI?.upsertHistory) {
+    return;
+  }
+  historyData = historyData.filter((item) => item.id !== entry.id);
+  renderHistoryList();
+  await window.electronAPI.deleteHistory(entry.id);
+  showUndoToast('Entrée supprimée.', 'Annuler', async () => {
+    const payload = {
+      id: entry.id,
+      user_id: entry.user_id || null,
+      text: entry.text || '',
+      raw_text: entry.raw_text || entry.text || '',
+      formatted_text: entry.formatted_text || null,
+      edited_text: entry.edited_text || entry.text || '',
+      language: entry.language || currentSettings.language || 'fr',
+      duration_ms: entry.duration_ms || null,
+      latency_ms: typeof entry.latency_ms === 'number' ? entry.latency_ms : null,
+      divergence_score: typeof entry.divergence_score === 'number' ? entry.divergence_score : null,
+      mic_device: entry.mic_device || null,
+      fallback_path: entry.fallback_path || null,
+      title: entry.title || deriveHistoryTitle(entry),
+      created_at: entry.created_at,
+      updated_at: entry.updated_at || entry.created_at,
+    };
+    const record = await window.electronAPI.upsertHistory(payload);
+    if (record && record.id) {
+      historyData = [record, ...historyData.filter((item) => item.id !== record.id)];
+      renderHistoryList();
+    }
   });
 }
 
@@ -1424,14 +1535,24 @@ function buildEntryRow(entry, type) {
   metaDiv.className = 'entry-meta';
   const timePart = entry.created_at ? formatTime(entry.created_at) : '';
   const datePart = formatDateLabel(entry.created_at);
-  metaDiv.textContent = [timePart, datePart].filter(Boolean).join(' · ');
+  const metaParts = [timePart, datePart];
+  if (type === 'history') {
+    const durationLabel = formatDuration(entry.duration_ms);
+    if (durationLabel) {
+      metaParts.push(durationLabel);
+    }
+    if (entry.language) {
+      metaParts.push(entry.language.toUpperCase());
+    }
+  }
+  metaDiv.textContent = metaParts.filter(Boolean).join(' · ');
 
   const title = document.createElement('div');
   title.className = 'entry-title';
   if (type === 'notes') {
     title.textContent = entry.title || extractNoteTitle(entry.text);
   } else {
-    title.textContent = entry.title || entry.text?.split(/\r?\n/)[0] || 'Sans titre';
+    title.textContent = deriveHistoryTitle(entry);
   }
 
   const preview = document.createElement('div');
@@ -1457,11 +1578,12 @@ function buildEntryRow(entry, type) {
     event.preventDefault();
     event.stopPropagation();
     const text = entry.text || entry.raw_text || '';
-    if (!text || !navigator.clipboard) {
-      return;
+    const ok = await copyTextWithFallback(text);
+    if (ok) {
+      showToast('Texte copié.');
+    } else {
+      showToast('Impossible de copier.', 'error');
     }
-    await navigator.clipboard.writeText(text);
-    showToast('Texte copié.');
   });
 
   const deleteBtn = document.createElement('button');
@@ -1481,9 +1603,7 @@ function buildEntryRow(entry, type) {
     if (type === 'notes') {
       await deleteNoteWithUndo(entry);
     } else {
-      await method(entry.id);
-      showToast('Entrée supprimée.');
-      await refreshDashboard();
+      await deleteHistoryWithUndo(entry);
     }
   });
 
@@ -1540,6 +1660,11 @@ function refreshActiveList() {
     return;
   }
   if (currentView === 'note-focus') {
+    return;
+  }
+  if (currentView === 'snippets') {
+    const filtered = filterSnippets(snippetsData, searchTerm);
+    renderSnippets(filtered);
     return;
   }
   renderHistoryList();
@@ -1850,6 +1975,92 @@ function renderDictionary(dictionary) {
   });
 }
 
+function renderSnippets(snippets) {
+  if (!snippetsList) {
+    return;
+  }
+  snippetsList.innerHTML = '';
+  if (!snippets || snippets.length === 0) {
+    if (snippetsEmpty) {
+      snippetsEmpty.style.display = 'flex';
+      setEmptyStateState(snippetsEmpty, Boolean(searchTerm));
+    }
+    return;
+  }
+  if (snippetsEmpty) {
+    snippetsEmpty.style.display = 'none';
+  }
+
+  snippets.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'snippet-row';
+
+    const content = document.createElement('div');
+    content.className = 'snippet-term';
+    const cue = document.createElement('div');
+    cue.className = 'snippet-cue';
+    cue.textContent = entry.cue;
+    const template = document.createElement('div');
+    template.className = 'snippet-template';
+    template.textContent = entry.template;
+    content.appendChild(cue);
+    content.appendChild(template);
+    if (entry.description) {
+      const desc = document.createElement('div');
+      desc.className = 'snippet-description';
+      desc.textContent = entry.description;
+      content.appendChild(desc);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'snippet-row-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'edit';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', async () => {
+      const res = await openModal({
+        title: 'Éditer le snippet',
+        confirmText: 'Mettre à jour',
+        fields: [
+          { key: 'cue', label: 'Cue (ce que vous dites)', value: entry.cue },
+          { key: 'template', label: 'Template', value: entry.template, multiline: true },
+          { key: 'description', label: 'Description (optionnel)', value: entry.description || '' },
+        ],
+      });
+      if (res && res.cue && res.template) {
+        await window.electronAPI.upsertSnippet({
+          id: entry.id,
+          cue: res.cue,
+          template: res.template,
+          description: res.description || '',
+          created_at: entry.created_at,
+        });
+        showToast('Snippet mis à jour.');
+        await refreshDashboard();
+      }
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'delete';
+    deleteBtn.textContent = 'Supprimer';
+    deleteBtn.addEventListener('click', async () => {
+      await window.electronAPI.deleteSnippet(entry.id);
+      showToast('Snippet supprimé.');
+      await refreshDashboard();
+    });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+
+    row.appendChild(content);
+    row.appendChild(actions);
+    snippetsList.appendChild(row);
+  });
+}
+
 function renderStyles(styles) {
   if (!styleList) {
     return;
@@ -1929,7 +2140,7 @@ function renderSettings(settings) {
     if (!key || typeof settings[key] === 'undefined') {
       return;
     }
-    if (key === 'postProcessEnabled') {
+    if (key === 'postProcessEnabled' || key === 'metricsEnabled') {
       input.value = settings[key] ? 'true' : 'false';
     } else {
       input.value = settings[key];
@@ -2148,6 +2359,9 @@ function handleSettingChange(event) {
   if (setting === 'postProcessEnabled') {
     value = value === 'true';
   }
+  if (setting === 'metricsEnabled') {
+    value = value === 'true';
+  }
 
   currentSettings = { ...currentSettings, [setting]: value };
   if (window.electronAPI?.saveSettings) {
@@ -2299,8 +2513,11 @@ async function refreshDashboard() {
   renderQuota(dashboardData.quota);
   historyData = dashboardData.history || [];
   notesData = dashboardData.notes || [];
+  dictionaryData = dashboardData.dictionary || [];
+  snippetsData = dashboardData.snippets || [];
   refreshActiveList();
-  renderDictionary(dashboardData.dictionary);
+  renderDictionary(dictionaryData);
+  renderSnippets(snippetsData);
   renderStyles(dashboardData.styles);
   renderSettings(currentSettings);
   applyOnboardingStateFromSettings(currentSettings);
@@ -2550,8 +2767,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (searchInput) {
     searchInput.addEventListener('input', (event) => {
-      searchTerm = event.target.value.trim();
-      refreshActiveList();
+      const nextValue = event.target.value;
+      if (searchDebounceId) {
+        clearTimeout(searchDebounceId);
+      }
+      searchDebounceId = setTimeout(() => {
+        searchTerm = nextValue.trim();
+        refreshActiveList();
+      }, 200);
     });
   }
 
@@ -2669,6 +2892,11 @@ window.addEventListener('DOMContentLoaded', () => {
       if (action === 'dictionary') {
         setActiveView('dictionary');
         dictionaryWordInput?.focus();
+        return;
+      }
+      if (action === 'snippets') {
+        setActiveView('snippets');
+        snippetCueInput?.focus();
         return;
       }
       if (action === 'styles') {
@@ -2803,6 +3031,13 @@ window.addEventListener('DOMContentLoaded', () => {
         showToast('Veuillez entrer un mot.', 'error');
         return;
       }
+      const duplicate = (dictionaryData || []).some((entry) =>
+        entry.from_text && entry.from_text.trim().toLowerCase() === word.toLowerCase()
+      );
+      if (duplicate) {
+        showToast('Ce terme existe déjà dans le dictionnaire.', 'error');
+        return;
+      }
       const correction = misspellingToggle?.checked ? dictionaryCorrectionInput?.value.trim() : word;
       if (misspellingToggle?.checked && !correction) {
         showToast('Veuillez saisir la correction.', 'error');
@@ -2833,6 +3068,56 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       if (dictionaryCorrectionInput) {
         dictionaryCorrectionInput.style.display = 'none';
+      }
+    });
+  }
+
+  if (snippetAddButton) {
+    snippetAddButton.addEventListener('click', async () => {
+      const cue = snippetCueInput?.value.trim();
+      const template = snippetTemplateInput?.value.trim();
+      const description = snippetDescriptionInput?.value.trim() || '';
+      if (!cue) {
+        showToast('Veuillez saisir un cue.', 'error');
+        return;
+      }
+      if (!template) {
+        showToast('Veuillez saisir un template.', 'error');
+        return;
+      }
+      const cueNorm = normalizeSnippetCue(cue);
+      const duplicate = (snippetsData || []).some((entry) =>
+        normalizeSnippetCue(entry.cue) === cueNorm
+      );
+      if (duplicate) {
+        showToast('Ce cue existe déjà.', 'error');
+        return;
+      }
+      await window.electronAPI.upsertSnippet({ cue, template, description });
+      showToast('Snippet ajouté.');
+      if (snippetCueInput) {
+        snippetCueInput.value = '';
+      }
+      if (snippetTemplateInput) {
+        snippetTemplateInput.value = '';
+      }
+      if (snippetDescriptionInput) {
+        snippetDescriptionInput.value = '';
+      }
+      await refreshDashboard();
+    });
+  }
+
+  if (snippetCancelButton) {
+    snippetCancelButton.addEventListener('click', () => {
+      if (snippetCueInput) {
+        snippetCueInput.value = '';
+      }
+      if (snippetTemplateInput) {
+        snippetTemplateInput.value = '';
+      }
+      if (snippetDescriptionInput) {
+        snippetDescriptionInput.value = '';
       }
     });
   }

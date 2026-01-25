@@ -9,15 +9,23 @@ Provide a safe offline or degraded-mode fallback for transcription and VAD.
 ## User Value
 - Dictation still works when network is unreliable
 - Predictable behavior in low-connectivity environments
+- Better transcription quality in noisy or low-volume environments without extra cloud cost
 
 ## In Scope
 - Local VAD and fallback transcription path
 - Clear user messaging when fallback is active
 - Performance safeguards (CPU limits, max duration)
+- **Audio enhancement layer (local-first, adaptive):**
+  - Baseline audio processing (AGC / noise suppression / high-pass where available)
+  - Optional local enhancement (e.g., DeepFilterNet) **only when audio is degraded**
+  - Lightweight audio diagnostics (RMS, noise/SNR proxy, silence probability, clipping)
+  - Conservative decisioning: enhancement only when it improves quality
+- Feature flag gating for all enhancement paths
 
 ## Out of Scope
 - Full offline LLM post-processing
 - Multi-language model selection UI
+- Double-pass Whisper (baseline + enhanced) selection
 
 ## Dependencies
 - Streaming pipeline (Epic 8) for fallback triggers
@@ -26,18 +34,25 @@ Provide a safe offline or degraded-mode fallback for transcription and VAD.
 ## Risks
 - High CPU usage on low-end devices
 - Lower transcription quality vs cloud
+- Audio enhancement artifacts if applied unnecessarily
 
 ## Success Criteria
 - Fallback activates automatically when cloud fails
 - Users can complete dictations offline with clear messaging
+- No perceptible degradation on clean audio
+- Improved quality on noisy/whisper cases without added average latency
 
 ## KPIs
 - Fallback activation rate
 - User-reported quality in fallback mode
+- % of dictations using enhancement
+- Error rate / correction rate on noisy samples
 
 ## Shard Plan (Stories)
 - `docs/stories/13.1-local-vad-and-asr-path.md` — local VAD/ASR path
 - `docs/stories/13.2-fallback-ui-and-safeguards.md` — UI indicators + fallback safeguards
+- `docs/stories/13.3-audio-enhancement-layer.md` — adaptive local audio enhancement (no double-pass)
+- `docs/stories/13.4-local-enhancement-model-integration.md` — integrate local enhancement model + gating
 
 ## Anti-Duplication Notes
 - Streaming protocol and transport are Epic 8

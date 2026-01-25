@@ -224,8 +224,15 @@ class SyncService {
         user_id: row.user_id,
         text: row.text,
         raw_text: row.raw_text,
+        formatted_text: row.formatted_text,
+        edited_text: row.edited_text,
         language: row.language,
         duration_ms: row.duration_ms,
+        latency_ms: row.latency_ms,
+        divergence_score: row.divergence_score,
+        mic_device: row.mic_device,
+        fallback_path: row.fallback_path,
+        title: row.title,
         created_at: row.created_at,
         updated_at: row.updated_at,
       }),
@@ -243,6 +250,10 @@ class SyncService {
         user_id: row.user_id,
         from_text: row.from_text,
         to_text: row.to_text,
+        frequency_used: row.frequency_used,
+        last_used: row.last_used,
+        source: row.source,
+        auto_learned: row.auto_learned,
         created_at: row.created_at,
         updated_at: row.updated_at,
       }),
@@ -282,6 +293,25 @@ class SyncService {
         updated_at: row.updated_at,
       }),
       upsertLocal: (row) => this.store.addNote(row),
+    });
+    if (this.syncAbort) {
+      return { ok: false, reason: 'aborted' };
+    }
+
+    await this._syncTable('snippets', () => this.store.listSnippets(), {
+      table: 'snippets',
+      key: 'snippets',
+      mapRow: (row) => ({
+        id: row.id,
+        user_id: row.user_id,
+        cue: row.cue,
+        cue_norm: row.cue_norm,
+        template: row.template,
+        description: row.description,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      }),
+      upsertLocal: (row) => this.store.upsertSnippet(row),
     });
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };

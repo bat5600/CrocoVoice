@@ -1535,6 +1535,113 @@
       color: #DC2626;
     }
 
+    .snippet-card {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 2px 12px rgba(148, 163, 184, 0.2);
+    }
+
+    .snippet-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .snippet-grid .snippet-template-input {
+      grid-column: span 2;
+    }
+
+    .snippet-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .snippet-list {
+      margin-top: 24px;
+      border: 1px solid #E2E8F0;
+      border-radius: 20px;
+      overflow: hidden;
+      background: #FFFFFF;
+      box-shadow: 0 2px 10px rgba(148, 163, 184, 0.15);
+    }
+
+    .snippet-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #F1F5F9;
+      gap: 16px;
+    }
+
+    .snippet-row:last-child {
+      border-bottom: none;
+    }
+
+    .snippet-row:hover {
+      background: #F8FAFC;
+    }
+
+    .snippet-row:hover .snippet-row-actions {
+      opacity: 1;
+    }
+
+    .snippet-term {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .snippet-cue {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .snippet-template {
+      font-size: 13px;
+      color: #0F172A;
+    }
+
+    .snippet-description {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .snippet-row-actions {
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .snippet-row-actions button {
+      border: 1px solid transparent;
+      background: #F8FAFC;
+      color: #64748B;
+      font-weight: 600;
+      padding: 6px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .snippet-row-actions button:hover {
+      border-color: #E2E8F0;
+      color: var(--emerald-700);
+      background: #FFFFFF;
+    }
+
+    .snippet-row-actions button.delete:hover {
+      border-color: #FECACA;
+      background: #FEF2F2;
+      color: #DC2626;
+    }
+
     .style-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -2650,6 +2757,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 1-4 4v14a3 3 0 0 0 3-3h7z"></path></svg>
             <span>Dictionnaire</span>
           </button>
+          <button class="nav-item" data-view="snippets" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H7a2 2 0 0 0-2 2v12"></path><path d="M3 5a2 2 0 0 1 2-2h12"></path><path d="M9 11h6"></path><path d="M9 15h6"></path></svg>
+            <span>Snippets</span>
+          </button>
           <button class="nav-item" data-view="style" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="14.31" y1="8" x2="20.05" y2="17.94"></line><line x1="9.69" y1="8" x2="21.17" y2="8"></line><line x1="7.38" y1="12" x2="13.12" y2="2.06"></line><line x1="9.69" y1="16" x2="3.95" y2="6.06"></line><line x1="14.31" y1="16" x2="2.83" y2="16"></line><line x1="16.62" y1="12" x2="10.88" y2="21.94"></line></svg>
             <span>Styles</span>
@@ -2874,6 +2985,44 @@
           </div>
         </section>
 
+        <section id="view-snippets" class="view" style="max-width: 720px; margin: 0 auto;">
+          <div>
+            <h1 class="section-title">Snippets</h1>
+            <p class="section-subtitle">Créez des raccourcis vocaux pour insérer vos templates.</p>
+          </div>
+
+          <div class="snippet-card" style="margin-top: 24px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-weight: 700;">Nouveau snippet</span>
+              <span style="font-size: 12px; color: var(--text-muted);">Astuce: utilisez {{content}}</span>
+            </div>
+
+            <div class="snippet-grid" style="margin-top: 16px;">
+              <input id="snippetCueInput" class="input-field" type="text" placeholder="Cue (ex: email client)">
+              <input id="snippetDescriptionInput" class="input-field" type="text" placeholder="Description (optionnel)">
+              <textarea id="snippetTemplateInput" class="input-field snippet-template-input" rows="3" placeholder="Template (ex: Bonjour {{content}}, ...)"></textarea>
+            </div>
+
+            <div class="snippet-actions">
+              <button id="snippetCancelButton" class="btn-secondary" type="button">Annuler</button>
+              <button id="snippetAddButton" class="btn-primary dictionary-add" type="button">
+                <span class="btn-icon">+</span>
+                <span>Ajouter</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="snippet-list" id="snippetsList"></div>
+          <div id="snippetsEmpty" class="empty-state" data-empty-title="Aucun snippet" data-empty-body="Ajoutez votre premier cue pour accélérer vos dictées." data-search-title="Aucun résultat" data-search-body="Aucun snippet ne correspond à cette recherche.">
+            <div class="empty-illustration">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H7a2 2 0 0 0-2 2v12"></path><path d="M3 5a2 2 0 0 1 2-2h12"></path><path d="M9 11h6"></path><path d="M9 15h6"></path></svg>
+            </div>
+            <h3 class="empty-title"></h3>
+            <p class="empty-body"></p>
+            <button class="empty-action" type="button" data-empty-action="snippets">Créer un snippet</button>
+          </div>
+        </section>
+
 	        <section id="view-style" class="view" style="max-width: 900px; margin: 0 auto;">
 	          <div>
 	            <h1 class="section-title">Styles & Persona</h1>
@@ -2972,6 +3121,18 @@
 	                </select>
 	              </div>
 	            </div>
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">Mesures de qualité</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Enregistre la latence et les écarts pour améliorer la transcription.</div>
+                </div>
+                <select id="metricsToggle" class="input-select" data-setting="metricsEnabled" style="width: auto;">
+                  <option value="true">Activé</option>
+                  <option value="false">Désactivé</option>
+                </select>
+              </div>
+            </div>
 	          </div>
 	        </section>
       </div>

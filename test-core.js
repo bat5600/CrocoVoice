@@ -49,10 +49,24 @@ runTest('subscription retention logic', () => {
 
 runTest('dictionary application', () => {
   const entries = [
-    { from_text: 'hello', to_text: 'hi' },
-    { from_text: 'world', to_text: 'earth' },
+    { id: '1', from_text: 'hello', to_text: 'hi' },
+    { id: '2', from_text: 'world', to_text: 'earth' },
   ];
   assert.strictEqual(applyDictionaryEntries('hello world', entries), 'hi earth');
+  assert.strictEqual(applyDictionaryEntries('HELLO World', entries), 'hi earth');
+});
+
+runTest('dictionary matching rules', () => {
+  const entries = [
+    { id: '1', from_text: 'foobar', to_text: 'baz' },
+    { id: '2', from_text: 'foo', to_text: 'bar' },
+    { id: '3', from_text: 'he', to_text: 'she' },
+    { id: '4', from_text: 'abc', to_text: 'def' },
+    { id: '5', from_text: 'def', to_text: 'ghi' },
+  ];
+  assert.strictEqual(applyDictionaryEntries('foobar foo', entries), 'baz bar');
+  assert.strictEqual(applyDictionaryEntries('the hero', entries), 'the hero');
+  assert.strictEqual(applyDictionaryEntries('abc', entries), 'def');
 });
 
 runTest('sync cursor max updated_at', () => {

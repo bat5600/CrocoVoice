@@ -164,6 +164,7 @@ const defaultSettings = {
     updatedAt: null,
   },
   activeStyleId: '',
+  metricsEnabled: true,
   subscription: {
     plan: 'free',
     status: 'inactive',
@@ -173,6 +174,8 @@ const defaultSettings = {
 let settings = { ...defaultSettings };
 const DICTIONARY_CACHE_TTL_MS = 60000;
 let dictionaryCache = { entries: null, updatedAt: 0 };
+const SNIPPET_CACHE_TTL_MS = 60000;
+let snippetCache = { entries: null, updatedAt: 0 };
 
 function areSettingValuesEqual(a, b) {
   if (a === b) {
@@ -232,6 +235,10 @@ function invalidateDictionaryCache() {
   dictionaryCache = { entries: null, updatedAt: 0 };
 }
 
+function invalidateSnippetCache() {
+  snippetCache = { entries: null, updatedAt: 0 };
+}
+
 async function getDictionaryEntriesCached() {
   if (!store) {
     return [];
@@ -246,6 +253,24 @@ async function getDictionaryEntriesCached() {
   return sorted;
 }
 
+async function getSnippetEntriesCached() {
+  if (!store) {
+    return [];
+  }
+  const now = Date.now();
+  if (snippetCache.entries && (now - snippetCache.updatedAt) < SNIPPET_CACHE_TTL_MS) {
+    return snippetCache.entries;
+  }
+  const entries = await store.listSnippets();
+  const sorted = [...entries].sort((a, b) => {
+    const aNorm = a.cue_norm || normalizeSnippetCue(a.cue || '');
+    const bNorm = b.cue_norm || normalizeSnippetCue(b.cue || '');
+    return bNorm.length - aNorm.length;
+  });
+  snippetCache = { entries: sorted, updatedAt: now };
+  return sorted;
+}
+
 function normalizeText(value) {
   return value
     .normalize('NFD')
@@ -253,6 +278,52 @@ function normalizeText(value) {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeSnippetCue(value) {
+  if (!value) {
+    return '';
+  }
+  return value
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[\s\p{P}]+$/gu, '');
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripCueFromText(text, cueNorm) {
+  if (!text || !cueNorm) {
+    return text || '';
+  }
+  const tokens = cueNorm.split(' ').filter(Boolean).map(escapeRegExp);
+  if (!tokens.length) {
+    return text || '';
+  }
+  const pattern = tokens.join('\\s+');
+  const regex = new RegExp(`^\\s*${pattern}[\\s\\p{P}]*`, 'iu');
+  const match = text.match(regex);
+  if (!match) {
+    return text;
+  }
+  return text.slice(match[0].length);
+}
+
+function matchesSnippetCue(text, cueNorm) {
+  if (!text || !cueNorm) {
+    return false;
+  }
+  const tokens = cueNorm.split(' ').filter(Boolean).map(escapeRegExp);
+  if (!tokens.length) {
+    return false;
+  }
+  const pattern = tokens.join('\\s+');
+  const regex = new RegExp(`^\\s*${pattern}(?:[\\s\\p{P}]+|$)`, 'iu');
+  return regex.test(text);
 }
 
 function isNoAudioTranscription(text) {
@@ -1039,7 +1110,93 @@ async function applyDictionary(text) {
   if (!entries.length) {
     return text;
   }
-  return applyDictionaryEntries(text, entries);
+  const result = applyDictionaryEntries(text, entries, { trackUsage: true });
+  if (result && result.usage && result.usage.length) {
+    await store.updateDictionaryUsage(result.usage);
+  }
+  return result && typeof result.text === 'string' ? result.text : text;
+}
+
+async function applySnippets(text) {
+  if (!store) {
+    return text;
+  }
+  const entries = await getSnippetEntriesCached();
+  if (!entries.length) {
+    return text;
+  }
+  const matches = entries.filter((entry) => {
+    const cueNorm = entry.cue_norm || normalizeSnippetCue(entry.cue);
+    if (!cueNorm) {
+      return false;
+    }
+    return matchesSnippetCue(text, cueNorm);
+  });
+
+  if (!matches.length) {
+    return text;
+  }
+
+  const longest = matches.reduce((max, entry) => {
+    const length = (entry.cue_norm || normalizeSnippetCue(entry.cue)).length;
+    return length > max ? length : max;
+  }, 0);
+  const bestMatches = matches.filter((entry) => {
+    const length = (entry.cue_norm || normalizeSnippetCue(entry.cue)).length;
+    return length === longest;
+  });
+  if (bestMatches.length !== 1) {
+    return text;
+  }
+  const chosen = bestMatches[0];
+  const remaining = stripCueFromText(text || '', chosen.cue_norm || normalizeSnippetCue(chosen.cue || '')).trim();
+  const template = (chosen.template || '').trim();
+  if (!template) {
+    return text;
+  }
+  if (template.includes('{{content}}')) {
+    return template.replace(/{{\s*content\s*}}/g, remaining);
+  }
+  if (!remaining) {
+    return template;
+  }
+  return `${template} ${remaining}`.trim();
+}
+
+function computeDivergenceScore(rawText, formattedText) {
+  if (!rawText || !formattedText) {
+    return null;
+  }
+  const source = rawText.trim();
+  const target = formattedText.trim();
+  if (!source || !target) {
+    return null;
+  }
+  if (source === target) {
+    return 0;
+  }
+  const a = source;
+  const b = target;
+  const lenA = a.length;
+  const lenB = b.length;
+  const dp = new Array(lenB + 1).fill(0).map((_, i) => i);
+  for (let i = 1; i <= lenA; i += 1) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= lenB; j += 1) {
+      const temp = dp[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(
+        dp[j] + 1,
+        dp[j - 1] + 1,
+        prev + cost,
+      );
+      prev = temp;
+    }
+  }
+  const distance = dp[lenB];
+  const maxLen = Math.max(lenA, lenB);
+  return maxLen ? distance / maxLen : null;
 }
 
 function compactTextForTitle(text) {
@@ -1809,7 +1966,7 @@ async function pasteText(text, options = {}) {
   return next;
 }
 
-// Critical flow: record -> transcribe -> post-process -> dictionary -> persist -> type.
+// Critical flow: record -> transcribe -> post-process -> snippets -> dictionary -> persist -> type.
 // Integration points: OpenAI (transcribe/post-process/title), OS keyboard/clipboard, SQLite store, Supabase sync.
 // Manual regression checks: start/stop, transcription, post-process fallback, typing, history entry, sync optional.
 
@@ -1817,6 +1974,7 @@ function normalizeAudioPayload(audioData) {
   let mimeType = '';
   let payload = audioData;
   let warningMessage = '';
+  let micDevice = null;
 
   if (audioData && typeof audioData === 'object' && audioData.buffer) {
     payload = audioData.buffer;
@@ -1825,6 +1983,9 @@ function normalizeAudioPayload(audioData) {
     }
     if (typeof audioData.warningMessage === 'string') {
       warningMessage = audioData.warningMessage;
+    }
+    if (typeof audioData.micDevice === 'string') {
+      micDevice = audioData.micDevice;
     }
   }
 
@@ -1839,7 +2000,7 @@ function normalizeAudioPayload(audioData) {
     buffer = Buffer.from(payload);
   }
 
-  return { buffer, mimeType, warningMessage };
+  return { buffer, mimeType, warningMessage, micDevice };
 }
 
 function resolveRecordingTarget() {
@@ -1868,29 +2029,40 @@ async function runTranscriptionPipeline(buffer, mimeType) {
     console.warn('Post-processing failed, using raw transcript.');
   }
 
-  const finalText = await applyDictionary(editedText);
+  const formattedText = editedText;
+  const snippetText = await applySnippets(formattedText);
+  const finalText = await applyDictionary(snippetText);
   const title = await generateEntryTitle(finalText);
   return {
     skip: false,
     transcribedText,
+    formattedText,
     finalText,
     title,
+    divergenceScore: computeDivergenceScore(transcribedText, formattedText),
     warningMessage,
   };
 }
 
-async function persistTranscription({ transcribedText, finalText, title }) {
+async function persistTranscription({ transcribedText, formattedText, finalText, title, latencyMs, divergenceScore, micDevice, fallbackPath }) {
   if (!store) {
     return;
   }
   const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
+  const metricsEnabled = settings.metricsEnabled !== false;
   await store.addHistory({
     id: crypto.randomUUID(),
     user_id: userId,
     text: finalText,
     raw_text: transcribedText,
+    formatted_text: formattedText || null,
+    edited_text: finalText || null,
     language: settings.language || 'fr',
     duration_ms: recordingStartTime ? Date.now() - recordingStartTime : null,
+    latency_ms: metricsEnabled ? latencyMs : null,
+    divergence_score: metricsEnabled ? divergenceScore : null,
+    mic_device: metricsEnabled ? micDevice : null,
+    fallback_path: metricsEnabled ? fallbackPath : null,
     title,
   });
   await store.setSetting('last_transcription', finalText);
@@ -1911,7 +2083,7 @@ async function handleAudioPayload(event, audioData) {
       event.reply('transcription-error', message);
       return;
     }
-    const { buffer, mimeType, warningMessage: safetyWarningMessage } = normalizeAudioPayload(audioData);
+    const { buffer, mimeType, warningMessage: safetyWarningMessage, micDevice } = normalizeAudioPayload(audioData);
 
     const pipelineResult = await runTranscriptionPipeline(buffer, mimeType);
     if (pipelineResult.skip) {
@@ -1923,13 +2095,24 @@ async function handleAudioPayload(event, audioData) {
 
     const {
       transcribedText,
+      formattedText,
       finalText,
       title,
+      divergenceScore,
       warningMessage: pipelineWarningMessage,
     } = pipelineResult;
     const shouldSkipPaste = target === 'notes' || target === 'notes-editor' || target === 'onboarding';
-
-    await persistTranscription({ transcribedText, finalText, title });
+    const latencyMs = recordingStartTime ? Date.now() - recordingStartTime : null;
+    await persistTranscription({
+      transcribedText,
+      formattedText,
+      finalText,
+      title,
+      latencyMs,
+      divergenceScore,
+      micDevice: micDevice || settings.microphoneId || null,
+      fallbackPath: 'file',
+    });
     if (target === 'notes') {
       const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
       await store.addNote({
@@ -2110,6 +2293,14 @@ ipcMain.handle('settings:save', async (event, nextSettings) => {
   return settings;
 });
 
+ipcMain.handle('clipboard:write', async (event, text) => {
+  if (typeof text !== 'string') {
+    return { ok: false };
+  }
+  clipboard.writeText(text);
+  return { ok: true };
+});
+
 ipcMain.handle('app:open-settings', () => {
   createDashboardWindow();
 });
@@ -2154,9 +2345,10 @@ ipcMain.handle('onboarding:delivery-check', async (event, sampleText) => {
 ipcMain.handle('dashboard:data', async () => {
   const stats = await store.getHistoryStats(14);
   const notesTotal = await store.getNotesCount();
-  const history = await store.listHistory({ limit: 100 });
+  const history = await store.listHistory({ limit: 200 });
   const notes = await store.listNotes({ limit: 100 });
   const dictionary = await store.listDictionary();
+  const snippets = await store.listSnippets();
   const styles = await store.listStyles();
   const authUser = syncService && syncService.getUser();
   const quota = await getQuotaSnapshot();
@@ -2167,6 +2359,7 @@ ipcMain.handle('dashboard:data', async () => {
     history,
     notes,
     dictionary,
+    snippets,
     styles,
     quota,
     subscription,
@@ -2176,13 +2369,16 @@ ipcMain.handle('dashboard:data', async () => {
 });
 
 ipcMain.handle('dictionary:upsert', async (event, entry) => {
-  requireAuthenticated('Connexion requise pour modifier le dictionnaire.');
   const now = new Date().toISOString();
   const record = await store.upsertDictionary({
     id: entry.id || crypto.randomUUID(),
     user_id: syncService && syncService.getUser() ? syncService.getUser().id : null,
     from_text: entry.from_text,
     to_text: entry.to_text,
+    frequency_used: typeof entry.frequency_used === 'number' ? entry.frequency_used : undefined,
+    last_used: entry.last_used,
+    source: entry.source || 'manual',
+    auto_learned: typeof entry.auto_learned === 'number' ? entry.auto_learned : 0,
     created_at: entry.created_at || now,
     updated_at: now,
   });
@@ -2196,6 +2392,45 @@ ipcMain.handle('dictionary:delete', async (event, id) => {
   invalidateDictionaryCache();
   if (syncService && syncService.isReady()) {
     await syncService.deleteRemote('dictionary', id);
+  }
+  scheduleDebouncedSync();
+  return { ok: true };
+});
+
+ipcMain.handle('snippets:list', async () => {
+  return store.listSnippets();
+});
+
+ipcMain.handle('snippets:upsert', async (event, entry) => {
+  if (!entry || !entry.cue || !entry.template) {
+    throw new Error('Cue et template requis.');
+  }
+  const now = new Date().toISOString();
+  const cue = entry.cue.trim();
+  const template = entry.template.trim();
+  const record = await store.upsertSnippet({
+    id: entry.id || crypto.randomUUID(),
+    user_id: syncService && syncService.getUser() ? syncService.getUser().id : null,
+    cue,
+    cue_norm: normalizeSnippetCue(cue),
+    template,
+    description: entry.description || null,
+    created_at: entry.created_at || now,
+    updated_at: now,
+  });
+  invalidateSnippetCache();
+  scheduleDebouncedSync();
+  return record;
+});
+
+ipcMain.handle('snippets:delete', async (event, id) => {
+  if (!id) {
+    return { ok: false };
+  }
+  await store.deleteSnippet(id);
+  invalidateSnippetCache();
+  if (syncService && syncService.isReady()) {
+    await syncService.deleteRemote('snippets', id);
   }
   scheduleDebouncedSync();
   return { ok: true };
@@ -2254,6 +2489,32 @@ ipcMain.handle('history:delete', async (event, id) => {
   sendDashboardEvent('dashboard:data-updated');
   scheduleDebouncedSync();
   return { ok: true };
+});
+
+ipcMain.handle('history:upsert', async (event, payload) => {
+  if (!payload || !payload.id || !payload.text) {
+    return { ok: false };
+  }
+  const record = await store.addHistory({
+    id: payload.id,
+    user_id: payload.user_id || (syncService && syncService.getUser() ? syncService.getUser().id : null),
+    text: payload.text,
+    raw_text: payload.raw_text || payload.text,
+    formatted_text: payload.formatted_text || null,
+    edited_text: payload.edited_text || payload.text,
+    language: payload.language || settings.language || 'fr',
+    duration_ms: payload.duration_ms || null,
+    latency_ms: typeof payload.latency_ms === 'number' ? payload.latency_ms : null,
+    divergence_score: typeof payload.divergence_score === 'number' ? payload.divergence_score : null,
+    mic_device: payload.mic_device || null,
+    fallback_path: payload.fallback_path || null,
+    title: payload.title || null,
+    created_at: payload.created_at,
+    updated_at: payload.updated_at,
+  });
+  sendDashboardEvent('dashboard:data-updated');
+  scheduleDebouncedSync();
+  return record;
 });
 
 ipcMain.handle('notes:delete', async (event, id) => {

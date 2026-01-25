@@ -878,7 +878,11 @@ async function initializeMediaRecorder() {
     window.mediaRecorder.onstop = async () => {
       const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
       const ab = await blob.arrayBuffer();
-      const payload = { buffer: ab, mimeType: blob.type };
+      const payload = {
+        buffer: ab,
+        mimeType: blob.type,
+        micDevice: currentSettings.microphoneId || '',
+      };
       if (pendingWarningMessage) {
         payload.warningMessage = pendingWarningMessage;
         pendingWarningMessage = '';

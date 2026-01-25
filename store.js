@@ -40,21 +40,82 @@ function getNextWeekStartUTC(date = new Date()) {
   return new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
 }
 
-function applyDictionaryEntries(text, entries) {
+function isWordChar(value) {
+  if (!value) {
+    return false;
+  }
+  return /[\p{L}\p{N}_]/u.test(value);
+}
+
+function applyDictionaryEntries(text, entries, options = {}) {
   if (text === null || text === undefined) {
     return text;
   }
   if (!entries || !entries.length) {
-    return text;
+    return options.trackUsage ? { text, usage: [] } : text;
   }
-  let result = text;
+
+  const sourceText = String(text);
+  const lowerText = sourceText.toLocaleLowerCase();
+  const usedRanges = [];
+  const matches = [];
+  const usageCounts = new Map();
+  const trackUsage = Boolean(options.trackUsage);
+
+  const isOverlapping = (start, end) => usedRanges.some((range) => start < range.end && end > range.start);
+
   entries.forEach((entry) => {
     if (!entry || !entry.from_text) {
       return;
     }
-    result = result.split(entry.from_text).join(entry.to_text);
+    const needle = String(entry.from_text);
+    const needleLower = needle.toLocaleLowerCase();
+    if (!needleLower) {
+      return;
+    }
+    let searchIndex = 0;
+    while (true) {
+      const matchIndex = lowerText.indexOf(needleLower, searchIndex);
+      if (matchIndex === -1) {
+        break;
+      }
+      const endIndex = matchIndex + needleLower.length;
+      const beforeChar = matchIndex > 0 ? sourceText[matchIndex - 1] : '';
+      const afterChar = endIndex < sourceText.length ? sourceText[endIndex] : '';
+      const isWholeWord = !isWordChar(beforeChar) && !isWordChar(afterChar);
+      if (!isWholeWord || isOverlapping(matchIndex, endIndex)) {
+        searchIndex = matchIndex + 1;
+        continue;
+      }
+      matches.push({
+        start: matchIndex,
+        end: endIndex,
+        replacement: entry.to_text || '',
+        entry,
+      });
+      usedRanges.push({ start: matchIndex, end: endIndex });
+      if (trackUsage && entry.id) {
+        usageCounts.set(entry.id, (usageCounts.get(entry.id) || 0) + 1);
+      }
+      searchIndex = endIndex;
+    }
   });
-  return result;
+
+  if (!matches.length) {
+    return trackUsage ? { text: sourceText, usage: [] } : sourceText;
+  }
+
+  matches.sort((a, b) => b.start - a.start);
+  let result = sourceText;
+  matches.forEach((match) => {
+    result = result.slice(0, match.start) + match.replacement + result.slice(match.end);
+  });
+
+  if (!trackUsage) {
+    return result;
+  }
+  const usage = Array.from(usageCounts.entries()).map(([id, count]) => ({ id, count }));
+  return { text: result, usage };
 }
 
 function maxUpdatedAt(rows, seed = '') {
@@ -237,21 +298,33 @@ class Store {
       user_id: entry.user_id || null,
       text: entry.text,
       raw_text: entry.raw_text || entry.text,
+      formatted_text: entry.formatted_text || null,
+      edited_text: entry.edited_text || null,
       language: entry.language || 'fr',
       duration_ms: entry.duration_ms || null,
+      latency_ms: typeof entry.latency_ms === 'number' ? entry.latency_ms : null,
+      divergence_score: typeof entry.divergence_score === 'number' ? entry.divergence_score : null,
+      mic_device: entry.mic_device || null,
+      fallback_path: entry.fallback_path || null,
       title: entry.title || null,
       created_at: entry.created_at || now,
       updated_at: entry.updated_at || now,
     };
     await this._run(
-      `INSERT INTO history (id, user_id, text, raw_text, language, duration_ms, title, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO history (id, user_id, text, raw_text, formatted_text, edited_text, language, duration_ms, latency_ms, divergence_score, mic_device, fallback_path, title, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          user_id = excluded.user_id,
          text = excluded.text,
          raw_text = excluded.raw_text,
+         formatted_text = excluded.formatted_text,
+         edited_text = excluded.edited_text,
          language = excluded.language,
          duration_ms = excluded.duration_ms,
+         latency_ms = excluded.latency_ms,
+         divergence_score = excluded.divergence_score,
+         mic_device = excluded.mic_device,
+         fallback_path = excluded.fallback_path,
          title = excluded.title,
          updated_at = excluded.updated_at`,
       [
@@ -259,8 +332,14 @@ class Store {
         record.user_id,
         record.text,
         record.raw_text,
+        record.formatted_text,
+        record.edited_text,
         record.language,
         record.duration_ms,
+        record.latency_ms,
+        record.divergence_score,
+        record.mic_device,
+        record.fallback_path,
         record.title,
         record.created_at,
         record.updated_at,
@@ -283,6 +362,7 @@ class Store {
     await this._run('DELETE FROM dictionary');
     await this._run('DELETE FROM styles');
     await this._run('DELETE FROM notes');
+    await this._run('DELETE FROM snippets');
     await this._run("DELETE FROM settings WHERE key = 'supabase_session' OR key LIKE 'sync:%'");
   }
 
@@ -322,27 +402,50 @@ class Store {
 
   async upsertDictionary(entry) {
     const now = new Date().toISOString();
+    const existing = entry.id
+      ? await this._get('SELECT frequency_used, last_used, source, auto_learned, created_at FROM dictionary WHERE id = ?', [entry.id])
+      : null;
     const record = {
       id: entry.id,
       user_id: entry.user_id || null,
       from_text: entry.from_text,
       to_text: entry.to_text,
-      created_at: entry.created_at || now,
+      frequency_used: typeof entry.frequency_used === 'number'
+        ? entry.frequency_used
+        : (existing ? existing.frequency_used : 0),
+      last_used: entry.last_used !== undefined
+        ? entry.last_used
+        : (existing ? existing.last_used : null),
+      source: entry.source !== undefined
+        ? entry.source
+        : (existing ? existing.source : 'manual'),
+      auto_learned: typeof entry.auto_learned === 'number'
+        ? entry.auto_learned
+        : (existing ? existing.auto_learned : 0),
+      created_at: entry.created_at || existing?.created_at || now,
       updated_at: entry.updated_at || now,
     };
     await this._run(
-      `INSERT INTO dictionary (id, user_id, from_text, to_text, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO dictionary (id, user_id, from_text, to_text, frequency_used, last_used, source, auto_learned, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          user_id = excluded.user_id,
          from_text = excluded.from_text,
          to_text = excluded.to_text,
+         frequency_used = excluded.frequency_used,
+         last_used = excluded.last_used,
+         source = excluded.source,
+         auto_learned = excluded.auto_learned,
          updated_at = excluded.updated_at`,
       [
         record.id,
         record.user_id,
         record.from_text,
         record.to_text,
+        record.frequency_used,
+        record.last_used,
+        record.source,
+        record.auto_learned,
         record.created_at,
         record.updated_at,
       ],
@@ -350,8 +453,75 @@ class Store {
     return record;
   }
 
+  async updateDictionaryUsage(usageList) {
+    if (!usageList || !usageList.length) {
+      return;
+    }
+    const now = new Date().toISOString();
+    await Promise.all(usageList.map((usage) => {
+      if (!usage || !usage.id) {
+        return null;
+      }
+      const increment = Number.isFinite(usage.count) ? usage.count : 1;
+      return this._run(
+        `UPDATE dictionary
+         SET frequency_used = COALESCE(frequency_used, 0) + ?,
+             last_used = ?,
+             source = COALESCE(source, 'manual'),
+             auto_learned = COALESCE(auto_learned, 0),
+             updated_at = ?
+         WHERE id = ?`,
+        [increment, now, now, usage.id],
+      );
+    }));
+  }
+
   async deleteDictionary(id) {
     await this._run('DELETE FROM dictionary WHERE id = ?', [id]);
+  }
+
+  async listSnippets() {
+    return this._all('SELECT * FROM snippets ORDER BY updated_at DESC');
+  }
+
+  async upsertSnippet(entry) {
+    const now = new Date().toISOString();
+    const record = {
+      id: entry.id,
+      user_id: entry.user_id || null,
+      cue: entry.cue,
+      cue_norm: entry.cue_norm,
+      template: entry.template,
+      description: entry.description || null,
+      created_at: entry.created_at || now,
+      updated_at: entry.updated_at || now,
+    };
+    await this._run(
+      `INSERT INTO snippets (id, user_id, cue, cue_norm, template, description, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         user_id = excluded.user_id,
+         cue = excluded.cue,
+         cue_norm = excluded.cue_norm,
+         template = excluded.template,
+         description = excluded.description,
+         updated_at = excluded.updated_at`,
+      [
+        record.id,
+        record.user_id,
+        record.cue,
+        record.cue_norm,
+        record.template,
+        record.description,
+        record.created_at,
+        record.updated_at,
+      ],
+    );
+    return record;
+  }
+
+  async deleteSnippet(id) {
+    await this._run('DELETE FROM snippets WHERE id = ?', [id]);
   }
 
   async listStyles() {
@@ -397,6 +567,7 @@ class Store {
     await this._run('UPDATE dictionary SET user_id = ? WHERE user_id IS NULL', [userId]);
     await this._run('UPDATE styles SET user_id = ? WHERE user_id IS NULL', [userId]);
     await this._run('UPDATE notes SET user_id = ? WHERE user_id IS NULL', [userId]);
+    await this._run('UPDATE snippets SET user_id = ? WHERE user_id IS NULL', [userId]);
   }
 
   async getSyncCursor(key) {
@@ -418,21 +589,44 @@ class Store {
       user_id TEXT,
       text TEXT NOT NULL,
       raw_text TEXT NOT NULL,
+      formatted_text TEXT,
+      edited_text TEXT,
       language TEXT NOT NULL,
       duration_ms INTEGER,
+      latency_ms INTEGER,
+      divergence_score REAL,
+      mic_device TEXT,
+      fallback_path TEXT,
       title TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`);
     await this._ensureColumn('history', 'title', 'title TEXT');
+    await this._ensureColumn('history', 'formatted_text', 'formatted_text TEXT');
+    await this._ensureColumn('history', 'edited_text', 'edited_text TEXT');
+    await this._ensureColumn('history', 'latency_ms', 'latency_ms INTEGER');
+    await this._ensureColumn('history', 'divergence_score', 'divergence_score REAL');
+    await this._ensureColumn('history', 'mic_device', 'mic_device TEXT');
+    await this._ensureColumn('history', 'fallback_path', 'fallback_path TEXT');
     await this._run(`CREATE TABLE IF NOT EXISTS dictionary (
       id TEXT PRIMARY KEY,
       user_id TEXT,
       from_text TEXT NOT NULL,
       to_text TEXT NOT NULL,
+      frequency_used INTEGER DEFAULT 0,
+      last_used TEXT,
+      source TEXT,
+      auto_learned INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`);
+    await this._ensureColumn('dictionary', 'frequency_used', 'frequency_used INTEGER DEFAULT 0');
+    await this._ensureColumn('dictionary', 'last_used', 'last_used TEXT');
+    await this._ensureColumn('dictionary', 'source', 'source TEXT');
+    await this._ensureColumn('dictionary', 'auto_learned', 'auto_learned INTEGER DEFAULT 0');
+    await this._run('UPDATE dictionary SET frequency_used = 0 WHERE frequency_used IS NULL');
+    await this._run('UPDATE dictionary SET auto_learned = 0 WHERE auto_learned IS NULL');
+    await this._run("UPDATE dictionary SET source = 'manual' WHERE source IS NULL");
     await this._run(`CREATE TABLE IF NOT EXISTS styles (
       id TEXT PRIMARY KEY,
       user_id TEXT,
@@ -450,6 +644,16 @@ class Store {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`);
+    await this._run(`CREATE TABLE IF NOT EXISTS snippets (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      cue TEXT NOT NULL,
+      cue_norm TEXT NOT NULL,
+      template TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
   }
 
   async _createIndexes() {
@@ -457,6 +661,8 @@ class Store {
     await this._run('CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_dictionary_updated_at ON dictionary(updated_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_styles_updated_at ON styles(updated_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_snippets_updated_at ON snippets(updated_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_snippets_cue_norm ON snippets(cue_norm)');
   }
 
   async _ensureColumn(table, columnName, definition) {
