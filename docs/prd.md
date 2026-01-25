@@ -114,9 +114,9 @@ Unit + Integration; light E2E where feasible.
 5. Epic 8: Low-Latency Streaming Pipeline (stories 8.1-8.2)
 6. Epic 9: Status Bubble + Context Menu (story 9.1)
 7. Epic 10: Feature Flags, Telemetry, Metrics, Notifications (stories 10.1-10.3)
-8. Epic 11: Onboarding & Insights (story 11.1)
-9. Epic 12: CrocOmni Assistant (story 12.1)
-10. Epic 13: Local Inference Fallback (story 13.1)
+8. Epic 11: Onboarding & Insights (stories 11.1-11.2)
+9. Epic 12: CrocOmni Assistant (stories 12.1-12.2)
+10. Epic 13: Local Inference Fallback (stories 13.1-13.2)
 
 ## Epic Mapping to Story Files
 
@@ -129,9 +129,9 @@ Unit + Integration; light E2E where feasible.
 | Epic 8 | Streaming Pipeline | docs/stories/8.1-low-latency-streaming.md, 8.2-streaming-transport-contract-and-reliability.md | docs/epics/epic-8-low-latency-streaming.md |
 | Epic 9 | Status Bubble + Context Menu | docs/stories/9.1-status-bubble-and-context-menu.md | docs/epics/epic-9-status-bubble-and-context-menu.md |
 | Epic 10 | Flags + Telemetry + Metrics + Notifications | docs/stories/10.1-feature-flags-and-telemetry.md, 10.2-telemetry-and-quality-metrics.md, 10.3-notifications-inbox.md | docs/epics/epic-10-feature-flags-telemetry-notifications.md |
-| Epic 11 | Onboarding + Insights | docs/stories/11.1-onboarding-and-insights.md | docs/epics/epic-11-onboarding-and-insights.md |
-| Epic 12 | CrocOmni Assistant | docs/stories/12.1-crocomni-conversation-mode.md | docs/epics/epic-12-crocomni-assistant.md |
-| Epic 13 | Local Inference | docs/stories/13.1-local-inference-fallback.md | docs/epics/epic-13-local-inference-fallback.md |
+| Epic 11 | Onboarding + Insights | docs/stories/11.1-onboarding-flow.md, 11.2-insights-and-wrapped.md | docs/epics/epic-11-onboarding-and-insights.md |
+| Epic 12 | CrocOmni Assistant | docs/stories/12.1-crocomni-ui-and-storage.md, 12.2-crocomni-context-injection-and-redaction.md | docs/epics/epic-12-crocomni-assistant.md |
+| Epic 13 | Local Inference | docs/stories/13.1-local-vad-and-asr-path.md, 13.2-fallback-ui-and-safeguards.md | docs/epics/epic-13-local-inference-fallback.md |
 
 ## Checklist Results Report
 Pending after PM checklist.

@@ -38,7 +38,8 @@ Provide a Flow-lens-like assistant with conversation memory and optional context
 - % of sessions with context enabled
 
 ## Shard Plan (Stories)
-- `docs/stories/12.1-crocomni-conversation-mode.md` — UI + storage + context injection
+- `docs/stories/12.1-crocomni-ui-and-storage.md` — UI + local conversation storage
+- `docs/stories/12.2-crocomni-context-injection-and-redaction.md` — context injection + redaction
 
 ## Anti-Duplication Notes
 - Long-form file transcription is Epic 6

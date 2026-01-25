@@ -40,7 +40,8 @@ Improve activation and retention through guided onboarding and usage insights.
 - Insights usage frequency
 
 ## Shard Plan (Stories)
-- `docs/stories/11.1-onboarding-and-insights.md` — onboarding + insights surfaces
+- `docs/stories/11.1-onboarding-flow.md` — onboarding flow + resume + first success
+- `docs/stories/11.2-insights-and-wrapped.md` — insights + Wrapped summary
 
 ## Anti-Duplication Notes
 - Diagnostics UI details are Epic 7

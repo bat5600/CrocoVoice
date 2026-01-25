@@ -36,7 +36,8 @@ Provide a safe offline or degraded-mode fallback for transcription and VAD.
 - User-reported quality in fallback mode
 
 ## Shard Plan (Stories)
-- `docs/stories/13.1-local-inference-fallback.md` — VAD + local transcription
+- `docs/stories/13.1-local-vad-and-asr-path.md` — local VAD/ASR path
+- `docs/stories/13.2-fallback-ui-and-safeguards.md` — UI indicators + fallback safeguards
 
 ## Anti-Duplication Notes
 - Streaming protocol and transport are Epic 8
