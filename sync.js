@@ -208,6 +208,13 @@ class SyncService {
     if (this.syncAbort) {
       return { ok: false, reason: 'aborted' };
     }
+    const contextSettings = await this.store.getSetting('context');
+    const contextRetention = Number.isFinite(contextSettings?.retentionDays)
+      ? contextSettings.retentionDays
+      : 30;
+    if (contextRetention > 0) {
+      await this.store.purgeContext(contextRetention);
+    }
     if (retentionDays > 0) {
       await this._purgeRemoteHistory(retentionDays);
     }
@@ -226,6 +233,20 @@ class SyncService {
         raw_text: row.raw_text,
         formatted_text: row.formatted_text,
         edited_text: row.edited_text,
+        context_json: (() => {
+          if (!row.context_json) {
+            return null;
+          }
+          try {
+            const parsed = JSON.parse(row.context_json);
+            if (parsed?.file?.path) {
+              delete parsed.file.path;
+            }
+            return JSON.stringify(parsed);
+          } catch {
+            return row.context_json;
+          }
+        })(),
         language: row.language,
         duration_ms: row.duration_ms,
         latency_ms: row.latency_ms,

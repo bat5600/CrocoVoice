@@ -81,6 +81,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPrivacyMicrophone: () => ipcRenderer.invoke('app:open-privacy-mic'),
   getDashboardData: () => ipcRenderer.invoke('dashboard:data'),
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
+  previewContextFormatting: (profileId, text) => ipcRenderer.invoke('context:preview', profileId, text),
+  clearContext: () => ipcRenderer.invoke('context:clear'),
   upsertDictionary: (entry) => ipcRenderer.invoke('dictionary:upsert', entry),
   deleteDictionary: (id) => ipcRenderer.invoke('dictionary:delete', id),
   listSnippets: () => ipcRenderer.invoke('snippets:list'),
@@ -97,6 +99,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   upsertNote: (entry) => ipcRenderer.invoke('notes:upsert', entry),
   listHistory: (limit) => ipcRenderer.invoke('history:list', limit),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
+  exportHistory: (id, options) => ipcRenderer.invoke('history:export', id, options),
+  selectUploadFile: () => ipcRenderer.invoke('upload:select'),
+  addUploadFile: (filePath) => ipcRenderer.invoke('upload:add', filePath),
+  cancelUploadJob: (id) => ipcRenderer.invoke('upload:cancel', id),
+  getDiagnostics: () => ipcRenderer.invoke('diagnostics:get'),
+  runDiagnosticsChecks: () => ipcRenderer.invoke('diagnostics:run-checks'),
   authStatus: () => ipcRenderer.invoke('auth:status'),
   authSignIn: (email, password) => ipcRenderer.invoke('auth:sign-in', email, password),
   authSignUp: (email, password) => ipcRenderer.invoke('auth:sign-up', email, password),
@@ -113,6 +121,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pasteLatestTranscription: () => ipcRenderer.send('history:paste-latest'),
   hideWidgetOneHour: () => ipcRenderer.send('widget:hide-1h'),
   openDashboardView: (viewName) => ipcRenderer.send('dashboard:open-view', viewName),
+  openPolishDiff: () => ipcRenderer.send('polish:open'),
   sendWindowControl: (action) => ipcRenderer.send('dashboard:window-control', action),
   getPlatform: () => process.platform,
   onTrayMenuOpen: (callback) => {
@@ -143,6 +152,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDashboardTranscriptionError: (callback) => {
     return registerListener('dashboard:transcription-error', (event, message) => callback(message));
   },
+  onDashboardDiff: (callback) => {
+    return registerListener('dashboard:diff', (event, payload) => callback(payload));
+  },
+  onPartialTranscript: (callback) => {
+    return registerListener('transcription-partial', (event, text) => callback(text));
+  },
   onAuthState: (callback) => {
     return registerListener('auth:state', (event, state) => callback(state));
   },
@@ -172,5 +187,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   sendMicMonitorError: (message) => {
     ipcRenderer.send('mic-monitor:error', message);
+  },
+  sendStreamStart: (payload) => ipcRenderer.send('stream:start', payload),
+  sendStreamStop: (payload) => ipcRenderer.send('stream:stop', payload),
+  sendStreamChunk: (payload, transferList = []) => {
+    if (ipcRenderer.postMessage) {
+      ipcRenderer.postMessage('stream:chunk', payload, transferList);
+      return;
+    }
+    ipcRenderer.send('stream:chunk', payload);
+  },
+  sendStreamPing: (payload) => ipcRenderer.send('stream:ping', payload),
+  onStreamPong: (callback) => {
+    return registerListener('stream:pong', (event, payload) => callback(payload));
   },
 });

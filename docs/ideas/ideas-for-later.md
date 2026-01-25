@@ -9,6 +9,7 @@
 [x] Mettre un saferail pour éviter l'oubli du micro activé pendant 5h...
 [ ] Snippet library Create voice shortcuts for the things your team says over and over. From scheduling links to FAQs, just speak a cue and get the full formatted text.
 [ ] Spells names right. CrocoVoice uses surrounding context to spell uncommon names right, so you don’t have to fix it later.
+[ ] Améliorer le context-aware post-process (actuel ≈ nul si app/URL inconnues). Idées: hints plus riches, extraction de noms propres depuis titre/URL, opt-in pour selection/URL complète.
 - [ ] **Smart Corrections (changement d’avis en temps réel)**  
       CrocoVoice comprend quand tu te corriges.  
       Exemple : “On se voit à 14h… non, plutôt à 15h.”  

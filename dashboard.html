@@ -921,6 +921,12 @@
       margin-bottom: 16px;
     }
 
+    .list-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+
     .list-title {
       font-size: 18px;
       font-weight: 700;
@@ -936,6 +942,84 @@
       background: var(--emerald-50);
       color: var(--emerald-700);
       border: 1px solid var(--emerald-100);
+    }
+
+    .upload-queue {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .upload-dropzone {
+      border: 1px dashed rgba(15, 23, 42, 0.2);
+      border-radius: 16px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+      cursor: pointer;
+    }
+
+    .upload-dropzone.is-dragover {
+      border-color: rgba(59, 130, 246, 0.6);
+      background: rgba(219, 234, 254, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .upload-dropzone-title {
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .upload-dropzone-subtitle {
+      font-size: 12px;
+      color: rgba(15, 23, 42, 0.6);
+      margin-top: 4px;
+    }
+
+    .upload-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+      background: #FFFFFF;
+      gap: 12px;
+    }
+
+    .upload-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .upload-title {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .upload-status {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .upload-progress {
+      height: 6px;
+      background: #F1F5F9;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .upload-progress-fill {
+      height: 100%;
+      background: var(--emerald-500);
+      width: 0%;
     }
 
     .list-panel {
@@ -1640,6 +1724,60 @@
       border-color: #FECACA;
       background: #FEF2F2;
       color: #DC2626;
+    }
+
+    .context-grid {
+      display: grid;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .context-signal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .context-signal-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #E2E8F0;
+      background: #F8FAFC;
+    }
+
+    .context-profile-list {
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #FFFFFF;
+    }
+
+    .context-profile-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #F1F5F9;
+      gap: 12px;
+    }
+
+    .context-profile-row:last-child {
+      border-bottom: none;
+    }
+
+    .context-profile-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .context-profile-actions {
+      display: flex;
+      gap: 8px;
     }
 
     .style-grid {
@@ -2626,9 +2764,10 @@
         <div class="onboarding-step" data-step="welcome"><span class="step-index">1</span>Accueil</div>
         <div class="onboarding-step" data-step="permissions"><span class="step-index">2</span>Permission</div>
         <div class="onboarding-step" data-step="mic_check"><span class="step-index">3</span>Micro</div>
-        <div class="onboarding-step" data-step="first_dictation"><span class="step-index">4</span>Dictée</div>
-        <div class="onboarding-step" data-step="delivery_check"><span class="step-index">5</span>Livraison</div>
-        <div class="onboarding-step" data-step="done"><span class="step-index">6</span>Fini</div>
+        <div class="onboarding-step" data-step="hotkey"><span class="step-index">4</span>Raccourci</div>
+        <div class="onboarding-step" data-step="first_dictation"><span class="step-index">5</span>Dictée</div>
+        <div class="onboarding-step" data-step="delivery_check"><span class="step-index">6</span>Livraison</div>
+        <div class="onboarding-step" data-step="done"><span class="step-index">7</span>Fini</div>
       </div>
 
       <div class="onboarding-body">
@@ -2664,6 +2803,18 @@
             <div id="onboardingMicStatus" class="onboarding-status">En attente de signal audio...</div>
             <div class="onboarding-actions">
               <button id="onboardingMicContinue" class="btn-primary" type="button" disabled>Continuer</button>
+            </div>
+          </section>
+
+          <section class="onboarding-panel" data-step="hotkey">
+            <h3>Raccourci de dictée</h3>
+            <p>Appuyez sur votre combinaison pour lancer CrocoVoice rapidement.</p>
+            <div class="shortcut-row" style="margin-top: 12px;">
+              <input id="onboardingHotkeyInput" class="input-field shortcut-input" type="text" placeholder="Ctrl+Shift+R" autocomplete="off">
+            </div>
+            <div id="onboardingHotkeyStatus" class="onboarding-status" style="margin-top: 12px;"></div>
+            <div class="onboarding-actions">
+              <button id="onboardingHotkeyNext" class="btn-primary" type="button" disabled>Continuer</button>
             </div>
           </section>
 
@@ -2708,6 +2859,7 @@
           <ul class="onboarding-checklist">
             <li id="onboardingCheckPermission"><span class="check-dot">✓</span>Permission micro accordée</li>
             <li id="onboardingCheckSignal"><span class="check-dot">✓</span>Signal audio détecté</li>
+            <li id="onboardingCheckHotkey"><span class="check-dot">✓</span>Raccourci configuré</li>
             <li id="onboardingCheckDictation"><span class="check-dot">✓</span>Texte transcrit en sandbox</li>
             <li id="onboardingCheckDelivery"><span class="check-dot">✓</span>Livraison OK ou presse-papier activé</li>
           </ul>
@@ -2761,6 +2913,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H7a2 2 0 0 0-2 2v12"></path><path d="M3 5a2 2 0 0 1 2-2h12"></path><path d="M9 11h6"></path><path d="M9 15h6"></path></svg>
             <span>Snippets</span>
           </button>
+          <button class="nav-item" data-view="context" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M3 12h18"></path></svg>
+            <span>Context</span>
+          </button>
           <button class="nav-item" data-view="style" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="14.31" y1="8" x2="20.05" y2="17.94"></line><line x1="9.69" y1="8" x2="21.17" y2="8"></line><line x1="7.38" y1="12" x2="13.12" y2="2.06"></line><line x1="9.69" y1="16" x2="3.95" y2="6.06"></line><line x1="14.31" y1="16" x2="2.83" y2="16"></line><line x1="16.62" y1="12" x2="10.88" y2="21.94"></line></svg>
             <span>Styles</span>
@@ -2770,6 +2926,10 @@
             <button class="nav-item" data-view="settings" type="button">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
               <span>Réglages</span>
+            </button>
+            <button class="nav-item" data-view="diagnostics" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l3 3"></path></svg>
+              <span>Diagnostics</span>
             </button>
           </div>
         </nav>
@@ -2901,6 +3061,16 @@
           </div>
 
           <div style="margin-top: 32px;">
+            <div id="uploadDropzone" class="upload-dropzone" role="button" tabindex="0" aria-label="Importer un fichier audio">
+              <div>
+                <div class="upload-dropzone-title">Importer un audio dans vos notes</div>
+                <div class="upload-dropzone-subtitle">Glissez-déposez un fichier audio ou cliquez pour choisir un fichier.</div>
+              </div>
+              <button id="uploadAudioButton" class="btn-secondary" type="button">Importer audio</button>
+            </div>
+
+            <div id="uploadQueue" class="upload-queue" aria-live="polite" style="margin-top: 16px;"></div>
+
             <h2 class="form-label" style="font-size: 12px;">Vos notes</h2>
             <div id="notesList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;"></div>
             <div id="notesEmpty" class="empty-state dashed" data-empty-title="Le syndrome de la page blanche ?" data-empty-body="Capturez vos idées à la voix, nous nous occupons de la mise en forme." data-search-title="Aucun résultat" data-search-body="Aucune note ne correspond à cette recherche.">
@@ -3023,6 +3193,162 @@
           </div>
         </section>
 
+        <section id="view-context" class="view" style="max-width: 720px; margin: 0 auto;">
+          <div>
+            <h1 class="section-title">Context</h1>
+            <p class="section-subtitle">Gérez la capture de contexte et les profils par application.</p>
+          </div>
+
+          <div class="context-grid">
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">Conscience contextuelle</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Active l'adaptation par application.</div>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="contextEnabledToggle" class="toggle-checkbox">
+                  <span class="toggle-label"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">Post-process contextuel</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Utilise app/fenêtre/URL (redacté) pour mieux corriger les noms propres.</div>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="contextPostProcessToggle" class="toggle-checkbox">
+                  <span class="toggle-label"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="font-weight: 700;">Signaux capturés</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Les signaux sensibles sont opt-in.</div>
+              <div class="context-signal-grid">
+                <label class="context-signal-row">
+                  <span>App</span>
+                  <input type="checkbox" id="contextSignalApp">
+                </label>
+                <label class="context-signal-row">
+                  <span>Fenêtre</span>
+                  <input type="checkbox" id="contextSignalWindow">
+                </label>
+                <label class="context-signal-row">
+                  <span>URL</span>
+                  <input type="checkbox" id="contextSignalUrl">
+                </label>
+                <label class="context-signal-row">
+                  <span>AX / Accessibilité</span>
+                  <input type="checkbox" id="contextSignalAx">
+                </label>
+                <label class="context-signal-row">
+                  <span>Textbox</span>
+                  <input type="checkbox" id="contextSignalTextbox">
+                </label>
+                <label class="context-signal-row">
+                  <span>Screenshot</span>
+                  <input type="checkbox" id="contextSignalScreenshot">
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="font-weight: 700;">Rétention & suppression</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Par défaut, 30 jours.</div>
+              <div style="display: flex; gap: 12px; align-items: center; margin-top: 12px;">
+                <input id="contextRetentionInput" class="input-field" type="number" min="1" step="1" placeholder="30" style="max-width: 120px;">
+                <button id="contextRetentionSave" class="btn-secondary" type="button">Sauvegarder</button>
+                <button id="contextDeleteAll" class="btn-secondary" type="button">Supprimer tout le contexte</button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="font-weight: 700;">App active</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Prévisualisez les signaux et overrides.</div>
+              <div style="margin-top: 12px;">
+                <div><strong>App:</strong> <span id="contextActiveApp">—</span></div>
+                <div style="margin-top: 4px;"><strong>Fenêtre:</strong> <span id="contextActiveWindow">—</span></div>
+                <div style="margin-top: 4px;"><strong>URL:</strong> <span id="contextActiveUrl">—</span></div>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center; margin-top: 12px;">
+                <select id="contextOverrideMode" class="input-select" style="width: auto;">
+                  <option value="inherit">Hériter du global</option>
+                  <option value="off">Forcer OFF</option>
+                  <option value="on">Forcer ON</option>
+                </select>
+                <select id="contextOverrideProfile" class="input-select" style="width: auto;">
+                  <option value="">Profil…</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Overrides signaux (optionnel)</div>
+                <div class="context-signal-grid">
+                  <label class="context-signal-row">
+                    <span>App</span>
+                    <input type="checkbox" id="contextOverrideSignalApp">
+                  </label>
+                  <label class="context-signal-row">
+                    <span>Fenêtre</span>
+                    <input type="checkbox" id="contextOverrideSignalWindow">
+                  </label>
+                  <label class="context-signal-row">
+                    <span>URL</span>
+                    <input type="checkbox" id="contextOverrideSignalUrl">
+                  </label>
+                  <label class="context-signal-row">
+                    <span>AX / Accessibilité</span>
+                    <input type="checkbox" id="contextOverrideSignalAx">
+                  </label>
+                  <label class="context-signal-row">
+                    <span>Textbox</span>
+                    <input type="checkbox" id="contextOverrideSignalTextbox">
+                  </label>
+                  <label class="context-signal-row">
+                    <span>Screenshot</span>
+                    <input type="checkbox" id="contextOverrideSignalScreenshot">
+                  </label>
+                </div>
+              </div>
+              <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                Suggestion: <span id="contextSuggestion">—</span>
+                <button id="contextSuggestionApply" class="btn-secondary" type="button" style="margin-left: 8px;">Appliquer</button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">Profils d'app</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Règles simples et déterministes.</div>
+                </div>
+                <button id="contextProfileCreate" class="btn-primary dictionary-add" type="button">
+                  <span class="btn-icon">+</span>
+                  <span>Nouveau</span>
+                </button>
+              </div>
+              <div id="contextProfileList" class="context-profile-list" style="margin-top: 12px;"></div>
+            </div>
+
+            <div class="settings-card">
+              <div style="font-weight: 700;">Test rapide</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Prévisualisez un profil avec un exemple.</div>
+              <div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+                <select id="contextPreviewProfile" class="input-select" style="width: auto;">
+                  <option value="">Choisir un profil</option>
+                </select>
+                <button id="contextPreviewButton" class="btn-secondary" type="button">Prévisualiser</button>
+              </div>
+              <textarea id="contextPreviewInput" class="input-field" rows="3" style="margin-top: 12px;" placeholder="Entrez un exemple..."></textarea>
+              <textarea id="contextPreviewOutput" class="input-field" rows="3" style="margin-top: 12px;" placeholder="Résultat..." readonly></textarea>
+            </div>
+          </div>
+        </section>
+
 	        <section id="view-style" class="view" style="max-width: 900px; margin: 0 auto;">
 	          <div>
 	            <h1 class="section-title">Styles & Persona</h1>
@@ -3133,7 +3459,81 @@
                 </select>
               </div>
             </div>
+
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">Transcription de fichiers</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Fallback cloud requis pour traiter un fichier local.</div>
+                </div>
+                <select id="uploadCloudFallbackToggle" class="input-select" data-setting="uploadCloudFallback" style="width: auto;">
+                  <option value="false">Désactivé</option>
+                  <option value="true">Activé</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Taille max (MB)</label>
+                <input id="uploadMaxMbInput" class="input-field" type="number" min="10" step="10" data-setting="uploadMaxMb" placeholder="200">
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div>
+                <div style="font-weight: 700;">Streaming (déprécié)</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Fonctionnalité désactivée temporairement pour stabilité.</div>
+              </div>
+            </div>
+          </div>
+	        </section>
+
+	        <section id="view-diagnostics" class="view" style="max-width: 720px; margin: 0 auto;">
+	          <div>
+	            <h1 class="section-title">Diagnostics</h1>
+	            <p class="section-subtitle">Etat des permissions, livraisons et flags.</p>
 	          </div>
+
+            <div class="settings-stack" style="margin-top: 24px;">
+              <div class="settings-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                  <div>
+                    <div style="font-weight: 700;">Auto-checks</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Micro, raccourci, presse-papier.</div>
+                  </div>
+                  <button id="diagnosticsRunChecks" class="btn-secondary" type="button">Lancer les checks</button>
+                </div>
+                <div id="diagnosticsChecks" style="margin-top: 12px; font-size: 12px; color: var(--text-muted);"></div>
+              </div>
+
+              <div class="settings-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                  <div>
+                    <div style="font-weight: 700;">Résumé</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Versions, flags et derniers événements.</div>
+                  </div>
+                  <button id="diagnosticsCopy" class="btn-secondary" type="button">Copier</button>
+                </div>
+                <pre id="diagnosticsOutput" class="input-textarea" style="margin-top: 12px; white-space: pre-wrap;"></pre>
+              </div>
+            </div>
+	        </section>
+
+	        <section id="view-diff" class="view" style="max-width: 860px; margin: 0 auto;">
+	          <div>
+	            <h1 class="section-title">Polish</h1>
+	            <p class="section-subtitle">Avant / Après pour la dernière dictée.</p>
+	          </div>
+            <div class="settings-card" style="margin-top: 24px;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                <div>
+                  <div class="form-label">Avant</div>
+                  <textarea id="diffBefore" class="input-textarea" rows="8" readonly></textarea>
+                </div>
+                <div>
+                  <div class="form-label">Après</div>
+                  <textarea id="diffAfter" class="input-textarea" rows="8" readonly></textarea>
+                </div>
+              </div>
+            </div>
 	        </section>
       </div>
     </main>

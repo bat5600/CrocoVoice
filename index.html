@@ -258,6 +258,16 @@
       position: relative;
       pointer-events: auto;
       cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+
+    .widget-container button,
+    .widget-container input,
+    .context-menu,
+    .submenu-panel,
+    .widget-error,
+    .cancel-undo {
+      -webkit-app-region: no-drag;
     }
 
     .pill-button {
@@ -638,6 +648,11 @@
       transition: opacity 0.2s ease;
     }
 
+    body.status-disabled .status-text,
+    body.status-disabled .tooltip {
+      display: none;
+    }
+
     .widget-container.processing .status-text,
     .widget-container.error .status-text {
       opacity: 1;
@@ -934,6 +949,7 @@
       <div class="context-menu" role="menu" aria-hidden="true">
         <button type="button" role="menuitem" data-action="hide-1h">Masquer pendant 1 heure</button>
         <button type="button" role="menuitem" data-action="open-settings">Paramètres</button>
+        <button type="button" role="menuitem" data-action="open-polish">Voir le polish</button>
         <div class="menu-separator" role="separator"></div>
         <div class="menu-item" data-submenu="microphone">
           <button type="button" role="menuitem" data-action="toggle-microphone">

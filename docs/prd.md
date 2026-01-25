@@ -5,6 +5,7 @@
 ### Goals
 - Deliver a low-latency dictation pipeline with streaming feedback comparable to FakeWispr.
 - Capture rich context (app/url/ax/textbox/screenshot) with explicit privacy controls.
+- Make post-process context-aware (redacted app/window/url hints) to improve proper nouns.
 - Expand personalization (styles, tone match, dictionary/snippets, auto-learn) to improve output quality.
 - Provide multi-window UX (hub + status bubble + context menu) for fast control.
 - Add feature flags, telemetry, and diagnostics to support safe rollouts and reliability.
@@ -47,6 +48,7 @@ CrocoVoice is a local-first Electron dictation app with a clear pipeline but lim
 22. FR22: Optional local inference/VAD must be supported as a fallback path.
 23. FR23: The app must support local transcription of uploaded audio files with visible progress.
 24. FR24: Users must be able to export transcripts as txt/md/json with optional timestamps.
+25. FR25: Post-process must optionally use redacted context (app/window/url) when context capture is enabled.
 
 ### Non Functional
 1. NFR1: End-to-end latency (start -> first partial text) should be < 700ms on supported machines.
@@ -123,7 +125,7 @@ Unit + Integration; light E2E where feasible.
 | Epic | Scope | Story Files | Epic Overview |
 | --- | --- | --- | --- |
 | Epic 4 | Dictionary/History/Notes/Snippets | docs/stories/4.1-dictionary-v2.md, 4.2-history-search-and-actions.md, 4.3-notes-view-and-crud.md, 4.4-snippets-v1.md, 4.5-history-metadata-and-quality-metrics.md | docs/epics/epic-4-dictionary-history-notes-snippets.md |
-| Epic 5 | Context + Profiles + Adaptive Formatting + Privacy + Retention | docs/stories/5.1-adaptive-transcript-formatting-v1.md, 5.2-context-privacy-and-controls.md, 5.3-context-signals-and-profiles.md, 5.4-context-capture-retention-and-redaction.md | docs/epics/epic-5-context-privacy-retention.md |
+| Epic 5 | Context signals + Privacy + Context-aware Post-process + Retention (adaptive formatting deferred) | docs/stories/5.1-adaptive-transcript-formatting-v1.md (deferred), 5.2-context-privacy-and-controls.md, 5.3-context-signals-and-profiles.md, 5.4-context-capture-retention-and-redaction.md, 5.5-context-aware-post-process.md | docs/epics/epic-5-context-privacy-retention.md |
 | Epic 6 | Long-Form Uploads + Exports | docs/stories/6.1-upload-flow-and-status.md, 6.2-exports-v1.md | docs/epics/epic-6-long-form-uploads-exports.md |
 | Epic 7 | Permissions & Diagnostics | docs/stories/7.2-permissions-and-diagnostics.md | docs/epics/epic-7-permissions-and-diagnostics.md |
 | Epic 8 | Streaming Pipeline | docs/stories/8.1-low-latency-streaming.md, 8.2-streaming-transport-contract-and-reliability.md | docs/epics/epic-8-low-latency-streaming.md |

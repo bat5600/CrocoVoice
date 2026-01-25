@@ -17,6 +17,36 @@ const snippetCancelButton = document.getElementById('snippetCancelButton');
 const snippetAddButton = document.getElementById('snippetAddButton');
 const styleList = document.getElementById('styleList');
 const styleEmpty = document.getElementById('styleEmpty');
+const contextEnabledToggle = document.getElementById('contextEnabledToggle');
+const contextPostProcessToggle = document.getElementById('contextPostProcessToggle');
+const contextSignalApp = document.getElementById('contextSignalApp');
+const contextSignalWindow = document.getElementById('contextSignalWindow');
+const contextSignalUrl = document.getElementById('contextSignalUrl');
+const contextSignalAx = document.getElementById('contextSignalAx');
+const contextSignalTextbox = document.getElementById('contextSignalTextbox');
+const contextSignalScreenshot = document.getElementById('contextSignalScreenshot');
+const contextRetentionInput = document.getElementById('contextRetentionInput');
+const contextRetentionSave = document.getElementById('contextRetentionSave');
+const contextDeleteAll = document.getElementById('contextDeleteAll');
+const contextActiveApp = document.getElementById('contextActiveApp');
+const contextActiveWindow = document.getElementById('contextActiveWindow');
+const contextActiveUrl = document.getElementById('contextActiveUrl');
+const contextOverrideMode = document.getElementById('contextOverrideMode');
+const contextOverrideProfile = document.getElementById('contextOverrideProfile');
+const contextOverrideSignalApp = document.getElementById('contextOverrideSignalApp');
+const contextOverrideSignalWindow = document.getElementById('contextOverrideSignalWindow');
+const contextOverrideSignalUrl = document.getElementById('contextOverrideSignalUrl');
+const contextOverrideSignalAx = document.getElementById('contextOverrideSignalAx');
+const contextOverrideSignalTextbox = document.getElementById('contextOverrideSignalTextbox');
+const contextOverrideSignalScreenshot = document.getElementById('contextOverrideSignalScreenshot');
+const contextSuggestion = document.getElementById('contextSuggestion');
+const contextSuggestionApply = document.getElementById('contextSuggestionApply');
+const contextProfileCreate = document.getElementById('contextProfileCreate');
+const contextProfileList = document.getElementById('contextProfileList');
+const contextPreviewProfile = document.getElementById('contextPreviewProfile');
+const contextPreviewButton = document.getElementById('contextPreviewButton');
+const contextPreviewInput = document.getElementById('contextPreviewInput');
+const contextPreviewOutput = document.getElementById('contextPreviewOutput');
 const authPanel = document.getElementById('authPanel');
 const microphoneSelect = document.getElementById('microphoneSelect');
 const misspellingToggle = document.getElementById('misspellingToggle');
@@ -90,6 +120,9 @@ const onboardingMicStatus = document.getElementById('onboardingMicStatus');
 const onboardingMicContinue = document.getElementById('onboardingMicContinue');
 const onboardingMicrophoneSelect = document.getElementById('onboardingMicrophoneSelect');
 const onboardingMicrophoneApply = document.getElementById('onboardingMicrophoneApply');
+const onboardingHotkeyInput = document.getElementById('onboardingHotkeyInput');
+const onboardingHotkeyNext = document.getElementById('onboardingHotkeyNext');
+const onboardingHotkeyStatus = document.getElementById('onboardingHotkeyStatus');
 const onboardingSandbox = document.getElementById('onboardingSandbox');
 const onboardingDictateButton = document.getElementById('onboardingDictateButton');
 const onboardingFirstRunNext = document.getElementById('onboardingFirstRunNext');
@@ -102,8 +135,18 @@ const onboardingDeliveryStatus = document.getElementById('onboardingDeliveryStat
 const onboardingFinishButton = document.getElementById('onboardingFinishButton');
 const onboardingCheckPermission = document.getElementById('onboardingCheckPermission');
 const onboardingCheckSignal = document.getElementById('onboardingCheckSignal');
+const onboardingCheckHotkey = document.getElementById('onboardingCheckHotkey');
 const onboardingCheckDictation = document.getElementById('onboardingCheckDictation');
 const onboardingCheckDelivery = document.getElementById('onboardingCheckDelivery');
+const uploadAudioButton = document.getElementById('uploadAudioButton');
+const uploadDropzone = document.getElementById('uploadDropzone');
+const uploadQueue = document.getElementById('uploadQueue');
+const diagnosticsRunChecks = document.getElementById('diagnosticsRunChecks');
+const diagnosticsOutput = document.getElementById('diagnosticsOutput');
+const diagnosticsChecks = document.getElementById('diagnosticsChecks');
+const diagnosticsCopy = document.getElementById('diagnosticsCopy');
+const diffBefore = document.getElementById('diffBefore');
+const diffAfter = document.getElementById('diffAfter');
 
 let currentSettings = {};
 let dashboardData = null;
@@ -123,14 +166,34 @@ let searchDebounceId = null;
 let quotaSnapshot = null;
 let currentSubscription = null;
 let currentAuth = null;
-let onboardingState = { step: 'welcome', completed: false, firstRunSuccess: false, updatedAt: null };
+let onboardingState = { step: 'welcome', completed: false, firstRunSuccess: false, hotkeyReady: false, updatedAt: null };
 let onboardingSessionDismissed = false;
 let onboardingMicReady = false;
 let onboardingPermissionGranted = false;
 let onboardingMicLevel = 0;
+let diagnosticsSnapshot = null;
+let diagnosticsChecksState = null;
+let diffData = { before: '', after: '' };
+
+const DEFAULT_CONTEXT_SETTINGS = {
+  enabled: true,
+  postProcessEnabled: false,
+  retentionDays: 30,
+  signals: {
+    app: true,
+    window: true,
+    url: true,
+    ax: false,
+    textbox: false,
+    screenshot: false,
+  },
+  overrides: {},
+};
 let onboardingMicLastActiveAt = 0;
 let onboardingRecordingActive = false;
 let onboardingDeliveryReady = false;
+let onboardingShortcutCaptureActive = false;
+let onboardingShortcutBeforeCapture = '';
 let micDeviceCount = 0;
 let onboardingMicIgnoreUntil = 0;
 const UPGRADE_NUDGE_THRESHOLD = 500;
@@ -154,10 +217,10 @@ const STYLE_EXAMPLES = {
   },
 };
 const STYLE_DESCRIPTIONS = {
-  Default: 'Style par défaut, neutre et clair.',
-  Casual: 'Ton décontracté, idéal pour les réseaux.',
-  Formel: 'Langage soutenu et professionnel.',
-  Croco: 'Ton direct avec des métaphores audacieuses.',
+  Default: 'Correction et mise en forme sans reformulation.',
+  Casual: 'Reecriture legere, ton simple et naturel.',
+  Formel: 'Reecriture legere, ton professionnel et structure.',
+  Croco: 'Reecriture libre avec une metaphore courte.',
 };
 const STYLE_LABELS = {
   Default: 'Standard',
@@ -171,7 +234,7 @@ const SUBSCRIPTION_POLL_COOLDOWN_MS = 60000;
 let subscriptionPollInFlight = false;
 let subscriptionPollToken = 0;
 let lastSubscriptionPollAt = 0;
-const ONBOARDING_STEPS = ['welcome', 'permissions', 'mic_check', 'first_dictation', 'delivery_check', 'done'];
+const ONBOARDING_STEPS = ['welcome', 'permissions', 'mic_check', 'hotkey', 'first_dictation', 'delivery_check', 'done'];
 const MIC_NOISE_FLOOR = 0.012;
 const MIC_READY_THRESHOLD = 0.018;
 const MIC_READY_HOLD_MS = 500;
@@ -232,6 +295,7 @@ function normalizeOnboardingState(settings) {
     step,
     completed: Boolean(onboarding.completed),
     firstRunSuccess: Boolean(onboarding.firstRunSuccess),
+    hotkeyReady: Boolean(onboarding.hotkeyReady),
     updatedAt: onboarding.updatedAt || null,
   };
 }
@@ -293,6 +357,7 @@ function updateOnboardingPanels() {
 function updateOnboardingChecklist() {
   setOnboardingChecklistState(onboardingCheckPermission, onboardingPermissionGranted);
   setOnboardingChecklistState(onboardingCheckSignal, onboardingMicReady);
+  setOnboardingChecklistState(onboardingCheckHotkey, onboardingState?.hotkeyReady);
   setOnboardingChecklistState(onboardingCheckDictation, onboardingState?.firstRunSuccess);
   setOnboardingChecklistState(onboardingCheckDelivery, onboardingDeliveryReady);
 }
@@ -311,6 +376,9 @@ function updateOnboardingUI() {
   if (onboardingMicContinue) {
     onboardingMicContinue.disabled = !onboardingMicReady;
   }
+  if (onboardingHotkeyNext) {
+    onboardingHotkeyNext.disabled = !onboardingState?.hotkeyReady;
+  }
   if (onboardingFirstRunNext) {
     onboardingFirstRunNext.disabled = !onboardingState?.firstRunSuccess;
   }
@@ -327,6 +395,16 @@ function updateOnboardingUI() {
     setOnboardingStatus(onboardingMicStatus, 'Aucun micro détecté. Vérifiez votre matériel.', 'error');
     if (onboardingMicContinue) {
       onboardingMicContinue.disabled = true;
+    }
+  }
+  if (onboardingState.step === 'hotkey') {
+    if (onboardingHotkeyInput && !onboardingShortcutCaptureActive) {
+      onboardingHotkeyInput.value = currentSettings.shortcut || '';
+    }
+    if (!onboardingState.hotkeyReady) {
+      setOnboardingStatus(onboardingHotkeyStatus, 'Définissez un raccourci clavier pour lancer la dictée.');
+    } else {
+      setOnboardingStatus(onboardingHotkeyStatus, 'Raccourci configuré.', 'success');
     }
   }
 
@@ -348,6 +426,7 @@ function applyOnboardingStateFromSettings(settings) {
     onboardingPermissionGranted = false;
     onboardingMicLastActiveAt = 0;
     onboardingDeliveryReady = false;
+    onboardingState.hotkeyReady = false;
     onboardingMicIgnoreUntil = 0;
   }
   updateOnboardingUI();
@@ -485,7 +564,12 @@ async function triggerCheckout(button) {
   if (!auth) {
     showToast('Connectez-vous pour passer PRO.', 'error');
     if (window.electronAPI?.openSignupUrl) {
-      await window.electronAPI.openSignupUrl('login');
+      setButtonLoading(button, true, 'Ouverture...');
+      const result = await window.electronAPI.openSignupUrl('login');
+      if (result?.ok === false) {
+        showToast('Ouverture impossible.', 'error');
+      }
+      setButtonLoading(button, false);
     }
     return;
   }
@@ -523,7 +607,16 @@ function openModal({ title, fields, confirmText }) {
     label.textContent = field.label;
 
     let input;
-    if (field.multiline) {
+    if (field.type === 'select') {
+      input = document.createElement('select');
+      input.className = 'input-select';
+      (field.options || []).forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        input.appendChild(opt);
+      });
+    } else if (field.multiline) {
       input = document.createElement('textarea');
       input.rows = 4;
       input.className = 'input-textarea';
@@ -582,8 +675,11 @@ function updateBreadcrumb(viewName) {
     'note-focus': { primary: 'Notes', secondary: 'Focus' },
     dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
     snippets: { primary: 'Snippets', secondary: 'Templates' },
+    context: { primary: 'Context', secondary: 'Privacy' },
     style: { primary: 'Styles', secondary: 'Persona' },
     settings: { primary: 'Réglages', secondary: 'Général' },
+    diagnostics: { primary: 'Diagnostics', secondary: 'Etat' },
+    diff: { primary: 'Polish', secondary: 'Avant / Après' },
     account: { primary: 'Profil', secondary: 'Facturation' },
   };
 
@@ -593,7 +689,7 @@ function updateBreadcrumb(viewName) {
 }
 
 function setActiveView(viewName) {
-  const supportedViews = new Set(['home', 'notes', 'note-focus', 'dictionary', 'snippets', 'style', 'settings', 'account']);
+  const supportedViews = new Set(['home', 'notes', 'note-focus', 'dictionary', 'snippets', 'context', 'style', 'settings', 'diagnostics', 'diff', 'account']);
   const nextView = supportedViews.has(viewName) ? viewName : 'home';
   views.forEach((view) => {
     view.classList.toggle('active', view.id === `view-${nextView}`);
@@ -634,6 +730,17 @@ function formatDuration(ms) {
   return `${minutes}m ${seconds}s`;
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) {
+    return '';
+  }
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+  return `${mb.toFixed(1)} MB`;
+}
+
 function deriveHistoryTitle(entry) {
   const text = (entry && (entry.text || entry.raw_text)) || '';
   const firstLine = text.split(/\r?\n/).find((line) => line && line.trim()) || '';
@@ -655,6 +762,41 @@ function normalizeSnippetCue(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[\s\p{P}]+$/gu, '');
+}
+
+function normalizeContextSettings(value) {
+  if (!value || typeof value !== 'object') {
+    return { ...DEFAULT_CONTEXT_SETTINGS };
+  }
+  return {
+    enabled: value.enabled !== false,
+    postProcessEnabled: value.postProcessEnabled === true,
+    retentionDays: Number.isFinite(value.retentionDays) ? value.retentionDays : DEFAULT_CONTEXT_SETTINGS.retentionDays,
+    signals: { ...DEFAULT_CONTEXT_SETTINGS.signals, ...(value.signals || {}) },
+    overrides: value.overrides && typeof value.overrides === 'object' ? value.overrides : {},
+  };
+}
+
+function getContextSettingsLocal() {
+  return normalizeContextSettings(currentSettings.context);
+}
+
+function getContextProfilesLocal() {
+  return Array.isArray(currentSettings.contextProfiles) ? currentSettings.contextProfiles : [];
+}
+
+async function saveContextSettings(nextContext) {
+  currentSettings = { ...currentSettings, context: nextContext };
+  if (window.electronAPI?.saveSettings) {
+    await window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
+  }
+}
+
+async function saveContextProfiles(nextProfiles) {
+  currentSettings = { ...currentSettings, contextProfiles: nextProfiles };
+  if (window.electronAPI?.saveSettings) {
+    await window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
+  }
 }
 
 function filterEntries(entries, query) {
@@ -1466,7 +1608,9 @@ function openFocusedNote(note = null) {
   focusedNoteSaving = false;
 
   const metadata = normalizeNoteMetadata(note?.metadata);
-  const source = metadata.source === 'dictation' ? 'Dictée' : metadata.source ? 'Manuel' : '';
+  const source = metadata.source === 'dictation'
+    ? 'Dictée'
+    : (metadata.source === 'file_upload' ? 'Import audio' : (metadata.source ? 'Manuel' : ''));
   if (noteFocusSource) {
     noteFocusSource.textContent = source ? `Source: ${source}` : '';
   }
@@ -1608,6 +1752,18 @@ function buildEntryRow(entry, type) {
   });
 
   actions.appendChild(copyBtn);
+  if (type !== 'notes') {
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'entry-action';
+    exportBtn.type = 'button';
+    exportBtn.textContent = 'Exporter';
+    exportBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await exportHistoryEntry(entry);
+    });
+    actions.appendChild(exportBtn);
+  }
   actions.appendChild(deleteBtn);
 
   row.appendChild(icon);
@@ -1615,6 +1771,64 @@ function buildEntryRow(entry, type) {
   row.appendChild(actions);
 
   return row;
+}
+
+async function exportHistoryEntry(entry) {
+  if (!window.electronAPI?.exportHistory || !entry?.id) {
+    showToast('Export indisponible.', 'error');
+    return;
+  }
+  const values = await openModal({
+    title: 'Exporter la transcription',
+    confirmText: 'Exporter',
+    fields: [
+      {
+        key: 'format',
+        label: 'Format',
+        type: 'select',
+        options: [
+          { label: 'TXT', value: 'txt' },
+          { label: 'Markdown', value: 'md' },
+          { label: 'JSON', value: 'json' },
+        ],
+        value: 'txt',
+      },
+      {
+        key: 'timestamps',
+        label: 'Timestamps',
+        type: 'select',
+        options: [
+          { label: 'Sans', value: 'false' },
+          { label: 'Avec', value: 'true' },
+        ],
+        value: 'false',
+      },
+      {
+        key: 'sensitive',
+        label: 'Inclure données sensibles',
+        type: 'select',
+        options: [
+          { label: 'Non', value: 'false' },
+          { label: 'Oui', value: 'true' },
+        ],
+        value: 'false',
+      },
+    ],
+  });
+  if (!values) {
+    return;
+  }
+  const options = {
+    format: values.format || 'txt',
+    includeTimestamps: values.timestamps === 'true',
+    includeSensitive: values.sensitive === 'true',
+  };
+  const result = await window.electronAPI.exportHistory(entry.id, options);
+  if (result?.ok) {
+    showToast('Export généré.');
+  } else {
+    showToast(result?.reason || 'Export échoué.', 'error');
+  }
 }
 
 function renderHistoryList() {
@@ -1635,6 +1849,172 @@ function renderHistoryList() {
   filtered.forEach((entry) => {
     historyList.appendChild(buildEntryRow(entry, 'history'));
   });
+}
+
+function renderUploads(uploads) {
+  if (!uploadQueue) {
+    return;
+  }
+  const items = Array.isArray(uploads) ? uploads : [];
+  if (!items.length) {
+    uploadQueue.innerHTML = '';
+    return;
+  }
+  uploadQueue.innerHTML = '';
+  items.forEach((job) => {
+    const row = document.createElement('div');
+    row.className = 'upload-row';
+
+    const meta = document.createElement('div');
+    meta.className = 'upload-meta';
+    const title = document.createElement('div');
+    title.className = 'upload-title';
+    title.textContent = job.fileName || 'Fichier audio';
+    const status = document.createElement('div');
+    status.className = 'upload-status';
+    const sizeLabel = job.fileSize ? ` · ${formatBytes(job.fileSize)}` : '';
+    status.textContent = `${job.status || 'queued'}${sizeLabel}`;
+    meta.appendChild(title);
+    meta.appendChild(status);
+
+    const progress = document.createElement('div');
+    progress.className = 'upload-progress';
+    const fill = document.createElement('div');
+    fill.className = 'upload-progress-fill';
+    fill.style.width = `${Math.min(100, Math.max(0, job.progress || 0))}%`;
+    progress.appendChild(fill);
+    meta.appendChild(progress);
+
+    const actions = document.createElement('div');
+    if (['queued', 'processing', 'cancelling'].includes(job.status)) {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn-secondary';
+      cancel.textContent = 'Annuler';
+      cancel.addEventListener('click', async () => {
+        if (window.electronAPI?.cancelUploadJob) {
+          await window.electronAPI.cancelUploadJob(job.id);
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(cancel);
+    }
+    if (job.status === 'failed' && job.error) {
+      const err = document.createElement('div');
+      err.className = 'upload-status';
+      err.textContent = job.error;
+      meta.appendChild(err);
+    }
+
+    row.appendChild(meta);
+    if (actions.childNodes.length) {
+      row.appendChild(actions);
+    }
+    uploadQueue.appendChild(row);
+  });
+}
+
+async function fetchDiagnostics() {
+  if (!window.electronAPI?.getDiagnostics) {
+    return;
+  }
+  try {
+    diagnosticsSnapshot = await window.electronAPI.getDiagnostics();
+    renderDiagnostics();
+  } catch (error) {
+    diagnosticsSnapshot = { error: error?.message || 'Diagnostic indisponible.' };
+    renderDiagnostics();
+  }
+}
+
+async function runDiagnosticsChecks() {
+  const checks = {};
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    checks.mics = devices.filter((device) => device.kind === 'audioinput').length;
+  } catch (error) {
+    checks.mics = 'error';
+  }
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const result = await navigator.permissions.query({ name: 'microphone' });
+      checks.micPermission = result?.state || 'unknown';
+    } else {
+      checks.micPermission = 'unknown';
+    }
+  } catch {
+    checks.micPermission = 'unknown';
+  }
+  diagnosticsChecksState = checks;
+  if (window.electronAPI?.runDiagnosticsChecks) {
+    try {
+      const res = await window.electronAPI.runDiagnosticsChecks();
+      if (res?.clipboardTest) {
+        if (!diagnosticsSnapshot) {
+          diagnosticsSnapshot = {};
+        }
+        diagnosticsSnapshot = { ...(diagnosticsSnapshot || {}), clipboardTest: res.clipboardTest };
+      }
+    } catch (error) {
+      // ignore
+    }
+  }
+  renderDiagnostics();
+}
+
+function renderDiagnostics() {
+  if (!diagnosticsOutput || !diagnosticsChecks) {
+    return;
+  }
+  const snapshot = diagnosticsSnapshot || {};
+  const checks = diagnosticsChecksState || {};
+  const lines = [];
+  if (snapshot.error) {
+    lines.push(`Erreur: ${snapshot.error}`);
+  }
+  if (snapshot.appVersion) {
+    lines.push(`App: ${snapshot.appVersion}`);
+  }
+  if (snapshot.os) {
+    lines.push(`OS: ${snapshot.os}`);
+  }
+  if (snapshot.flags) {
+    lines.push(`Flags: ${JSON.stringify(snapshot.flags)}`);
+  }
+  if (snapshot.lastDelivery) {
+    lines.push(`Delivery: ${snapshot.lastDelivery.mode || 'n/a'} (${snapshot.lastDelivery.status || 'n/a'})`);
+  }
+  if (snapshot.events && snapshot.events.length) {
+    lines.push('Events:');
+    snapshot.events.slice(0, 10).forEach((event) => {
+      lines.push(`- ${event.at} ${event.code}: ${event.message}`);
+    });
+  }
+  diagnosticsOutput.textContent = lines.join('\n') || 'Aucune donnée disponible.';
+
+  const checkLines = [];
+  if (checks.mics !== undefined) {
+    checkLines.push(`Microphones: ${checks.mics}`);
+  }
+  if (checks.micPermission) {
+    checkLines.push(`Permission micro: ${checks.micPermission}`);
+  }
+  if (snapshot.clipboardTest) {
+    checkLines.push(`Clipboard test: ${snapshot.clipboardTest}`);
+  }
+  if (snapshot.shortcut) {
+    checkLines.push(`Raccourci: ${snapshot.shortcut} (${snapshot.shortcutRegistered ? 'OK' : 'KO'})`);
+  }
+  diagnosticsChecks.textContent = checkLines.join(' · ') || 'Checks non lancés.';
+}
+
+function renderDiff() {
+  if (diffBefore) {
+    diffBefore.value = diffData.before || '';
+  }
+  if (diffAfter) {
+    diffAfter.value = diffData.after || '';
+  }
 }
 
 function renderNotesList() {
@@ -1665,6 +2045,17 @@ function refreshActiveList() {
   if (currentView === 'snippets') {
     const filtered = filterSnippets(snippetsData, searchTerm);
     renderSnippets(filtered);
+    return;
+  }
+  if (currentView === 'diagnostics') {
+    renderDiagnostics();
+    if (!diagnosticsSnapshot) {
+      fetchDiagnostics();
+    }
+    return;
+  }
+  if (currentView === 'diff') {
+    renderDiff();
     return;
   }
   renderHistoryList();
@@ -2134,10 +2525,255 @@ function renderStyles(styles) {
   });
 }
 
+function renderContextProfiles(profiles, contextData) {
+  if (!contextProfileList) {
+    return;
+  }
+  contextProfileList.innerHTML = '';
+  if (!profiles || profiles.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.padding = '16px';
+    empty.style.color = 'var(--text-muted)';
+    empty.textContent = 'Aucun profil pour le moment.';
+    contextProfileList.appendChild(empty);
+    return;
+  }
+  profiles.forEach((profile) => {
+    const row = document.createElement('div');
+    row.className = 'context-profile-row';
+    const content = document.createElement('div');
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.textContent = profile.name || 'Profil';
+    const meta = document.createElement('div');
+    meta.className = 'context-profile-meta';
+    const match = profile.match || {};
+    const details = [
+      match.appName ? `App: ${match.appName}` : null,
+      match.windowTitle ? `Fenêtre: ${match.windowTitle}` : null,
+      match.urlDomain ? `URL: ${match.urlDomain}` : null,
+      profile.tone ? `Tone: ${profile.tone}` : null,
+    ].filter(Boolean).join(' · ');
+    meta.textContent = details || 'Aucune règle de match';
+    content.appendChild(title);
+    content.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'context-profile-actions';
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn-secondary';
+    editBtn.textContent = 'Éditer';
+    editBtn.addEventListener('click', async () => {
+      const res = await openModal({
+        title: 'Éditer un profil',
+        confirmText: 'Mettre à jour',
+        fields: [
+          { key: 'name', label: 'Nom', value: profile.name || '' },
+          { key: 'appName', label: 'Match App (contient)', value: match.appName || '' },
+          { key: 'windowTitle', label: 'Match Fenêtre (contient)', value: match.windowTitle || '' },
+          { key: 'urlDomain', label: 'Match URL (contient)', value: match.urlDomain || '' },
+          {
+            key: 'tone',
+            label: 'Tone',
+            type: 'select',
+            value: profile.tone || 'default',
+            options: [
+              { value: 'default', label: 'Default' },
+              { value: 'concise', label: 'Concise' },
+              { value: 'conversational', label: 'Conversational' },
+            ],
+          },
+          {
+            key: 'lineBreaks',
+            label: 'Line breaks',
+            type: 'select',
+            value: profile.formatting?.lineBreaks || 'auto',
+            options: [
+              { value: 'auto', label: 'Auto' },
+              { value: 'single', label: 'Single' },
+              { value: 'double', label: 'Double' },
+            ],
+          },
+          {
+            key: 'punctuation',
+            label: 'Punctuation',
+            type: 'select',
+            value: profile.formatting?.punctuation || 'minimal',
+            options: [
+              { value: 'minimal', label: 'Minimal' },
+              { value: 'standard', label: 'Standard' },
+            ],
+          },
+        ],
+      });
+      if (!res || !res.name) {
+        return;
+      }
+      const nextProfiles = profiles.map((item) => (item.id === profile.id ? {
+        ...item,
+        name: res.name,
+        match: {
+          appName: res.appName || '',
+          windowTitle: res.windowTitle || '',
+          urlDomain: res.urlDomain || '',
+        },
+        tone: res.tone || 'default',
+        formatting: {
+          lineBreaks: res.lineBreaks || 'auto',
+          punctuation: res.punctuation || 'minimal',
+        },
+      } : item));
+      await saveContextProfiles(nextProfiles);
+      renderContext(contextData);
+      showToast('Profil mis à jour.');
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn-secondary';
+    deleteBtn.textContent = 'Supprimer';
+    deleteBtn.addEventListener('click', async () => {
+      const nextProfiles = profiles.filter((item) => item.id !== profile.id);
+      await saveContextProfiles(nextProfiles);
+      renderContext(contextData);
+      showToast('Profil supprimé.');
+    });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+    row.appendChild(content);
+    row.appendChild(actions);
+    contextProfileList.appendChild(row);
+  });
+}
+
+function renderContext(contextData) {
+  const contextSettings = getContextSettingsLocal();
+  const profiles = getContextProfilesLocal();
+
+  if (contextEnabledToggle) {
+    contextEnabledToggle.checked = contextSettings.enabled;
+  }
+  if (contextPostProcessToggle) {
+    contextPostProcessToggle.checked = contextSettings.postProcessEnabled;
+  }
+  const signalMap = {
+    app: contextSignalApp,
+    window: contextSignalWindow,
+    url: contextSignalUrl,
+    ax: contextSignalAx,
+    textbox: contextSignalTextbox,
+    screenshot: contextSignalScreenshot,
+  };
+  Object.entries(signalMap).forEach(([key, el]) => {
+    if (el) {
+      el.checked = Boolean(contextSettings.signals[key]);
+    }
+  });
+  if (contextRetentionInput) {
+    contextRetentionInput.value = `${contextSettings.retentionDays || 30}`;
+  }
+
+  if (contextActiveApp) {
+    contextActiveApp.textContent = contextData?.base?.appName || 'Inconnue';
+  }
+  if (contextActiveWindow) {
+    contextActiveWindow.textContent = contextData?.base?.windowTitle || 'Inconnue';
+  }
+  if (contextActiveUrl) {
+    contextActiveUrl.textContent = contextData?.base?.url || 'Non disponible';
+  }
+
+  const contextId = contextData?.contextId || '';
+  const override = contextSettings.overrides?.[contextId] || {};
+  const effectiveSignals = {
+    ...contextSettings.signals,
+    ...(override.signals || {}),
+  };
+  if (contextOverrideMode) {
+    contextOverrideMode.value = override.mode || 'inherit';
+    contextOverrideMode.disabled = !contextId;
+  }
+
+  if (contextOverrideProfile) {
+    contextOverrideProfile.innerHTML = '<option value="">Profil…</option>';
+    profiles.forEach((profile) => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name || 'Profil';
+      contextOverrideProfile.appendChild(option);
+    });
+    if (override.profileId) {
+      contextOverrideProfile.value = override.profileId;
+    }
+    const overrideActive = (override.mode || 'inherit') === 'on';
+    contextOverrideProfile.disabled = !overrideActive || !contextId;
+    const overrideSignalMap = {
+      app: contextOverrideSignalApp,
+      window: contextOverrideSignalWindow,
+      url: contextOverrideSignalUrl,
+      ax: contextOverrideSignalAx,
+      textbox: contextOverrideSignalTextbox,
+      screenshot: contextOverrideSignalScreenshot,
+    };
+    Object.entries(overrideSignalMap).forEach(([key, el]) => {
+      if (!el) {
+        return;
+      }
+      el.checked = Boolean(effectiveSignals[key]);
+      el.disabled = !overrideActive || !contextId;
+    });
+  }
+
+  if (contextSuggestion) {
+    const suggestionProfile = profiles.find((profile) => profile.id === contextData?.suggestionId);
+    contextSuggestion.textContent = suggestionProfile ? suggestionProfile.name : '—';
+    if (contextSuggestionApply) {
+      contextSuggestionApply.disabled = !suggestionProfile;
+    }
+  }
+
+  if (contextPreviewProfile) {
+    contextPreviewProfile.innerHTML = '<option value="">Choisir un profil</option>';
+    profiles.forEach((profile) => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name || 'Profil';
+      contextPreviewProfile.appendChild(option);
+    });
+  }
+
+  renderContextProfiles(profiles, contextData);
+}
+
+async function updateContextOverride(contextId, mode, profileId, signalsOverride) {
+  if (!contextId) {
+    return;
+  }
+  const contextSettings = getContextSettingsLocal();
+  const overrides = { ...(contextSettings.overrides || {}) };
+  overrides[contextId] = {
+    mode: mode || 'inherit',
+    profileId: profileId || '',
+    signals: signalsOverride || overrides[contextId]?.signals || {},
+  };
+  await saveContextSettings({ ...contextSettings, overrides });
+  await refreshDashboard();
+}
+
 function renderSettings(settings) {
   settingsInputs.forEach((input) => {
     const key = input.dataset.setting;
-    if (!key || typeof settings[key] === 'undefined') {
+    if (!key) {
+      return;
+    }
+    if (key.startsWith('featureFlags.')) {
+      const flag = key.split('.')[1];
+      input.value = settings.featureFlags?.[flag] ? 'true' : 'false';
+      return;
+    }
+    if (typeof settings[key] === 'undefined') {
       return;
     }
     if (key === 'postProcessEnabled' || key === 'metricsEnabled') {
@@ -2214,7 +2850,12 @@ function renderAuth(auth, syncReady) {
   authLoginButton.textContent = 'Se connecter';
   authLoginButton.addEventListener('click', async () => {
     if (window.electronAPI?.openSignupUrl) {
-      await window.electronAPI.openSignupUrl('login');
+      setButtonLoading(authLoginButton, true, 'Ouverture...');
+      const result = await window.electronAPI.openSignupUrl('login');
+      if (result?.ok === false) {
+        showToast('Ouverture impossible.', 'error');
+      }
+      setButtonLoading(authLoginButton, false);
     }
   });
   const authSignupButton = document.createElement('button');
@@ -2224,7 +2865,12 @@ function renderAuth(auth, syncReady) {
   authSignupButton.textContent = 'Créer compte';
   authSignupButton.addEventListener('click', async () => {
     if (window.electronAPI?.openSignupUrl) {
-      await window.electronAPI.openSignupUrl('signup');
+      setButtonLoading(authSignupButton, true, 'Ouverture...');
+      const result = await window.electronAPI.openSignupUrl('signup');
+      if (result?.ok === false) {
+        showToast('Ouverture impossible.', 'error');
+      }
+      setButtonLoading(authSignupButton, false);
     }
   });
   actions.appendChild(authLoginButton);
@@ -2355,15 +3001,37 @@ function handleSettingChange(event) {
     return;
   }
 
-  let value = event.target.value;
+  let value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
   if (setting === 'postProcessEnabled') {
     value = value === 'true';
   }
   if (setting === 'metricsEnabled') {
     value = value === 'true';
   }
+  if (setting === 'uploadCloudFallback') {
+    value = value === 'true';
+  }
+  if (setting === 'streamChunkMs') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.streamChunkMs || 900;
+  }
+  if (setting === 'streamSampleRate') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.streamSampleRate || 16000;
+  }
+  if (setting === 'uploadMaxMb') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.uploadMaxMb || 200;
+  }
 
-  currentSettings = { ...currentSettings, [setting]: value };
+  if (setting.startsWith('featureFlags.')) {
+    const flag = setting.split('.')[1];
+    const flags = { ...(currentSettings.featureFlags || {}) };
+    flags[flag] = value === true || value === 'true';
+    currentSettings = { ...currentSettings, featureFlags: flags };
+  } else {
+    currentSettings = { ...currentSettings, [setting]: value };
+  }
   if (window.electronAPI?.saveSettings) {
     window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
   }
@@ -2464,6 +3132,13 @@ function setShortcutCaptureState(active) {
   }
 }
 
+function setOnboardingHotkeyCaptureState(active) {
+  onboardingShortcutCaptureActive = Boolean(active);
+  if (onboardingHotkeyInput) {
+    onboardingHotkeyInput.classList.toggle('is-capturing', onboardingShortcutCaptureActive);
+  }
+}
+
 async function saveShortcut(shortcut) {
   if (!window.electronAPI?.saveSettings) {
     return;
@@ -2520,6 +3195,8 @@ async function refreshDashboard() {
   renderSnippets(snippetsData);
   renderStyles(dashboardData.styles);
   renderSettings(currentSettings);
+  renderContext(dashboardData.context);
+  renderUploads(dashboardData.uploads);
   applyOnboardingStateFromSettings(currentSettings);
   renderAuth(dashboardData.auth, dashboardData.syncReady);
   renderSubscription(dashboardData.subscription, dashboardData.auth);
@@ -2643,6 +3320,57 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (onboardingMicContinue) {
     onboardingMicContinue.addEventListener('click', () => {
+      setOnboardingStep('hotkey');
+    });
+  }
+
+  if (onboardingHotkeyInput) {
+    onboardingHotkeyInput.addEventListener('focus', () => {
+      onboardingShortcutBeforeCapture = onboardingHotkeyInput.value || currentSettings.shortcut || '';
+      onboardingHotkeyInput.value = 'Appuyez sur les touches...';
+      setOnboardingHotkeyCaptureState(true);
+    });
+    onboardingHotkeyInput.addEventListener('blur', () => {
+      if (!onboardingShortcutCaptureActive) {
+        onboardingHotkeyInput.value = currentSettings.shortcut || onboardingShortcutBeforeCapture || '';
+        return;
+      }
+      setOnboardingHotkeyCaptureState(false);
+      onboardingHotkeyInput.value = currentSettings.shortcut || onboardingShortcutBeforeCapture || '';
+    });
+    onboardingHotkeyInput.addEventListener('keydown', async (event) => {
+      if (!onboardingShortcutCaptureActive) {
+        return;
+      }
+      event.preventDefault();
+      if (event.key === 'Escape') {
+        onboardingHotkeyInput.value = onboardingShortcutBeforeCapture || currentSettings.shortcut || '';
+        onboardingHotkeyInput.blur();
+        return;
+      }
+      const accelerator = buildAcceleratorFromEvent(event);
+      if (!accelerator) {
+        setOnboardingStatus(onboardingHotkeyStatus, 'Utilisez une combinaison (Ctrl/Alt/Shift + touche).', 'error');
+        return;
+      }
+      onboardingHotkeyInput.value = accelerator;
+      onboardingHotkeyInput.blur();
+      await saveShortcut(accelerator);
+      const ok = currentSettings.shortcut === accelerator;
+      onboardingState = { ...onboardingState, hotkeyReady: ok };
+      await persistOnboardingState({ hotkeyReady: ok });
+      if (ok) {
+        setOnboardingStatus(onboardingHotkeyStatus, 'Raccourci enregistré.', 'success');
+      } else {
+        setOnboardingStatus(onboardingHotkeyStatus, 'Raccourci invalide. Essayez une autre combinaison.', 'error');
+      }
+      updateOnboardingChecklist();
+      updateOnboardingUI();
+    });
+  }
+
+  if (onboardingHotkeyNext) {
+    onboardingHotkeyNext.addEventListener('click', () => {
       setOnboardingStep('first_dictation');
     });
   }
@@ -2744,9 +3472,90 @@ window.addEventListener('DOMContentLoaded', () => {
         step: 'welcome',
         completed: false,
         firstRunSuccess: false,
+        hotkeyReady: false,
       });
       setActiveView('home');
       updateOnboardingUI();
+    });
+  }
+
+  if (uploadAudioButton) {
+    uploadAudioButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.selectUploadFile) {
+        showToast('Import indisponible.', 'error');
+        return;
+      }
+      const result = await window.electronAPI.selectUploadFile();
+      if (!result?.ok) {
+        if (result?.reason && result.reason !== 'canceled') {
+          showToast(result.reason, 'error');
+        }
+        return;
+      }
+      showToast('Fichier ajouté.');
+      await refreshDashboard();
+    });
+  }
+
+  if (uploadDropzone) {
+    const clearDropActive = () => uploadDropzone.classList.remove('is-dragover');
+    uploadDropzone.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      uploadDropzone.classList.add('is-dragover');
+    });
+    uploadDropzone.addEventListener('dragleave', () => {
+      clearDropActive();
+    });
+    uploadDropzone.addEventListener('drop', async (event) => {
+      event.preventDefault();
+      clearDropActive();
+      const file = event.dataTransfer?.files?.[0];
+      if (!file) {
+        return;
+      }
+      if (!window.electronAPI?.addUploadFile) {
+        showToast('Import indisponible.', 'error');
+        return;
+      }
+      const result = await window.electronAPI.addUploadFile(file.path);
+      if (!result?.ok) {
+        if (result?.reason) {
+          showToast(result.reason, 'error');
+        }
+        return;
+      }
+      showToast('Fichier ajouté.');
+      await refreshDashboard();
+    });
+    uploadDropzone.addEventListener('click', (event) => {
+      if (uploadAudioButton && uploadAudioButton.contains(event.target)) {
+        return;
+      }
+      if (uploadAudioButton) {
+        uploadAudioButton.click();
+      }
+    });
+  }
+
+  if (diagnosticsRunChecks) {
+    diagnosticsRunChecks.addEventListener('click', async () => {
+      await runDiagnosticsChecks();
+    });
+  }
+
+  if (diagnosticsCopy) {
+    diagnosticsCopy.addEventListener('click', async () => {
+      const text = diagnosticsOutput?.textContent || '';
+      if (!text) {
+        showToast('Aucun diagnostic à copier.', 'error');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Diagnostics copiés.');
+      } catch (error) {
+        showToast('Impossible de copier.', 'error');
+      }
     });
   }
 
@@ -2833,7 +3642,12 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!auth) {
         showToast('Connectez-vous pour gérer l’abonnement.', 'error');
         if (window.electronAPI?.openSignupUrl) {
-          await window.electronAPI.openSignupUrl('login');
+          setButtonLoading(manageSubscriptionButton, true, 'Ouverture...');
+          const result = await window.electronAPI.openSignupUrl('login');
+          if (result?.ok === false) {
+            showToast('Ouverture impossible.', 'error');
+          }
+          setButtonLoading(manageSubscriptionButton, false);
         }
         return;
       }
@@ -3072,6 +3886,201 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (contextEnabledToggle) {
+    contextEnabledToggle.addEventListener('change', async () => {
+      const contextSettings = getContextSettingsLocal();
+      await saveContextSettings({ ...contextSettings, enabled: contextEnabledToggle.checked });
+      await refreshDashboard();
+    });
+  }
+  if (contextPostProcessToggle) {
+    contextPostProcessToggle.addEventListener('change', async () => {
+      const contextSettings = getContextSettingsLocal();
+      await saveContextSettings({ ...contextSettings, postProcessEnabled: contextPostProcessToggle.checked });
+    });
+  }
+
+  const contextSignalMap = [
+    ['app', contextSignalApp],
+    ['window', contextSignalWindow],
+    ['url', contextSignalUrl],
+    ['ax', contextSignalAx],
+    ['textbox', contextSignalTextbox],
+    ['screenshot', contextSignalScreenshot],
+  ];
+  contextSignalMap.forEach(([key, el]) => {
+    if (!el) {
+      return;
+    }
+    el.addEventListener('change', async () => {
+      const contextSettings = getContextSettingsLocal();
+      const nextSignals = { ...(contextSettings.signals || {}), [key]: el.checked };
+      await saveContextSettings({ ...contextSettings, signals: nextSignals });
+      await refreshDashboard();
+    });
+  });
+
+  if (contextRetentionSave) {
+    contextRetentionSave.addEventListener('click', async () => {
+      const value = Number.parseInt(contextRetentionInput?.value || '30', 10);
+      if (!Number.isFinite(value) || value <= 0) {
+        showToast('Durée invalide.', 'error');
+        return;
+      }
+      const contextSettings = getContextSettingsLocal();
+      await saveContextSettings({ ...contextSettings, retentionDays: value });
+      showToast('Rétention mise à jour.');
+    });
+  }
+
+  if (contextDeleteAll) {
+    contextDeleteAll.addEventListener('click', async () => {
+      if (!window.electronAPI?.clearContext) {
+        return;
+      }
+      await window.electronAPI.clearContext();
+      showToast('Contexte supprimé.');
+    });
+  }
+
+  if (contextOverrideMode) {
+    contextOverrideMode.addEventListener('change', async () => {
+      const contextId = dashboardData?.context?.contextId || '';
+      await updateContextOverride(contextId, contextOverrideMode.value, contextOverrideProfile?.value || '');
+    });
+  }
+
+  if (contextOverrideProfile) {
+    contextOverrideProfile.addEventListener('change', async () => {
+      const contextId = dashboardData?.context?.contextId || '';
+      await updateContextOverride(contextId, contextOverrideMode?.value || 'inherit', contextOverrideProfile.value || '');
+    });
+  }
+
+  const overrideSignalElements = [
+    ['app', contextOverrideSignalApp],
+    ['window', contextOverrideSignalWindow],
+    ['url', contextOverrideSignalUrl],
+    ['ax', contextOverrideSignalAx],
+    ['textbox', contextOverrideSignalTextbox],
+    ['screenshot', contextOverrideSignalScreenshot],
+  ];
+  overrideSignalElements.forEach(([, el]) => {
+    if (!el) {
+      return;
+    }
+    el.addEventListener('change', async () => {
+      const contextId = dashboardData?.context?.contextId || '';
+      const signals = {
+        app: Boolean(contextOverrideSignalApp?.checked),
+        window: Boolean(contextOverrideSignalWindow?.checked),
+        url: Boolean(contextOverrideSignalUrl?.checked),
+        ax: Boolean(contextOverrideSignalAx?.checked),
+        textbox: Boolean(contextOverrideSignalTextbox?.checked),
+        screenshot: Boolean(contextOverrideSignalScreenshot?.checked),
+      };
+      await updateContextOverride(contextId, contextOverrideMode?.value || 'inherit', contextOverrideProfile?.value || '', signals);
+    });
+  });
+
+  if (contextSuggestionApply) {
+    contextSuggestionApply.addEventListener('click', async () => {
+      const contextId = dashboardData?.context?.contextId || '';
+      const suggestionId = dashboardData?.context?.suggestionId || '';
+      if (!suggestionId) {
+        return;
+      }
+      await updateContextOverride(contextId, 'on', suggestionId);
+    });
+  }
+
+  if (contextProfileCreate) {
+    contextProfileCreate.addEventListener('click', async () => {
+      const res = await openModal({
+        title: 'Nouveau profil',
+        confirmText: 'Créer',
+        fields: [
+          { key: 'name', label: 'Nom', value: '' },
+          { key: 'appName', label: 'Match App (contient)', value: '' },
+          { key: 'windowTitle', label: 'Match Fenêtre (contient)', value: '' },
+          { key: 'urlDomain', label: 'Match URL (contient)', value: '' },
+          {
+            key: 'tone',
+            label: 'Tone',
+            type: 'select',
+            value: 'default',
+            options: [
+              { value: 'default', label: 'Default' },
+              { value: 'concise', label: 'Concise' },
+              { value: 'conversational', label: 'Conversational' },
+            ],
+          },
+          {
+            key: 'lineBreaks',
+            label: 'Line breaks',
+            type: 'select',
+            value: 'auto',
+            options: [
+              { value: 'auto', label: 'Auto' },
+              { value: 'single', label: 'Single' },
+              { value: 'double', label: 'Double' },
+            ],
+          },
+          {
+            key: 'punctuation',
+            label: 'Punctuation',
+            type: 'select',
+            value: 'minimal',
+            options: [
+              { value: 'minimal', label: 'Minimal' },
+              { value: 'standard', label: 'Standard' },
+            ],
+          },
+        ],
+      });
+      if (!res || !res.name) {
+        return;
+      }
+      const profiles = getContextProfilesLocal();
+      const profile = {
+        id: (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : `${Date.now()}`,
+        name: res.name,
+        match: {
+          appName: res.appName || '',
+          windowTitle: res.windowTitle || '',
+          urlDomain: res.urlDomain || '',
+        },
+        tone: res.tone || 'default',
+        formatting: {
+          lineBreaks: res.lineBreaks || 'auto',
+          punctuation: res.punctuation || 'minimal',
+        },
+      };
+      const nextProfiles = [profile, ...profiles];
+      await saveContextProfiles(nextProfiles);
+      await refreshDashboard();
+      showToast('Profil créé.');
+    });
+  }
+
+  if (contextPreviewButton) {
+    contextPreviewButton.addEventListener('click', async () => {
+      const profileId = contextPreviewProfile?.value || '';
+      const input = contextPreviewInput?.value || '';
+      if (!profileId) {
+        showToast('Choisissez un profil.', 'error');
+        return;
+      }
+      if (!window.electronAPI?.previewContextFormatting) {
+        return;
+      }
+      const result = await window.electronAPI.previewContextFormatting(profileId, input);
+      if (contextPreviewOutput) {
+        contextPreviewOutput.value = result?.text || '';
+      }
+    });
+  }
+
   if (snippetAddButton) {
     snippetAddButton.addEventListener('click', async () => {
       const cue = snippetCueInput?.value.trim();
@@ -3131,7 +4140,12 @@ window.addEventListener('DOMContentLoaded', () => {
   if (authOverlaySignup) {
     authOverlaySignup.addEventListener('click', async () => {
       if (window.electronAPI?.openSignupUrl) {
-        await window.electronAPI.openSignupUrl('signup');
+        setButtonLoading(authOverlaySignup, true, 'Ouverture...');
+        const result = await window.electronAPI.openSignupUrl('signup');
+        if (result?.ok === false) {
+          setOverlayStatus('Ouverture impossible.', true);
+        }
+        setButtonLoading(authOverlaySignup, false);
       }
     });
   }
@@ -3179,6 +4193,16 @@ window.addEventListener('DOMContentLoaded', () => {
         updateOnboardingUI();
         persistOnboardingState({ firstRunSuccess: true });
       }
+    });
+  }
+
+  if (window.electronAPI?.onDashboardDiff) {
+    window.electronAPI.onDashboardDiff((payload) => {
+      diffData = {
+        before: payload?.before || '',
+        after: payload?.after || '',
+      };
+      setActiveView('diff');
     });
   }
 

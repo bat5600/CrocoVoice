@@ -18,6 +18,15 @@ let waveformAnimationId = null;
 let statusTextEl = null;
 let shortcutLabelEl = null;
 let currentSettings = {};
+let streamingActive = false;
+let streamNode = null;
+let streamSource = null;
+let streamSessionId = null;
+let streamSequence = 0;
+let streamingUsesWorklet = false;
+let streamPingTimeoutId = null;
+let streamPingBackoffMs = 1000;
+let lastStreamPongAt = 0;
 let cancelButton = null;
 let stopButton = null;
 let cancelUndoEl = null;
@@ -76,6 +85,10 @@ let widgetMicrophoneLabel = null;
 let widgetLanguageLabel = null;
 let widgetMicrophoneCurrent = null;
 let availableMicrophones = [];
+let partialTranscript = '';
+let widgetFeatureFlags = {};
+let contextMenuEnabled = true;
+let statusBubbleEnabled = true;
 
 const CANCEL_UNDO_DURATION_MS = 4000;
 const AUDIO_RMS_ACTIVE_THRESHOLD = 0.018;
@@ -85,6 +98,9 @@ const AUDIO_MIN_PEAK_RMS = 0.012;
 const RECORDING_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const RECORDING_MAX_DURATION_MS = 60 * 60 * 1000;
 const MIC_MONITOR_SEND_INTERVAL_MS = 80;
+const STREAM_PING_BASE_MS = 1000;
+const STREAM_PING_MAX_MS = 10000;
+const STREAM_PONG_TIMEOUT_MS = 7000;
 const MIC_LABEL_MAX_CHARS = 28;
 const LANGUAGE_OPTIONS = [
   { code: 'fr', label: 'Francais' },
@@ -226,6 +242,19 @@ function updateMenuLabels() {
     const selected = availableMicrophones.find((mic) => mic.deviceId === currentSettings.microphoneId);
     const label = selected ? (selected.label || `Micro ${selected.deviceId.slice(0, 4)}...`) : 'Detection auto';
     widgetMicrophoneCurrent.textContent = wrapLabel(label, MIC_LABEL_MAX_CHARS);
+  }
+}
+
+function applyWidgetFeatureFlags(flags = {}) {
+  widgetFeatureFlags = flags || {};
+  statusBubbleEnabled = widgetFeatureFlags.statusBubble !== false;
+  contextMenuEnabled = widgetFeatureFlags.contextMenu !== false;
+  document.body.classList.toggle('status-disabled', !statusBubbleEnabled);
+  if (widgetContextMenu) {
+    widgetContextMenu.style.display = contextMenuEnabled ? '' : 'none';
+  }
+  if (!contextMenuEnabled && widgetContainer) {
+    widgetContainer.classList.remove('context-open');
   }
 }
 
@@ -663,7 +692,7 @@ async function submitAuthLogin() {
   }
 }
 
-async function setupWaveform(stream) {
+async function setupWaveform(stream, preferredSampleRate = null) {
   if (!waveformCanvas) {
     waveformCanvas = document.getElementById('waveformCanvas');
   }
@@ -676,8 +705,13 @@ async function setupWaveform(stream) {
     return;
   }
 
-  if (!audioContext) {
-    audioContext = new AudioContextClass();
+  if (!audioContext || (preferredSampleRate && audioContext.sampleRate !== preferredSampleRate)) {
+    if (audioContext) {
+      await audioContext.close();
+    }
+    audioContext = preferredSampleRate
+      ? new AudioContextClass({ sampleRate: preferredSampleRate })
+      : new AudioContextClass();
   }
 
   if (audioContext.state === 'suspended') {
@@ -839,7 +873,65 @@ function stopMicMonitor() {
   micMonitorData = null;
 }
 
-async function initializeMediaRecorder() {
+function stopStreamHeartbeat() {
+  if (streamPingTimeoutId) {
+    clearTimeout(streamPingTimeoutId);
+    streamPingTimeoutId = null;
+  }
+}
+
+function handleStreamingDisconnect(message) {
+  stopStreamHeartbeat();
+  if (window.electronAPI?.sendRecordingError) {
+    window.electronAPI.sendRecordingError(message || 'Streaming interrompu.');
+  }
+  if (streamSessionId && window.electronAPI?.sendStreamStop) {
+    window.electronAPI.sendStreamStop({ sessionId: streamSessionId });
+  }
+  streamSessionId = null;
+  streamSequence = 0;
+  streamingActive = false;
+  streamingUsesWorklet = false;
+  const flags = { ...(currentSettings.featureFlags || {}), streaming: false };
+  currentSettings = { ...currentSettings, featureFlags: flags };
+  if (window.electronAPI?.saveSettings) {
+    window.electronAPI.saveSettings({ featureFlags: flags });
+  }
+}
+
+function scheduleStreamPing() {
+  if (!streamingActive || !streamSessionId) {
+    return;
+  }
+  streamPingTimeoutId = setTimeout(() => {
+    if (!streamingActive || !streamSessionId) {
+      return;
+    }
+    if (window.electronAPI?.sendStreamPing) {
+      window.electronAPI.sendStreamPing({ sessionId: streamSessionId, at: Date.now() });
+    }
+    const now = Date.now();
+    if (now - lastStreamPongAt > STREAM_PONG_TIMEOUT_MS) {
+      streamPingBackoffMs = Math.min(streamPingBackoffMs * 2, STREAM_PING_MAX_MS);
+      if (streamPingBackoffMs >= STREAM_PING_MAX_MS && now - lastStreamPongAt > STREAM_PONG_TIMEOUT_MS * 2) {
+        handleStreamingDisconnect('Streaming déconnecté. Mode fichier activé.');
+        return;
+      }
+    } else {
+      streamPingBackoffMs = STREAM_PING_BASE_MS;
+    }
+    scheduleStreamPing();
+  }, streamPingBackoffMs);
+}
+
+function startStreamHeartbeat() {
+  stopStreamHeartbeat();
+  lastStreamPongAt = Date.now();
+  streamPingBackoffMs = STREAM_PING_BASE_MS;
+  scheduleStreamPing();
+}
+
+async function initializeMediaRecorder(streamingMode = false) {
   try {
     const audioConstraints = {
       echoCancellation: true,
@@ -869,50 +961,101 @@ async function initializeMediaRecorder() {
     window.mediaRecorder = mediaRecorder;
     window.audioChunks = [];
 
-    window.mediaRecorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) {
-        window.audioChunks.push(event.data);
+    if (streamingMode) {
+      streamSessionId = crypto.randomUUID();
+      streamSequence = 0;
+      streamingActive = true;
+      streamingUsesWorklet = false;
+      if (window.electronAPI?.sendStreamStart) {
+        window.electronAPI.sendStreamStart({
+          sessionId: streamSessionId,
+          codec: 'opus',
+          mimeType: options.mimeType || 'audio/webm',
+        });
       }
-    };
-
-    window.mediaRecorder.onstop = async () => {
-      const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
-      const ab = await blob.arrayBuffer();
-      const payload = {
-        buffer: ab,
-        mimeType: blob.type,
-        micDevice: currentSettings.microphoneId || '',
+      startStreamHeartbeat();
+      window.mediaRecorder.ondataavailable = async (event) => {
+        if (event.data && event.data.size > 0) {
+          const ab = await event.data.arrayBuffer();
+          if (window.electronAPI?.sendStreamChunk) {
+            window.electronAPI.sendStreamChunk(
+              {
+                sessionId: streamSessionId,
+                seq: streamSequence,
+                codec: 'opus',
+                mimeType: event.data.type || options.mimeType || 'audio/webm',
+                chunk: ab,
+              },
+              [ab],
+            );
+            streamSequence += 1;
+          }
+        }
       };
-      if (pendingWarningMessage) {
-        payload.warningMessage = pendingWarningMessage;
-        pendingWarningMessage = '';
-      }
+      window.mediaRecorder.onstop = () => {
+        if (window.electronAPI?.sendStreamStop && streamSessionId) {
+          window.electronAPI.sendStreamStop({ sessionId: streamSessionId });
+        }
+        streamSessionId = null;
+        streamSequence = 0;
+        streamingActive = false;
+        streamingUsesWorklet = false;
+        stopStreamHeartbeat();
+        clearSafetyMonitor();
+        if (audioStream) {
+          audioStream.getTracks().forEach((track) => track.stop());
+          audioStream = null;
+        }
+        analyserNode = null;
+        stopWaveform();
+        mediaRecorder = null;
+      };
+    } else {
+      window.mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          window.audioChunks.push(event.data);
+        }
+      };
 
-      if (pendingNoAudioReason) {
-        const reason = pendingNoAudioReason;
-        pendingNoAudioReason = null;
-        window.electronAPI.sendRecordingEmpty(reason);
-      } else if (cancelPending) {
-        cancelPending = false;
-        startCancelUndo(payload);
-      } else if (shouldTreatAsNoAudio()) {
-        window.electronAPI.sendRecordingEmpty('no_audio');
-      } else {
-        window.electronAPI.sendAudioReady(payload);
-      }
+      window.mediaRecorder.onstop = async () => {
+        const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
+        const ab = await blob.arrayBuffer();
+        const payload = {
+          buffer: ab,
+          mimeType: blob.type,
+          micDevice: currentSettings.microphoneId || '',
+        };
+        if (pendingWarningMessage) {
+          payload.warningMessage = pendingWarningMessage;
+          pendingWarningMessage = '';
+        }
 
-      window.audioChunks = [];
-      clearSafetyMonitor();
+        if (pendingNoAudioReason) {
+          const reason = pendingNoAudioReason;
+          pendingNoAudioReason = null;
+          window.electronAPI.sendRecordingEmpty(reason);
+        } else if (cancelPending) {
+          cancelPending = false;
+          startCancelUndo(payload);
+        } else if (shouldTreatAsNoAudio()) {
+          window.electronAPI.sendRecordingEmpty('no_audio');
+        } else {
+          window.electronAPI.sendAudioReady(payload);
+        }
 
-      if (audioStream) {
-        audioStream.getTracks().forEach((track) => track.stop());
-        audioStream = null;
-      }
+        window.audioChunks = [];
+        clearSafetyMonitor();
 
-      analyserNode = null;
-      stopWaveform();
-      mediaRecorder = null;
-    };
+        if (audioStream) {
+          audioStream.getTracks().forEach((track) => track.stop());
+          audioStream = null;
+        }
+
+        analyserNode = null;
+        stopWaveform();
+        mediaRecorder = null;
+      };
+    }
 
     mediaRecorder.onerror = (event) => {
       window.electronAPI.sendRecordingError(event.error.message);
@@ -924,6 +1067,115 @@ async function initializeMediaRecorder() {
     window.electronAPI.sendRecordingError(error.message);
     return false;
   }
+}
+
+function isStreamingMode() {
+  const flags = currentSettings.featureFlags || {};
+  return Boolean(flags.streaming);
+}
+
+async function initializeStreamingRecorder() {
+  try {
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+    if (currentSettings.microphoneId) {
+      audioConstraints.deviceId = { exact: currentSettings.microphoneId };
+    }
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+
+    const desiredSampleRate = Number.isFinite(currentSettings.streamSampleRate)
+      ? currentSettings.streamSampleRate
+      : null;
+    await setupWaveform(audioStream, desiredSampleRate);
+
+    const moduleUrl = new URL('assets/stream-worklet.js', window.location.href);
+    if (!audioContext?.audioWorklet) {
+      throw new Error('AudioWorklet indisponible.');
+    }
+    await audioContext.audioWorklet.addModule(moduleUrl);
+    streamNode = new AudioWorkletNode(audioContext, 'stream-worklet');
+    streamSource = audioContext.createMediaStreamSource(audioStream);
+    const chunkMs = Number.isFinite(currentSettings.streamChunkMs) ? currentSettings.streamChunkMs : 900;
+    const chunkSize = Math.max(256, Math.round((audioContext.sampleRate || 16000) * (chunkMs / 1000)));
+    streamNode.port.postMessage({ chunkSize });
+    streamNode.port.onmessage = (event) => {
+      if (!streamingActive || !event.data) {
+        return;
+      }
+      const samples = event.data;
+      if (!window.electronAPI?.sendStreamChunk || !streamSessionId) {
+        return;
+      }
+      window.electronAPI.sendStreamChunk(
+        {
+          sessionId: streamSessionId,
+          seq: streamSequence,
+          sampleRate: audioContext.sampleRate || 16000,
+          samples,
+        },
+        samples?.buffer ? [samples.buffer] : [],
+      );
+      streamSequence += 1;
+    };
+
+    const silent = audioContext.createGain();
+    silent.gain.value = 0;
+    streamSource.connect(streamNode);
+    streamNode.connect(silent).connect(audioContext.destination);
+
+    streamSessionId = crypto.randomUUID();
+    streamSequence = 0;
+    streamingActive = true;
+    streamingUsesWorklet = true;
+    if (window.electronAPI?.sendStreamStart) {
+      window.electronAPI.sendStreamStart({
+        sessionId: streamSessionId,
+        sampleRate: audioContext.sampleRate || 16000,
+        chunkMs,
+      });
+    }
+    startStreamHeartbeat();
+    return true;
+  } catch (error) {
+    window.electronAPI.sendRecordingError(error.message);
+    return false;
+  }
+}
+
+function stopStreamingRecording() {
+  if (!streamingActive) {
+    return;
+  }
+  streamingActive = false;
+  streamingUsesWorklet = false;
+  stopStreamHeartbeat();
+  if (window.electronAPI?.sendStreamStop && streamSessionId) {
+    window.electronAPI.sendStreamStop({ sessionId: streamSessionId });
+  }
+  streamSessionId = null;
+  streamSequence = 0;
+  if (streamNode) {
+    try {
+      streamNode.port.postMessage({ flush: true });
+    } catch (error) {
+      console.warn('Stream flush failed:', error);
+    }
+    streamNode.disconnect();
+    streamNode = null;
+  }
+  if (streamSource) {
+    streamSource.disconnect();
+    streamSource = null;
+  }
+  if (audioStream) {
+    audioStream.getTracks().forEach((track) => track.stop());
+    audioStream = null;
+  }
+  analyserNode = null;
+  stopWaveform();
 }
 
 async function startRecording() {
@@ -944,17 +1196,32 @@ async function startRecording() {
   resetAudioMetrics();
   lastAudioActiveAt = Date.now();
 
-  if (!mediaRecorder) {
-    const initialized = await initializeMediaRecorder();
+  if (isStreamingMode()) {
+    const useWorklet = Boolean(currentSettings.featureFlags?.worklet);
+    const initialized = useWorklet
+      ? await initializeStreamingRecorder()
+      : await initializeMediaRecorder(true);
     if (!initialized) {
       isRecording = false;
       return;
     }
-  }
+    if (!useWorklet && mediaRecorder) {
+      const chunkMs = Number.isFinite(currentSettings.streamChunkMs) ? currentSettings.streamChunkMs : 900;
+      mediaRecorder.start(chunkMs);
+    }
+  } else {
+    if (!mediaRecorder) {
+      const initialized = await initializeMediaRecorder(false);
+      if (!initialized) {
+        isRecording = false;
+        return;
+      }
+    }
 
-  audioChunks = [];
-  window.audioChunks = [];
-  mediaRecorder.start(1000);
+    audioChunks = [];
+    window.audioChunks = [];
+    mediaRecorder.start(1000);
+  }
   startWaveform();
   startSafetyMonitor();
 }
@@ -967,6 +1234,11 @@ function stopRecording() {
   isRecording = false;
   recordingStartedAt = null;
   clearSafetyMonitor();
+
+  if (streamingActive && streamingUsesWorklet) {
+    stopStreamingRecording();
+    return;
+  }
 
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     try {
@@ -1015,11 +1287,33 @@ window.electronAPI.onStatusChange((status, message) => {
   updateWidgetState(status, message);
 });
 
+if (window.electronAPI.onPartialTranscript) {
+  window.electronAPI.onPartialTranscript((text) => {
+    partialTranscript = (text || '').trim();
+    if (statusTextEl && (isRecording || streamingActive)) {
+      statusTextEl.textContent = partialTranscript
+        ? partialTranscript.slice(0, 60)
+        : 'Écoute...';
+    }
+  });
+}
+
+if (window.electronAPI.onStreamPong) {
+  window.electronAPI.onStreamPong((payload) => {
+    if (!payload || payload.sessionId !== streamSessionId) {
+      return;
+    }
+    lastStreamPongAt = Date.now();
+  });
+}
+
 window.electronAPI.onTranscriptionSuccess(() => {
-  // No-op: state handled by main process
+  partialTranscript = '';
 });
 
-window.electronAPI.onTranscriptionError(() => {});
+window.electronAPI.onTranscriptionError(() => {
+  partialTranscript = '';
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   waveformCanvas = document.getElementById('waveformCanvas');
@@ -1089,7 +1383,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!window.electronAPI?.openSignupUrl) {
         return;
       }
-      await window.electronAPI.openSignupUrl('signup');
+      setAuthStatus('Ouverture...', false);
+      const result = await window.electronAPI.openSignupUrl('signup');
+      if (result?.ok === false) {
+        setAuthStatus('Ouverture impossible.', true);
+      } else {
+        setAuthStatus('');
+      }
     });
   }
 
@@ -1174,6 +1474,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderLanguageList();
       updateMenuLabels();
       refreshMicrophones();
+      applyWidgetFeatureFlags(currentSettings.featureFlags || {});
     }).catch(() => {
       updateShortcutLabel('');
     });
@@ -1190,6 +1491,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const previousMic = currentSettings.microphoneId;
       currentSettings = nextSettings || {};
       updateShortcutLabel(currentSettings.shortcut);
+      applyWidgetFeatureFlags(currentSettings.featureFlags || {});
       if (isProSubscription(currentSettings.subscription)) {
         clearQuotaGate();
       }
@@ -1218,6 +1520,7 @@ document.addEventListener('DOMContentLoaded', () => {
     widgetMicrophoneLabel = document.getElementById('widgetMicrophoneLabel');
     widgetLanguageLabel = document.getElementById('widgetLanguageLabel');
     widgetMicrophoneCurrent = document.getElementById('widgetMicrophoneCurrent');
+    applyWidgetFeatureFlags(currentSettings.featureFlags || {});
     let isContextOpen = false;
     let isHovering = false;
     let hoverOutTimeout = null;
@@ -1332,6 +1635,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     widgetContainer.addEventListener('contextmenu', (event) => {
       event.preventDefault();
+      if (!contextMenuEnabled) {
+        return;
+      }
       widgetContainer.classList.toggle('context-open');
       isContextOpen = widgetContainer.classList.contains('context-open');
       updateExpandedState();
@@ -1411,6 +1717,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (action === 'open-settings') {
           window.electronAPI.openSettings();
+          event.stopPropagation();
+          closeContextMenu();
+          return;
+        }
+        if (action === 'open-polish') {
+          if (window.electronAPI.openPolishDiff) {
+            window.electronAPI.openPolishDiff();
+          }
           event.stopPropagation();
           closeContextMenu();
           return;

@@ -1,10 +1,11 @@
 require('dotenv').config();
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, clipboard, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, clipboard, shell, dialog } = require('electron');
 
 app.disableHardwareAcceleration();
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
 const { OpenAI } = require('openai');
 const Store = require('./store');
 const SyncService = require('./sync');
@@ -88,6 +89,8 @@ const RecordingState = Object.freeze({
 const ACTION_DEBOUNCE_MS = 500;
 const parsedHistoryRetentionFree = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_FREE || '14', 10);
 const HISTORY_RETENTION_DAYS_FREE = Number.isFinite(parsedHistoryRetentionFree) ? parsedHistoryRetentionFree : 14;
+const STREAM_MAX_DURATION_MS = 60 * 60 * 1000;
+const STREAM_MAX_CHUNK_SAMPLES = 16000 * 15;
 const parsedHistoryRetentionPro = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_PRO || '365', 10);
 const HISTORY_RETENTION_DAYS_PRO = Number.isFinite(parsedHistoryRetentionPro) ? parsedHistoryRetentionPro : 365;
 let recordingState = RecordingState.IDLE;
@@ -112,6 +115,8 @@ const OPENAI_MAX_RETRIES = 2;
 const OPENAI_BASE_BACKOFF_MS = 800;
 const OPENAI_MAX_BACKOFF_MS = 5000;
 const SYNC_DEBOUNCE_MS = 120000;
+const STREAM_START_GRACE_MS = 8000;
+const STREAMING_DEPRECATED = true;
 const parsedWeeklyQuota = Number.parseInt(process.env.CROCOVOICE_WEEKLY_QUOTA_WORDS || '2000', 10);
 const WEEKLY_QUOTA_WORDS = Number.isFinite(parsedWeeklyQuota) ? parsedWeeklyQuota : 2000;
 const QUOTA_MODE = (process.env.CROCOVOICE_QUOTA_MODE || 'local').toLowerCase(); // local | hybrid | server
@@ -161,10 +166,38 @@ const defaultSettings = {
     step: 'welcome',
     completed: false,
     firstRunSuccess: false,
+    hotkeyReady: false,
     updatedAt: null,
+  },
+  uploadCloudFallback: false,
+  uploadMaxMb: 200,
+  streamChunkMs: 900,
+  streamSampleRate: 16000,
+  streamPartialIntervalMs: 7000,
+  featureFlags: {
+    streaming: false,
+    worklet: false,
+    statusBubble: true,
+    contextMenu: true,
+    diagnostics: true,
   },
   activeStyleId: '',
   metricsEnabled: true,
+  context: {
+    enabled: true,
+    postProcessEnabled: false,
+    retentionDays: 30,
+    signals: {
+      app: true,
+      window: true,
+      url: true,
+      ax: false,
+      textbox: false,
+      screenshot: false,
+    },
+    overrides: {},
+  },
+  contextProfiles: [],
   subscription: {
     plan: 'free',
     status: 'inactive',
@@ -176,6 +209,30 @@ const DICTIONARY_CACHE_TTL_MS = 60000;
 let dictionaryCache = { entries: null, updatedAt: 0 };
 const SNIPPET_CACHE_TTL_MS = 60000;
 let snippetCache = { entries: null, updatedAt: 0 };
+let contextSnapshotCache = null;
+let contextSnapshotCapturedAt = 0;
+let uploadJobs = [];
+const uploadJobById = new Map();
+const streamSessions = new Map();
+let lastPolishDiff = null;
+const DIAGNOSTIC_EVENT_LIMIT = 20;
+let diagnosticEvents = [];
+let lastDelivery = null;
+let lastClipboardTest = null;
+const DEFAULT_CONTEXT_SETTINGS = {
+  enabled: true,
+  postProcessEnabled: false,
+  retentionDays: 30,
+  signals: {
+    app: true,
+    window: true,
+    url: true,
+    ax: false,
+    textbox: false,
+    screenshot: false,
+  },
+  overrides: {},
+};
 
 function areSettingValuesEqual(a, b) {
   if (a === b) {
@@ -204,6 +261,124 @@ function getChangedSettingKeys(previous, next) {
     }
   });
   return changed;
+}
+
+function normalizeContextSettings(value) {
+  const base = { ...DEFAULT_CONTEXT_SETTINGS };
+  if (!value || typeof value !== 'object') {
+    return base;
+  }
+  const signals = { ...base.signals, ...(value.signals || {}) };
+  const overrides = value.overrides && typeof value.overrides === 'object' ? value.overrides : {};
+  return {
+    enabled: value.enabled !== false,
+    postProcessEnabled: value.postProcessEnabled === true,
+    retentionDays: Number.isFinite(value.retentionDays) ? value.retentionDays : base.retentionDays,
+    signals,
+    overrides,
+  };
+}
+
+function getContextSettings() {
+  return normalizeContextSettings(settings.context);
+}
+
+function getContextProfiles() {
+  const profiles = settings.contextProfiles;
+  return Array.isArray(profiles) ? profiles : [];
+}
+
+function getFeatureFlags() {
+  const base = defaultSettings.featureFlags || {};
+  const current = settings.featureFlags && typeof settings.featureFlags === 'object' ? settings.featureFlags : {};
+  const flags = { ...base, ...current };
+  if (STREAMING_DEPRECATED) {
+    flags.streaming = false;
+    flags.worklet = false;
+  }
+  return flags;
+}
+
+function isFeatureEnabled(flag) {
+  const flags = getFeatureFlags();
+  return Boolean(flags[flag]);
+}
+
+async function fallbackToFileMode(reason) {
+  const flags = getFeatureFlags();
+  if (flags.streaming) {
+    const nextFlags = { ...flags, streaming: false };
+    await setSettingValue('featureFlags', nextFlags);
+    scheduleDebouncedSync({ refreshSettings: true });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('settings-updated', settings);
+    }
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('settings-updated', settings);
+    }
+  }
+  if (reason) {
+    recordDiagnosticEvent('stream_fallback', reason);
+  }
+}
+
+function getUploadConfig() {
+  const maxMb = Number.isFinite(settings.uploadMaxMb) ? settings.uploadMaxMb : defaultSettings.uploadMaxMb;
+  return {
+    cloudFallback: settings.uploadCloudFallback === true,
+    maxMb: maxMb || defaultSettings.uploadMaxMb,
+  };
+}
+
+function recordDiagnosticEvent(code, message) {
+  diagnosticEvents.unshift({
+    at: new Date().toISOString(),
+    code: code || 'event',
+    message: message || '',
+  });
+  if (diagnosticEvents.length > DIAGNOSTIC_EVENT_LIMIT) {
+    diagnosticEvents = diagnosticEvents.slice(0, DIAGNOSTIC_EVENT_LIMIT);
+  }
+}
+
+async function createUploadJobFromFile(filePath) {
+  if (!filePath || typeof filePath !== 'string') {
+    return { ok: false, reason: 'Fichier invalide.' };
+  }
+  const allowedExtensions = new Set(['.wav', '.mp3', '.m4a', '.ogg', '.oga']);
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext && !allowedExtensions.has(ext)) {
+    return { ok: false, reason: 'Format audio non supporte.' };
+  }
+  let stats = null;
+  try {
+    stats = await fs.promises.stat(filePath);
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'Fichier introuvable.' };
+  }
+  const config = getUploadConfig();
+  const maxBytes = (config.maxMb || 200) * 1024 * 1024;
+  if (stats.size > maxBytes) {
+    return { ok: false, reason: `Fichier trop volumineux (>${config.maxMb}MB).` };
+  }
+
+  const job = {
+    id: crypto.randomUUID(),
+    filePath,
+    fileName: path.basename(filePath),
+    fileSize: stats.size,
+    status: 'queued',
+    progress: 0,
+    error: null,
+    cancelled: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  uploadJobs = [job, ...uploadJobs].slice(0, 20);
+  uploadJobById.set(job.id, job);
+  sendDashboardEvent('dashboard:data-updated');
+  setImmediate(() => processUploadJob(job));
+  return { ok: true, job: serializeUploadJob(job) };
 }
 
 async function persistSettings(candidate) {
@@ -278,6 +453,266 @@ function normalizeText(value) {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeContextId(value) {
+  if (!value) {
+    return '';
+  }
+  return value.toString().toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function redactSensitiveText(text) {
+  if (!text || typeof text !== 'string') {
+    return text;
+  }
+  return text
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted-email]')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[redacted-phone]')
+    .replace(/\b\d{6,}\b/g, '[redacted-number]');
+}
+
+function redactContextPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return payload;
+  }
+  const next = { ...payload };
+  if (next.appName) {
+    next.appName = redactSensitiveText(next.appName);
+  }
+  if (next.windowTitle) {
+    next.windowTitle = redactSensitiveText(next.windowTitle);
+  }
+  if (next.url) {
+    next.url = redactSensitiveText(next.url);
+  }
+  if (next.axText) {
+    next.axText = redactSensitiveText(next.axText);
+  }
+  if (next.textboxText) {
+    next.textboxText = redactSensitiveText(next.textboxText);
+  }
+  return next;
+}
+
+function truncateHint(value, max = 140) {
+  if (!value || typeof value !== 'string') {
+    return '';
+  }
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, max - 1)}…`;
+}
+
+function normalizeHintUrl(value) {
+  if (!value || typeof value !== 'string') {
+    return '';
+  }
+  try {
+    const url = new URL(value);
+    return url.hostname || value;
+  } catch {
+    return value;
+  }
+}
+
+function buildPostProcessContextHints(contextPayload) {
+  if (!contextPayload) {
+    return '';
+  }
+  const hints = [];
+  if (contextPayload.appName) {
+    hints.push(`App: ${truncateHint(contextPayload.appName)}`);
+  }
+  if (contextPayload.windowTitle) {
+    hints.push(`Window: ${truncateHint(contextPayload.windowTitle)}`);
+  }
+  if (contextPayload.url) {
+    const domain = normalizeHintUrl(contextPayload.url);
+    hints.push(`URL domain: ${truncateHint(domain)}`);
+  }
+  return hints.length ? hints.join('\n- ') : '';
+}
+
+async function getActiveContextBase() {
+  if (!getActiveWindow) {
+    return { appName: null, windowTitle: null, url: null };
+  }
+  try {
+    const activeWindow = await getActiveWindow();
+    const windowTitle = await activeWindow.title;
+    const appName = activeWindow?.app?.name
+      || activeWindow?.owner?.name
+      || activeWindow?.process?.name
+      || null;
+    const url = activeWindow?.url || null;
+    return { appName, windowTitle, url };
+  } catch (error) {
+    console.warn('Failed to capture active window context:', error);
+    return { appName: null, windowTitle: null, url: null };
+  }
+}
+
+function getContextId(base) {
+  if (!base) {
+    return '';
+  }
+  return normalizeContextId(base.appName || base.windowTitle || '');
+}
+
+function matchProfile(profile, base) {
+  if (!profile || !base) {
+    return 0;
+  }
+  const appName = normalizeContextId(base.appName);
+  const title = normalizeContextId(base.windowTitle);
+  const url = normalizeContextId(base.url);
+  const match = profile.match || {};
+  let score = 0;
+  if (match.appName && appName.includes(normalizeContextId(match.appName))) {
+    score += 3;
+  }
+  if (match.windowTitle && title.includes(normalizeContextId(match.windowTitle))) {
+    score += 2;
+  }
+  if (match.urlDomain && url.includes(normalizeContextId(match.urlDomain))) {
+    score += 4;
+  }
+  return score;
+}
+
+function selectContextProfile(base, profiles) {
+  const candidates = (profiles || []).map((profile) => ({
+    profile,
+    score: matchProfile(profile, base),
+  })).filter((candidate) => candidate.score > 0);
+  if (!candidates.length) {
+    return null;
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0].profile;
+}
+
+function suggestContextProfile(base, profiles) {
+  if (!base) {
+    return null;
+  }
+  const haystack = `${base.appName || ''} ${base.windowTitle || ''}`.toLowerCase();
+  return (profiles || []).find((profile) => {
+    const name = (profile.name || '').toLowerCase();
+    return name && haystack.includes(name);
+  }) || null;
+}
+
+function resolveFormattingOptions(profile) {
+  const tone = profile?.tone || 'default';
+  const toneDefaults = {
+    default: { lineBreaks: 'auto', punctuation: 'minimal' },
+    concise: { lineBreaks: 'single', punctuation: 'standard' },
+    conversational: { lineBreaks: 'auto', punctuation: 'minimal' },
+  };
+  return {
+    ...(toneDefaults[tone] || toneDefaults.default),
+    ...(profile?.formatting || {}),
+  };
+}
+
+function applyAdaptiveFormatting(text, profile) {
+  if (!text || !profile) {
+    return text;
+  }
+  const options = resolveFormattingOptions(profile);
+  let result = text;
+  if (options.lineBreaks === 'single') {
+    result = result.replace(/\n{2,}/g, '\n');
+  } else if (options.lineBreaks === 'double') {
+    result = result.replace(/\n{3,}/g, '\n\n');
+  }
+  result = result.replace(/[ \t]+/g, ' ').replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n');
+  if (options.punctuation === 'standard') {
+    if (!/[.!?…]$/.test(result.trim()) && result.trim().length > 3) {
+      result = `${result.trim()}.`;
+    }
+  }
+  return result;
+}
+
+async function resolveContextState() {
+  const base = await getActiveContextBase();
+  const contextSettings = getContextSettings();
+  const profiles = getContextProfiles();
+  const contextId = getContextId(base);
+  const override = contextSettings.overrides?.[contextId] || {};
+  let effectiveEnabled = contextSettings.enabled;
+  if (override.mode === 'on') {
+    effectiveEnabled = true;
+  } else if (override.mode === 'off') {
+    effectiveEnabled = false;
+  }
+  const effectiveSignals = {
+    ...(contextSettings.signals || {}),
+    ...(override.signals || {}),
+  };
+  let profile = null;
+  if (effectiveEnabled) {
+    if (override.mode === 'on' && override.profileId) {
+      profile = profiles.find((candidate) => candidate.id === override.profileId) || null;
+    }
+    if (!profile) {
+      profile = selectContextProfile(base, profiles);
+    }
+  }
+  const suggestion = !profile ? suggestContextProfile(base, profiles) : null;
+  let contextPayload = null;
+  if (effectiveEnabled) {
+    contextPayload = {
+      capturedAt: new Date().toISOString(),
+      appName: effectiveSignals.app ? base.appName : null,
+      windowTitle: effectiveSignals.window ? base.windowTitle : null,
+      url: effectiveSignals.url ? base.url : null,
+      axText: effectiveSignals.ax ? null : null,
+      textboxText: effectiveSignals.textbox ? null : null,
+      screenshot: effectiveSignals.screenshot ? null : null,
+      profileId: profile ? profile.id : null,
+      contextId,
+      signals: {
+        app: Boolean(effectiveSignals.app),
+        window: Boolean(effectiveSignals.window),
+        url: Boolean(effectiveSignals.url),
+        ax: Boolean(effectiveSignals.ax),
+        textbox: Boolean(effectiveSignals.textbox),
+        screenshot: Boolean(effectiveSignals.screenshot),
+      },
+    };
+    contextPayload = redactContextPayload(contextPayload);
+  }
+  return {
+    base,
+    contextId,
+    enabled: effectiveEnabled,
+    profile,
+    suggestion,
+    payload: contextPayload,
+    overrideMode: override.mode || 'inherit',
+    signals: effectiveSignals,
+  };
+}
+
+async function getContextStateCached() {
+  const now = Date.now();
+  if (contextSnapshotCache && (now - contextSnapshotCapturedAt) < 30000) {
+    return contextSnapshotCache;
+  }
+  const state = await resolveContextState();
+  contextSnapshotCache = state;
+  contextSnapshotCapturedAt = now;
+  return state;
+}
+
+function clearContextCache() {
+  contextSnapshotCache = null;
+  contextSnapshotCapturedAt = 0;
 }
 
 function normalizeSnippetCue(value) {
@@ -1054,7 +1489,7 @@ async function executeOpenAICall({ label, timeoutMs, action }) {
   }
 }
 
-async function postProcessText(text, prompt) {
+async function postProcessText(text, prompt, contextHint) {
   if (!settings.postProcessEnabled) {
     return text;
   }
@@ -1065,18 +1500,26 @@ async function postProcessText(text, prompt) {
     throw error;
   }
   const systemPrompt = [
-    'You are a text editor. Keep the original meaning and do not add content.',
+    'You are a text editor. Preserve the original meaning and factual content.',
+    'Do not invent new facts. Figurative language is allowed only if requested by the style.',
     'Remove filler words, hesitations, and repetitions.',
     'Remove stray quotation marks.',
-    'Fix punctuation, add natural line breaks.',
+    'Fix punctuation, spelling, grammar, and add natural line breaks.',
     'Do not summarize.',
   ].join(' ');
+  const contextBlock = contextHint
+    ? [
+      'Context hints (redacted, optional). Use only to resolve proper nouns; do not add new facts:',
+      `- ${contextHint}`,
+    ].join('\n')
+    : '';
   const userPrompt = [
     `Language: ${settings.language || 'fr'}.`,
     prompt || '',
+    contextBlock,
     'Text:',
     text,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   try {
     const response = await executeOpenAICall({
@@ -1272,28 +1715,60 @@ async function ensureDefaultStyle() {
     return;
   }
   const styles = await store.listStyles();
-  const existingNames = new Set(styles.map((style) => style.name));
+  const stylesByName = new Map(styles.map((style) => [style.name, style]));
+  const existingNames = new Set(stylesByName.keys());
   const now = new Date().toISOString();
+  const legacyPrompts = {
+    Default: [
+      'Supprimer les "euh", hesitations et repetitions.',
+      'Supprimer les guillemets parasites.',
+      'Corriger la ponctuation (virgules, points, questions).',
+      'Corriger l orthographe, la grammaire et la syntaxe.',
+      'Ajouter des retours a la ligne naturels.',
+      'Preserver strictement le sens original.',
+      'Ne pas resumer, ne pas ajouter de contenu.',
+    ].join(' '),
+    Casual: [
+      'Style naturel, simple, conversationnel.',
+      'Ponctuation legere.',
+      'Preserver strictement le sens original.',
+      'Ne pas resumer, ne pas ajouter de contenu.',
+
+    ].join(' '),
+    Formel: [
+      'Style professionnel et structure.',
+      'Phrases completes, ponctuation soignee.',
+      'Vocabulaire precis, ton poli.',
+      'Preserver strictement le sens original.',
+      'Ne pas resumer, ne pas ajouter de contenu.',
+
+    ].join(' '),
+    Croco: [
+      'Style naturel, simple, conversationnel.',
+      'Metaphores fun & audacieuses et analogies contre-intuitives dans le style de Rory Sutherland.',
+      'Preserver strictement le sens original.',
+      'Ne pas resumer, ne pas ajouter de contenu.',
+    ].join(' '),
+  };
   const presets = [
     {
       name: 'Default',
       prompt: [
-        'Supprimer les "euh", hesitations et repetitions.',
-        'Supprimer les guillemets parasites.',
-        'Corriger la ponctuation (virgules, points, questions).',
-        'Corriger l orthographe, la grammaire et la syntaxe.',
+        'Corriger l orthographe, la grammaire et la ponctuation.',
+        'Supprimer les scories de langage (euh, hesitations, repetitions).',
         'Ajouter des retours a la ligne naturels.',
-        'Preserver strictement le sens original.',
-        'Ne pas resumer, ne pas ajouter de contenu.',
+        'Rester au plus pres du texte dicte (pas de reformulation).',
+        'Ne pas ajouter de faits ni de contenu nouveau.',
       ].join(' '),
     },
     {
       name: 'Casual',
       prompt: [
         'Style naturel, simple, conversationnel.',
-        'Ponctuation legere.',
-        'Preserver strictement le sens original.',
-        'Ne pas resumer, ne pas ajouter de contenu.',
+        'Reecriture legere autorisee pour rendre le texte plus fluide.',
+        'Ponctuation legere, vocabulaire simple.',
+        'Conserver le sens et les faits, ne pas inventer.',
+        'Ne pas resumer.',
 
       ].join(' '),
     },
@@ -1301,26 +1776,38 @@ async function ensureDefaultStyle() {
       name: 'Formel',
       prompt: [
         'Style professionnel et structure.',
-        'Phrases completes, ponctuation soignee.',
-        'Vocabulaire precis, ton poli.',
-        'Preserver strictement le sens original.',
-        'Ne pas resumer, ne pas ajouter de contenu.',
+        'Reecriture legere autorisee pour clarifier et structurer.',
+        'Phrases completes, ponctuation soignee, vocabulaire precis.',
+        'Conserver le sens et les faits, ne pas inventer.',
+        'Ne pas resumer.',
 
       ].join(' '),
     },
     {
       name: 'Croco',
       prompt: [
-        'Style naturel, simple, conversationnel.',
-        'Metaphores fun & audacieuses et analogies contre-intuitives dans le style de Rory Sutherland.',
-        'Preserver strictement le sens original.',
-        'Ne pas resumer, ne pas ajouter de contenu.',
+        'Style direct, vivant et percutant.',
+        'Reecriture plus libre autorisee tant que le sens est conserve.',
+        'Ajouter au plus une metaphore courte ou une analogie creative si naturel.',
+        'Ne pas inventer de faits, ne pas resumer.',
       ].join(' '),
     },
   ];
 
   for (const preset of presets) {
     if (existingNames.has(preset.name)) {
+      const existing = stylesByName.get(preset.name);
+      const legacyPrompt = legacyPrompts[preset.name];
+      if (existing && legacyPrompt && existing.prompt && existing.prompt.trim() === legacyPrompt.trim()) {
+        await store.upsertStyle({
+          id: existing.id,
+          user_id: existing.user_id || null,
+          name: existing.name,
+          prompt: preset.prompt,
+          created_at: existing.created_at || now,
+          updated_at: now,
+        });
+      }
       continue;
     }
     await store.upsertStyle({
@@ -1482,6 +1969,7 @@ function createMainWindow() {
       mainWindow.hide();
     }
   });
+
 }
 
 function createDashboardWindow() {
@@ -1926,6 +2414,7 @@ async function triggerPasteShortcut() {
 async function pasteText(text, options = {}) {
   const runPaste = async () => {
     let previousClipboard = '';
+    let restoreClipboard = true;
     const mode = options.mode || 'paste';
     const shouldPaste = mode !== 'clipboard';
     const allowTargetChange = options.allowTargetChange !== false;
@@ -1949,11 +2438,27 @@ async function pasteText(text, options = {}) {
         await triggerPasteShortcut();
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
+      lastDelivery = {
+        mode,
+        status: 'ok',
+        message: '',
+        at: new Date().toISOString(),
+      };
     } catch (error) {
       console.error('Paste error:', error);
-      throw new Error(error.message || 'Echec du collage');
+      restoreClipboard = false;
+      const baseMessage = error?.message || 'Echec du collage';
+      lastDelivery = {
+        mode,
+        status: 'error',
+        message: baseMessage,
+        fallback: 'clipboard',
+        at: new Date().toISOString(),
+      };
+      recordDiagnosticEvent('delivery_error', lastDelivery.message);
+      throw new Error(`${baseMessage} Texte conservé dans le presse-papier.`);
     } finally {
-      if (shouldPaste && previousClipboard !== null && previousClipboard !== undefined) {
+      if (shouldPaste && restoreClipboard && previousClipboard !== null && previousClipboard !== undefined) {
         clipboard.writeText(previousClipboard);
       }
       pendingPasteBuffer = '';
@@ -2015,11 +2520,19 @@ async function runTranscriptionPipeline(buffer, mimeType) {
     return { skip: true, transcribedText: '' };
   }
 
+  const contextState = await getContextStateCached();
+  const contextSettings = getContextSettings();
+  const useContextForPostProcess = Boolean(
+    contextSettings.postProcessEnabled && contextState?.enabled && contextState?.payload,
+  );
+  const contextHint = useContextForPostProcess
+    ? buildPostProcessContextHints(contextState.payload)
+    : '';
   const stylePrompt = await getActiveStylePrompt();
   let editedText = transcribedText;
   let warningMessage = '';
   try {
-    editedText = await postProcessText(transcribedText, stylePrompt);
+    editedText = await postProcessText(transcribedText, stylePrompt, contextHint);
   } catch (error) {
     if (error?.code === 'missing_api_key') {
       warningMessage = 'Post-traitement ignore: OPENAI_API_KEY manquante.';
@@ -2029,7 +2542,10 @@ async function runTranscriptionPipeline(buffer, mimeType) {
     console.warn('Post-processing failed, using raw transcript.');
   }
 
-  const formattedText = editedText;
+  let formattedText = editedText;
+  if (contextState.enabled && contextState.profile) {
+    formattedText = applyAdaptiveFormatting(editedText, contextState.profile);
+  }
   const snippetText = await applySnippets(formattedText);
   const finalText = await applyDictionary(snippetText);
   const title = await generateEntryTitle(finalText);
@@ -2040,11 +2556,12 @@ async function runTranscriptionPipeline(buffer, mimeType) {
     finalText,
     title,
     divergenceScore: computeDivergenceScore(transcribedText, formattedText),
+    contextState,
     warningMessage,
   };
 }
 
-async function persistTranscription({ transcribedText, formattedText, finalText, title, latencyMs, divergenceScore, micDevice, fallbackPath }) {
+async function persistTranscription({ transcribedText, formattedText, finalText, title, latencyMs, divergenceScore, micDevice, fallbackPath, contextPayload }) {
   if (!store) {
     return;
   }
@@ -2057,6 +2574,7 @@ async function persistTranscription({ transcribedText, formattedText, finalText,
     raw_text: transcribedText,
     formatted_text: formattedText || null,
     edited_text: finalText || null,
+    context_json: contextPayload ? JSON.stringify(contextPayload) : null,
     language: settings.language || 'fr',
     duration_ms: recordingStartTime ? Date.now() - recordingStartTime : null,
     latency_ms: metricsEnabled ? latencyMs : null,
@@ -2099,6 +2617,7 @@ async function handleAudioPayload(event, audioData) {
       finalText,
       title,
       divergenceScore,
+      contextState,
       warningMessage: pipelineWarningMessage,
     } = pipelineResult;
     const shouldSkipPaste = target === 'notes' || target === 'notes-editor' || target === 'onboarding';
@@ -2112,7 +2631,12 @@ async function handleAudioPayload(event, audioData) {
       divergenceScore,
       micDevice: micDevice || settings.microphoneId || null,
       fallbackPath: 'file',
+      contextPayload: contextState?.payload || null,
     });
+    lastPolishDiff = {
+      before: transcribedText || '',
+      after: formattedText || finalText || '',
+    };
     if (target === 'notes') {
       const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
       await store.addNote({
@@ -2140,6 +2664,7 @@ async function handleAudioPayload(event, audioData) {
 
     event.reply('transcription-success', finalText);
     sendDashboardEvent('dashboard:transcription-success', finalText, target);
+    clearContextCache();
   } catch (error) {
     console.error('Processing error:', error);
 
@@ -2162,7 +2687,266 @@ async function handleAudioPayload(event, audioData) {
 
     event.reply('transcription-error', userMessage);
     sendDashboardEvent('dashboard:transcription-error', userMessage);
+    clearContextCache();
   }
+}
+
+function getMimeTypeForPath(filePath) {
+  if (!filePath) {
+    return 'audio/webm';
+  }
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case '.wav':
+      return 'audio/wav';
+    case '.mp3':
+      return 'audio/mpeg';
+    case '.m4a':
+      return 'audio/x-m4a';
+    case '.oga':
+    case '.ogg':
+      return 'audio/ogg';
+    default:
+      return 'audio/webm';
+  }
+}
+
+function getWavDurationMs(buffer) {
+  if (!buffer || buffer.length < 44) {
+    return null;
+  }
+  if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
+    return null;
+  }
+  const numChannels = buffer.readUInt16LE(22);
+  const sampleRate = buffer.readUInt32LE(24);
+  const bitsPerSample = buffer.readUInt16LE(34);
+  let dataOffset = 36;
+  let dataSize = null;
+  while (dataOffset + 8 <= buffer.length) {
+    const chunkId = buffer.toString('ascii', dataOffset, dataOffset + 4);
+    const chunkSize = buffer.readUInt32LE(dataOffset + 4);
+    if (chunkId === 'data') {
+      dataSize = chunkSize;
+      break;
+    }
+    dataOffset += 8 + chunkSize;
+  }
+  if (!dataSize || !sampleRate || !numChannels || !bitsPerSample) {
+    return null;
+  }
+  const bytesPerSample = bitsPerSample / 8;
+  const totalSamples = dataSize / (bytesPerSample * numChannels);
+  if (!Number.isFinite(totalSamples) || totalSamples <= 0) {
+    return null;
+  }
+  return Math.round((totalSamples / sampleRate) * 1000);
+}
+
+function updateUploadJob(id, patch) {
+  const job = uploadJobById.get(id);
+  if (!job) {
+    return null;
+  }
+  Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+  sendDashboardEvent('dashboard:data-updated');
+  return job;
+}
+
+function serializeUploadJob(job) {
+  if (!job) {
+    return null;
+  }
+  return {
+    id: job.id,
+    fileName: job.fileName,
+    fileSize: job.fileSize,
+    status: job.status,
+    progress: job.progress || 0,
+    error: job.error || null,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  };
+}
+
+function listUploadJobs() {
+  return uploadJobs.map(serializeUploadJob).filter(Boolean);
+}
+
+async function processUploadJob(job) {
+  const config = getUploadConfig();
+  if (!config.cloudFallback) {
+    updateUploadJob(job.id, { status: 'failed', error: 'Transcription locale indisponible. Activez la fallback cloud.' });
+    return;
+  }
+
+  updateUploadJob(job.id, { status: 'processing', progress: 10 });
+  let buffer = null;
+  try {
+    buffer = await fs.promises.readFile(job.filePath);
+  } catch (error) {
+    updateUploadJob(job.id, { status: 'failed', error: error?.message || 'Lecture fichier impossible.' });
+    return;
+  }
+  if (job.cancelled) {
+    updateUploadJob(job.id, { status: 'cancelled' });
+    return;
+  }
+
+  updateUploadJob(job.id, { status: 'processing', progress: 35 });
+  const mimeType = getMimeTypeForPath(job.filePath);
+  let transcribedText = '';
+  try {
+    transcribedText = await transcribeAudio(buffer, mimeType);
+  } catch (error) {
+    updateUploadJob(job.id, { status: 'failed', error: error?.message || 'Transcription impossible.' });
+    return;
+  }
+  if (job.cancelled) {
+    updateUploadJob(job.id, { status: 'cancelled' });
+    return;
+  }
+  updateUploadJob(job.id, { status: 'processing', progress: 80 });
+
+  const durationMs = mimeType === 'audio/wav' ? getWavDurationMs(buffer) : null;
+  const fileMeta = {
+    source: 'file_upload',
+    file: {
+      name: job.fileName,
+      size: job.fileSize,
+      duration_ms: durationMs,
+      path: job.filePath,
+    },
+  };
+
+  const finalText = transcribedText.trim();
+  const title = await generateEntryTitle(finalText || job.fileName);
+  const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
+  await store.addNote({
+    id: crypto.randomUUID(),
+    user_id: userId,
+    text: finalText,
+    title,
+    metadata: fileMeta,
+  });
+  sendDashboardEvent('dashboard:data-updated');
+  scheduleDebouncedSync();
+  await incrementQuotaUsage(finalText);
+
+  updateUploadJob(job.id, { status: 'completed', progress: 100 });
+}
+
+function sanitizeContextForExport(contextPayload, includeSensitive = false) {
+  if (!contextPayload || typeof contextPayload !== 'object') {
+    return contextPayload;
+  }
+  if (includeSensitive) {
+    return contextPayload;
+  }
+  const next = { ...contextPayload };
+  if (next.axText) {
+    delete next.axText;
+  }
+  if (next.textboxText) {
+    delete next.textboxText;
+  }
+  if (next.screenshot) {
+    delete next.screenshot;
+  }
+  if (next.file && next.file.path) {
+    delete next.file.path;
+  }
+  return next;
+}
+
+function splitParagraphs(text) {
+  if (!text) {
+    return [];
+  }
+  return text.split(/\n{2,}/g).map((part) => part.trim()).filter(Boolean);
+}
+
+function buildExportPayload(entry, options) {
+  const format = options.format || 'txt';
+  const includeTimestamps = options.includeTimestamps === true;
+  const includeSensitive = options.includeSensitive === true;
+  const createdAt = entry.created_at || new Date().toISOString();
+  const title = entry.title || 'transcript';
+  let contextPayload = null;
+  if (entry.context_json) {
+    try {
+      contextPayload = sanitizeContextForExport(JSON.parse(entry.context_json), includeSensitive);
+    } catch {
+      contextPayload = null;
+    }
+  }
+  const paragraphs = splitParagraphs(entry.text || entry.raw_text || '');
+  if (format === 'json') {
+    return JSON.stringify({
+      export_version: 'v1',
+      id: entry.id,
+      title,
+      language: entry.language,
+      created_at: createdAt,
+      duration_ms: entry.duration_ms || null,
+      source: contextPayload?.source || null,
+      context: contextPayload || null,
+      segments: includeTimestamps
+        ? paragraphs.map((text) => ({ at: createdAt, text }))
+        : paragraphs.map((text) => ({ text })),
+      text: entry.text || entry.raw_text || '',
+    }, null, 2);
+  }
+
+  const lines = [];
+  const stamp = includeTimestamps ? `[${createdAt}] ` : '';
+  paragraphs.forEach((paragraph) => {
+    lines.push(`${stamp}${paragraph}`);
+    lines.push('');
+  });
+  const content = lines.join('\n').trim();
+  if (format === 'md') {
+    return `# ${title}\n\n${content}`;
+  }
+  return content;
+}
+
+function slugifyFilename(value) {
+  return (value || 'transcript')
+    .toString()
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 80)
+    .toLowerCase() || 'transcript';
+}
+
+function buildExportFilename(entry, ext) {
+  const date = (entry.created_at || new Date().toISOString()).slice(0, 10);
+  const title = slugifyFilename(entry.title || 'transcript');
+  return `${date}-${title}.${ext}`;
+}
+
+function encodeWavFromFloat32(samples, sampleRate) {
+  const buffer = Buffer.alloc(44 + samples.length * 2);
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + samples.length * 2, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(samples.length * 2, 40);
+  for (let i = 0; i < samples.length; i += 1) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    buffer.writeInt16LE(Math.round(s * 32767), 44 + i * 2);
+  }
+  return buffer;
 }
 
 ipcMain.on('audio-data', (event, audioData) => {
@@ -2171,6 +2955,216 @@ ipcMain.on('audio-data', (event, audioData) => {
 
 ipcMain.on('audio-ready', (event, audioData) => {
   handleAudioPayload(event, audioData);
+});
+
+ipcMain.on('stream:start', (event, payload = {}) => {
+  if (!isFeatureEnabled('streaming')) {
+    return;
+  }
+  const sessionId = payload.sessionId;
+  if (!sessionId) {
+    return;
+  }
+  streamSessions.set(sessionId, {
+    id: sessionId,
+    sampleRate: payload.sampleRate || settings.streamSampleRate || 16000,
+    chunkMs: payload.chunkMs || settings.streamChunkMs || 900,
+    codec: payload.codec || 'pcm',
+    mimeType: payload.mimeType || 'audio/webm',
+    startedAt: Date.now(),
+    seqExpected: 0,
+    samples: [],
+    encodedChunks: [],
+    lastPartialAt: 0,
+    lastSampleIndex: 0,
+    partialText: '',
+    active: true,
+    lastChunkAt: null,
+    stallTimer: null,
+  });
+  const session = streamSessions.get(sessionId);
+  session.stallTimer = setInterval(() => {
+    if (!session.active) {
+      clearInterval(session.stallTimer);
+      return;
+    }
+    const now = Date.now();
+    if (!session.lastChunkAt) {
+      if (now - session.startedAt < STREAM_START_GRACE_MS) {
+        return;
+      }
+      session.active = false;
+      clearInterval(session.stallTimer);
+      streamSessions.delete(session.id);
+      void fallbackToFileMode('Streaming interrompu (timeout).');
+      setRecordingState(RecordingState.ERROR, 'Streaming interrompu (timeout).');
+      scheduleReturnToIdle(3000);
+      return;
+    }
+    if (now - session.lastChunkAt > Math.max(2000, session.chunkMs * 5)) {
+      session.active = false;
+      clearInterval(session.stallTimer);
+      streamSessions.delete(session.id);
+      void fallbackToFileMode('Streaming interrompu (timeout).');
+      setRecordingState(RecordingState.ERROR, 'Streaming interrompu (timeout).');
+      scheduleReturnToIdle(3000);
+    }
+  }, 1000);
+});
+
+ipcMain.on('stream:chunk', async (event, payload = {}) => {
+  const session = streamSessions.get(payload.sessionId);
+  if (!session || !session.active) {
+    return;
+  }
+  if (payload.seq !== session.seqExpected) {
+    session.active = false;
+    streamSessions.delete(session.id);
+    void fallbackToFileMode('Streaming interrompu (ordre invalide).');
+    setRecordingState(RecordingState.ERROR, 'Streaming interrompu (ordre invalide).');
+    scheduleReturnToIdle(3000);
+    return;
+  }
+  session.seqExpected += 1;
+  session.lastChunkAt = Date.now();
+  let samples = null;
+  if (session.codec === 'opus') {
+    const chunk = payload.chunk;
+    const chunkSize = chunk?.byteLength || 0;
+    if (!chunkSize) {
+      return;
+    }
+    if (chunkSize > 5 * 1024 * 1024) {
+      session.active = false;
+      streamSessions.delete(session.id);
+      void fallbackToFileMode('Chunk audio trop volumineux.');
+      setRecordingState(RecordingState.ERROR, 'Chunk audio trop volumineux.');
+      scheduleReturnToIdle(3000);
+      return;
+    }
+    session.encodedChunks.push(Buffer.from(chunk));
+  } else {
+    samples = payload.samples;
+    if (!samples || !samples.length) {
+      return;
+    }
+    if (samples.length > STREAM_MAX_CHUNK_SAMPLES) {
+      session.active = false;
+      streamSessions.delete(session.id);
+      void fallbackToFileMode('Chunk audio trop volumineux.');
+      setRecordingState(RecordingState.ERROR, 'Chunk audio trop volumineux.');
+      scheduleReturnToIdle(3000);
+      return;
+    }
+    for (let i = 0; i < samples.length; i += 1) {
+      session.samples.push(samples[i]);
+    }
+  }
+  if (Date.now() - session.startedAt > STREAM_MAX_DURATION_MS) {
+    session.active = false;
+    streamSessions.delete(session.id);
+    void fallbackToFileMode('Session streaming trop longue.');
+    setRecordingState(RecordingState.ERROR, 'Session streaming trop longue.');
+    scheduleReturnToIdle(3000);
+    return;
+  }
+
+  const interval = Number.isFinite(settings.streamPartialIntervalMs) ? settings.streamPartialIntervalMs : 7000;
+  if (Date.now() - session.lastPartialAt < interval) {
+    return;
+  }
+  if (session.codec === 'pcm') {
+    const pendingSamples = session.samples.slice(session.lastSampleIndex);
+    if (pendingSamples.length < session.sampleRate) {
+      return;
+    }
+    session.lastPartialAt = Date.now();
+    const wavBuffer = encodeWavFromFloat32(pendingSamples, session.sampleRate);
+    try {
+      const partial = await transcribeAudio(wavBuffer, 'audio/wav');
+      session.partialText = `${session.partialText} ${partial}`.trim();
+      session.lastSampleIndex = session.samples.length;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('transcription-partial', session.partialText);
+      }
+    } catch (error) {
+      console.warn('Partial transcription failed:', error?.message || error);
+    }
+  }
+});
+
+ipcMain.on('stream:stop', async (event, payload = {}) => {
+  const session = streamSessions.get(payload.sessionId);
+  if (!session) {
+    return;
+  }
+  clearProcessingTimeout();
+  if (session.stallTimer) {
+    clearInterval(session.stallTimer);
+  }
+  session.active = false;
+  streamSessions.delete(session.id);
+  const target = resolveRecordingTarget();
+  const shouldSkipPaste = target === 'notes' || target === 'notes-editor' || target === 'onboarding';
+  try {
+    const buffer = session.codec === 'opus'
+      ? Buffer.concat(session.encodedChunks)
+      : encodeWavFromFloat32(session.samples, session.sampleRate);
+    const mimeType = session.codec === 'opus' ? session.mimeType : 'audio/wav';
+    const pipelineResult = await runTranscriptionPipeline(buffer, mimeType);
+    if (pipelineResult.skip) {
+      setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+      scheduleReturnToIdle(3000);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('transcription-success', '');
+      }
+      return;
+    }
+    const { transcribedText, formattedText, finalText, title, divergenceScore, contextState } = pipelineResult;
+    const latencyMs = recordingStartTime ? Date.now() - recordingStartTime : null;
+    await persistTranscription({
+      transcribedText,
+      formattedText,
+      finalText,
+      title,
+      latencyMs,
+      divergenceScore,
+      micDevice: settings.microphoneId || null,
+      fallbackPath: 'stream',
+      contextPayload: contextState?.payload || null,
+    });
+    lastPolishDiff = {
+      before: transcribedText || '',
+      after: formattedText || finalText || '',
+    };
+    if (!shouldSkipPaste) {
+      await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transcription-success', finalText);
+    }
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      sendDashboardEvent('dashboard:transcription-success', finalText, target);
+    }
+    setRecordingState(RecordingState.IDLE);
+  } catch (error) {
+    console.error('Streaming finalize failed:', error);
+    await fallbackToFileMode(error?.message || 'Erreur streaming.');
+    setRecordingState(RecordingState.ERROR, error?.message || 'Erreur streaming.');
+    scheduleReturnToIdle(3000);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transcription-error', error?.message || 'Erreur streaming.');
+    }
+    sendDashboardEvent('dashboard:transcription-error', error?.message || 'Erreur streaming.');
+  }
+});
+
+ipcMain.on('stream:ping', (event, payload = {}) => {
+  const session = streamSessions.get(payload.sessionId);
+  if (!session || !session.active) {
+    return;
+  }
+  event.sender.send('stream:pong', { sessionId: session.id, at: Date.now() });
 });
 
 ipcMain.on('mic-monitor:level', (event, payload) => {
@@ -2187,6 +3181,7 @@ ipcMain.on('recording-error', (event, error) => {
   clearProcessingTimeout();
   setRecordingState(RecordingState.ERROR, error);
   scheduleReturnToIdle(3000);
+  recordDiagnosticEvent('recording_error', typeof error === 'string' ? error : 'Erreur enregistrement');
 });
 
 ipcMain.on('recording-empty', (event, reason) => {
@@ -2197,6 +3192,7 @@ ipcMain.on('recording-empty', (event, reason) => {
     no_audio: NO_AUDIO_MESSAGE,
   };
   setRecordingState(RecordingState.ERROR, messages[reason] || NO_AUDIO_MESSAGE);
+  recordDiagnosticEvent('recording_empty', messages[reason] || NO_AUDIO_MESSAGE);
   scheduleReturnToIdle(3000);
 });
 
@@ -2271,6 +3267,12 @@ ipcMain.handle('settings:save', async (event, nextSettings) => {
   const candidate = { ...settings, ...payload };
   if (Object.prototype.hasOwnProperty.call(candidate, 'deliveryMode')) {
     delete candidate.deliveryMode;
+  }
+  if (STREAMING_DEPRECATED) {
+    const flags = { ...(candidate.featureFlags || {}) };
+    flags.streaming = false;
+    flags.worklet = false;
+    candidate.featureFlags = flags;
   }
   if (candidate.shortcut !== settings.shortcut) {
     const ok = registerGlobalShortcut(candidate.shortcut);
@@ -2350,6 +3352,7 @@ ipcMain.handle('dashboard:data', async () => {
   const dictionary = await store.listDictionary();
   const snippets = await store.listSnippets();
   const styles = await store.listStyles();
+  const contextState = await resolveContextState();
   const authUser = syncService && syncService.getUser();
   const quota = await getQuotaSnapshot();
   const subscription = getSubscriptionSnapshot();
@@ -2361,11 +3364,52 @@ ipcMain.handle('dashboard:data', async () => {
     dictionary,
     snippets,
     styles,
+    uploads: listUploadJobs(),
+    context: {
+      base: contextState.base,
+      contextId: contextState.contextId,
+      enabled: contextState.enabled,
+      profileId: contextState.profile ? contextState.profile.id : null,
+      suggestionId: contextState.suggestion ? contextState.suggestion.id : null,
+      overrideMode: contextState.overrideMode,
+      signals: contextState.signals,
+    },
     quota,
     subscription,
     auth: authUser ? { email: authUser.email, id: authUser.id } : null,
     syncReady: Boolean(syncService && syncService.isReady()),
   };
+});
+
+ipcMain.handle('upload:select', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [
+      { name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'oga'] },
+    ],
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths.length) {
+    return { ok: false, reason: 'canceled' };
+  }
+  return createUploadJobFromFile(result.filePaths[0]);
+});
+
+ipcMain.handle('upload:add', async (event, filePath) => {
+  return createUploadJobFromFile(filePath);
+});
+
+ipcMain.handle('upload:cancel', async (event, id) => {
+  const job = uploadJobById.get(id);
+  if (!job) {
+    return { ok: false };
+  }
+  job.cancelled = true;
+  if (job.status === 'queued') {
+    updateUploadJob(id, { status: 'cancelled' });
+  } else if (job.status === 'processing') {
+    updateUploadJob(id, { status: 'cancelling' });
+  }
+  return { ok: true };
 });
 
 ipcMain.handle('dictionary:upsert', async (event, entry) => {
@@ -2393,6 +3437,19 @@ ipcMain.handle('dictionary:delete', async (event, id) => {
   if (syncService && syncService.isReady()) {
     await syncService.deleteRemote('dictionary', id);
   }
+  scheduleDebouncedSync();
+  return { ok: true };
+});
+
+ipcMain.handle('context:preview', async (event, profileId, text) => {
+  const profile = getContextProfiles().find((candidate) => candidate.id === profileId);
+  const preview = applyAdaptiveFormatting(text || '', profile);
+  return { text: preview };
+});
+
+ipcMain.handle('context:clear', async () => {
+  await store.clearContext();
+  sendDashboardEvent('dashboard:data-updated');
   scheduleDebouncedSync();
   return { ok: true };
 });
@@ -2583,6 +3640,62 @@ ipcMain.handle('history:clear', async () => {
   return { ok: true };
 });
 
+ipcMain.handle('history:export', async (event, id, options = {}) => {
+  if (!id) {
+    return { ok: false, reason: 'missing_id' };
+  }
+  const entry = await store.getHistoryById(id);
+  if (!entry) {
+    return { ok: false, reason: 'not_found' };
+  }
+  const format = options.format || 'txt';
+  const ext = format === 'md' ? 'md' : format === 'json' ? 'json' : 'txt';
+  const defaultPath = buildExportFilename(entry, ext);
+  const dialogResult = await dialog.showSaveDialog({
+    defaultPath,
+    filters: [{ name: 'Export', extensions: [ext] }],
+  });
+  if (dialogResult.canceled || !dialogResult.filePath) {
+    return { ok: false, reason: 'canceled' };
+  }
+  const content = buildExportPayload(entry, { ...options, format: ext });
+  try {
+    await fs.promises.writeFile(dialogResult.filePath, content);
+    return { ok: true, path: dialogResult.filePath };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'export_failed' };
+  }
+});
+
+ipcMain.handle('diagnostics:get', async () => {
+  return {
+    appVersion: app.getVersion(),
+    os: `${os.platform()} ${os.release()}`,
+    flags: getFeatureFlags(),
+    lastDelivery,
+    clipboardTest: lastClipboardTest,
+    shortcut: settings.shortcut,
+    shortcutRegistered: settings.shortcut ? globalShortcut.isRegistered(settings.shortcut) : false,
+    events: diagnosticEvents,
+  };
+});
+
+ipcMain.handle('diagnostics:run-checks', async () => {
+  let clipboardResult = 'unknown';
+  try {
+    const previous = clipboard.readText();
+    const probe = `diag-${Date.now()}`;
+    clipboard.writeText(probe);
+    const readBack = clipboard.readText();
+    clipboard.writeText(previous || '');
+    clipboardResult = readBack === probe ? 'ok' : 'mismatch';
+  } catch (error) {
+    clipboardResult = 'error';
+  }
+  lastClipboardTest = clipboardResult;
+  return { ok: true, clipboardTest: clipboardResult };
+});
+
 ipcMain.handle('auth:status', async () => {
   const authUser = syncService && syncService.getUser();
   return authUser ? { email: authUser.email, id: authUser.id } : null;
@@ -2759,8 +3872,9 @@ ipcMain.handle('auth:open-signup-url', (event, mode) => {
       url = `${baseUrl}${joiner}mode=${mode}`;
     }
   }
-  shell.openExternal(url);
-  return { url };
+  return shell.openExternal(url)
+    .then(() => ({ ok: true, url }))
+    .catch((error) => ({ ok: false, url, reason: error?.message || 'open_failed' }));
 });
 
 ipcMain.handle('sync:now', async () => {
@@ -2780,6 +3894,24 @@ ipcMain.on('history:paste-latest', async () => {
   if (rows.length) {
     await pasteText(rows[0].text, { mode: 'paste', allowTargetChange: true });
   }
+});
+
+ipcMain.on('polish:open', async () => {
+  if (!isFeatureEnabled('contextMenu')) {
+    return;
+  }
+  createDashboardWindow();
+  let diff = lastPolishDiff;
+  if (!diff) {
+    const rows = await store.listHistory({ limit: 1 });
+    if (rows.length) {
+      diff = {
+        before: rows[0].raw_text || '',
+        after: rows[0].formatted_text || rows[0].text || '',
+      };
+    }
+  }
+  sendDashboardEvent('dashboard:diff', diff || { before: '', after: '' });
 });
 
 ipcMain.on('widget:hide-1h', () => {
@@ -2819,6 +3951,14 @@ app.whenReady().then(async () => {
   if (settings && Object.prototype.hasOwnProperty.call(settings, 'deliveryMode')) {
     delete settings.deliveryMode;
   }
+  if (STREAMING_DEPRECATED) {
+    const flags = { ...(settings.featureFlags || {}) };
+    if (flags.streaming || flags.worklet) {
+      flags.streaming = false;
+      flags.worklet = false;
+      await setSettingValue('featureFlags', flags);
+    }
+  }
   await ensureDefaultStyle();
   const retentionDays = getHistoryRetentionDays(
     settings.subscription,
@@ -2830,6 +3970,14 @@ app.whenReady().then(async () => {
     await store.purgeHistory(retentionDays);
   } else {
     console.info('History retention policy: retention disabled; no purge on startup/sync.');
+  }
+
+  const contextSettings = getContextSettings();
+  const contextRetentionDays = Number.isFinite(contextSettings.retentionDays)
+    ? contextSettings.retentionDays
+    : DEFAULT_CONTEXT_SETTINGS.retentionDays;
+  if (contextRetentionDays > 0) {
+    await store.purgeContext(contextRetentionDays);
   }
 
   syncService = new SyncService({

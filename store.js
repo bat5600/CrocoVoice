@@ -239,6 +239,13 @@ class Store {
     return this._all('SELECT * FROM history ORDER BY created_at DESC LIMIT ?', [limit]);
   }
 
+  async getHistoryById(id) {
+    if (!id) {
+      return null;
+    }
+    return this._get('SELECT * FROM history WHERE id = ?', [id]);
+  }
+
   async deleteHistory(id) {
     await this._run('DELETE FROM history WHERE id = ?', [id]);
   }
@@ -300,6 +307,7 @@ class Store {
       raw_text: entry.raw_text || entry.text,
       formatted_text: entry.formatted_text || null,
       edited_text: entry.edited_text || null,
+      context_json: entry.context_json || null,
       language: entry.language || 'fr',
       duration_ms: entry.duration_ms || null,
       latency_ms: typeof entry.latency_ms === 'number' ? entry.latency_ms : null,
@@ -311,14 +319,15 @@ class Store {
       updated_at: entry.updated_at || now,
     };
     await this._run(
-      `INSERT INTO history (id, user_id, text, raw_text, formatted_text, edited_text, language, duration_ms, latency_ms, divergence_score, mic_device, fallback_path, title, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO history (id, user_id, text, raw_text, formatted_text, edited_text, context_json, language, duration_ms, latency_ms, divergence_score, mic_device, fallback_path, title, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          user_id = excluded.user_id,
          text = excluded.text,
          raw_text = excluded.raw_text,
          formatted_text = excluded.formatted_text,
          edited_text = excluded.edited_text,
+         context_json = excluded.context_json,
          language = excluded.language,
          duration_ms = excluded.duration_ms,
          latency_ms = excluded.latency_ms,
@@ -334,6 +343,7 @@ class Store {
         record.raw_text,
         record.formatted_text,
         record.edited_text,
+        record.context_json,
         record.language,
         record.duration_ms,
         record.latency_ms,
@@ -353,8 +363,17 @@ class Store {
     await this._run('DELETE FROM history WHERE created_at < ?', [cutoff]);
   }
 
+  async purgeContext(days = 30) {
+    const cutoff = new Date(Date.now() - days * DAY_MS).toISOString();
+    await this._run('UPDATE history SET context_json = NULL WHERE context_json IS NOT NULL AND created_at < ?', [cutoff]);
+  }
+
   async clearHistory() {
     await this._run('DELETE FROM history');
+  }
+
+  async clearContext() {
+    await this._run('UPDATE history SET context_json = NULL WHERE context_json IS NOT NULL');
   }
 
   async clearSensitiveData() {
@@ -591,6 +610,7 @@ class Store {
       raw_text TEXT NOT NULL,
       formatted_text TEXT,
       edited_text TEXT,
+      context_json TEXT,
       language TEXT NOT NULL,
       duration_ms INTEGER,
       latency_ms INTEGER,
@@ -604,6 +624,7 @@ class Store {
     await this._ensureColumn('history', 'title', 'title TEXT');
     await this._ensureColumn('history', 'formatted_text', 'formatted_text TEXT');
     await this._ensureColumn('history', 'edited_text', 'edited_text TEXT');
+    await this._ensureColumn('history', 'context_json', 'context_json TEXT');
     await this._ensureColumn('history', 'latency_ms', 'latency_ms INTEGER');
     await this._ensureColumn('history', 'divergence_score', 'divergence_score REAL');
     await this._ensureColumn('history', 'mic_device', 'mic_device TEXT');
