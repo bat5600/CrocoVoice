@@ -61,6 +61,18 @@ This document defines the updated user experience goals, information architectur
 - Les lignes (History ou Notes) présentent une étiquette date/heure, un titre généré par l’IA (si besoin), les transcriptions multi-lignes et les actions “Copy”/“Delete” visibles.
 - Le formulaire propose un bouton “Dictée vocale” qui active le widget de transcription ; une fois la séance arrêtée, le texte transcrit est injecté dans le champ de contenu.
 
+## Feature Alignment (PRD → UI Surfaces)
+| PRD Requirement | UI Surface / Flow |
+| --- | --- |
+| FR4 Partial transcript updates | Status Bubble (recording feedback) |
+| FR11 Polish diff viewer | Context Menu + Hub (diff viewer) |
+| FR12 Multi-window UX | Hub, Status Bubble, Context Menu |
+| FR13 Mic/language controls | Status Bubble |
+| FR16 Notifications | Toasts + Notifications inbox |
+| FR17 Insights | Dashboard / Insights views |
+| FR18 Onboarding | Onboarding flow |
+| FR24 Export transcripts | Hub export actions |
+
 ## Component Library / Design System
 
 ### Core Components

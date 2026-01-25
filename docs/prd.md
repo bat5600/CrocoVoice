@@ -84,6 +84,10 @@ Maintain CrocoVoice brand and visual system; introduce consistent tone for syste
 ### Target Device and Platforms
 Desktop Only (Electron)
 
+### UX Artifacts (Authoritative)
+- Front-end spec: docs/front-end-spec.md
+- UX brief: docs/ux/cahier-des-charges-crocovoice-2-0.md
+
 ## Technical Assumptions
 
 ### Repository Structure
