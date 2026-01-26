@@ -10,6 +10,24 @@ const dictionaryList = document.getElementById('dictionaryList');
 const dictionaryEmpty = document.getElementById('dictionaryEmpty');
 const snippetsList = document.getElementById('snippetsList');
 const snippetsEmpty = document.getElementById('snippetsEmpty');
+const notificationsList = document.getElementById('notificationsList');
+const notificationsEmpty = document.getElementById('notificationsEmpty');
+const notificationsRefresh = document.getElementById('notificationsRefresh');
+const insightsTotal = document.getElementById('insightsTotal');
+const insightsWords = document.getElementById('insightsWords');
+const insightsAvgWpm = document.getElementById('insightsAvgWpm');
+const insightsStreak = document.getElementById('insightsStreak');
+const insightsTopApps = document.getElementById('insightsTopApps');
+const insightsRange = document.getElementById('insightsRange');
+const crocOmniConversationList = document.getElementById('crocOmniConversationList');
+const crocOmniMessages = document.getElementById('crocOmniMessages');
+const crocOmniInput = document.getElementById('crocOmniInput');
+const crocOmniSend = document.getElementById('crocOmniSend');
+const crocOmniNew = document.getElementById('crocOmniNew');
+const crocOmniArchive = document.getElementById('crocOmniArchive');
+const crocOmniContextToggle = document.getElementById('crocOmniContextToggle');
+const crocOmniContextAppToggle = document.getElementById('crocOmniContextAppToggle');
+const crocOmniContextIndicator = document.getElementById('crocOmniContextIndicator');
 const snippetCueInput = document.getElementById('snippetCueInput');
 const snippetTemplateInput = document.getElementById('snippetTemplateInput');
 const snippetDescriptionInput = document.getElementById('snippetDescriptionInput');
@@ -106,6 +124,8 @@ const shortcutResetButton = document.getElementById('shortcutResetButton');
 const shortcutHelp = document.getElementById('shortcutHelp');
 const syncNowButton = document.getElementById('syncNowButton');
 const syncStatus = document.getElementById('syncStatus');
+const telemetryExportButton = document.getElementById('telemetryExport');
+const telemetryOutput = document.getElementById('telemetryOutput');
 const onboardingResetButton = document.getElementById('onboardingResetButton');
 const onboardingOverlay = document.getElementById('onboardingOverlay');
 const onboardingStepper = document.getElementById('onboardingStepper');
@@ -156,6 +176,12 @@ let historyData = [];
 let notesData = [];
 let snippetsData = [];
 let dictionaryData = [];
+let notificationsData = [];
+let insightsData = null;
+let crocOmniConversations = [];
+let activeCrocOmniConversationId = null;
+let crocOmniMessagesData = [];
+let insightsRangeDays = 30;
 let modalResolver = null;
 let platform = 'win32';
 let shortcutCaptureActive = false;
@@ -675,6 +701,9 @@ function updateBreadcrumb(viewName) {
     'note-focus': { primary: 'Notes', secondary: 'Focus' },
     dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
     snippets: { primary: 'Snippets', secondary: 'Templates' },
+    crocomni: { primary: 'CrocOmni', secondary: 'Assistant' },
+    inbox: { primary: 'Notifications', secondary: 'Inbox' },
+    insights: { primary: 'Insights', secondary: 'Wrapped' },
     context: { primary: 'Context', secondary: 'Privacy' },
     style: { primary: 'Styles', secondary: 'Persona' },
     settings: { primary: 'Réglages', secondary: 'Général' },
@@ -689,7 +718,22 @@ function updateBreadcrumb(viewName) {
 }
 
 function setActiveView(viewName) {
-  const supportedViews = new Set(['home', 'notes', 'note-focus', 'dictionary', 'snippets', 'context', 'style', 'settings', 'diagnostics', 'diff', 'account']);
+  const supportedViews = new Set([
+    'home',
+    'notes',
+    'note-focus',
+    'dictionary',
+    'snippets',
+    'crocomni',
+    'inbox',
+    'insights',
+    'context',
+    'style',
+    'settings',
+    'diagnostics',
+    'diff',
+    'account',
+  ]);
   const nextView = supportedViews.has(viewName) ? viewName : 'home';
   views.forEach((view) => {
     view.classList.toggle('active', view.id === `view-${nextView}`);
@@ -959,23 +1003,28 @@ async function deleteHistoryWithUndo(entry) {
   renderHistoryList();
   await window.electronAPI.deleteHistory(entry.id);
   showUndoToast('Entrée supprimée.', 'Annuler', async () => {
-    const payload = {
-      id: entry.id,
-      user_id: entry.user_id || null,
-      text: entry.text || '',
-      raw_text: entry.raw_text || entry.text || '',
-      formatted_text: entry.formatted_text || null,
-      edited_text: entry.edited_text || entry.text || '',
-      language: entry.language || currentSettings.language || 'fr',
-      duration_ms: entry.duration_ms || null,
-      latency_ms: typeof entry.latency_ms === 'number' ? entry.latency_ms : null,
-      divergence_score: typeof entry.divergence_score === 'number' ? entry.divergence_score : null,
-      mic_device: entry.mic_device || null,
-      fallback_path: entry.fallback_path || null,
-      title: entry.title || deriveHistoryTitle(entry),
-      created_at: entry.created_at,
-      updated_at: entry.updated_at || entry.created_at,
-    };
+      const payload = {
+        id: entry.id,
+        user_id: entry.user_id || null,
+        text: entry.text || '',
+        raw_text: entry.raw_text || entry.text || '',
+        formatted_text: entry.formatted_text || null,
+        edited_text: entry.edited_text || entry.text || '',
+        language: entry.language || currentSettings.language || 'fr',
+        duration_ms: entry.duration_ms || null,
+        latency_ms: typeof entry.latency_ms === 'number' ? entry.latency_ms : null,
+        network_latency_ms: typeof entry.network_latency_ms === 'number' ? entry.network_latency_ms : null,
+        divergence_score: typeof entry.divergence_score === 'number' ? entry.divergence_score : null,
+        mic_device: entry.mic_device || null,
+        fallback_path: entry.fallback_path || null,
+        fallback_reason: entry.fallback_reason || null,
+        transcription_path: entry.transcription_path || null,
+        audio_quality_class: entry.audio_quality_class || null,
+        audio_diagnostics_json: entry.audio_diagnostics_json || null,
+        title: entry.title || deriveHistoryTitle(entry),
+        created_at: entry.created_at,
+        updated_at: entry.updated_at || entry.created_at,
+      };
     const record = await window.electronAPI.upsertHistory(payload);
     if (record && record.id) {
       historyData = [record, ...historyData.filter((item) => item.id !== record.id)];
@@ -1984,6 +2033,28 @@ function renderDiagnostics() {
   if (snapshot.lastDelivery) {
     lines.push(`Delivery: ${snapshot.lastDelivery.mode || 'n/a'} (${snapshot.lastDelivery.status || 'n/a'})`);
   }
+  const lastEntry = historyData?.[0];
+  if (lastEntry) {
+    lines.push('Dernière dictée:');
+    if (Number.isFinite(lastEntry.latency_ms)) {
+      lines.push(`- Latence E2E: ${Math.round(lastEntry.latency_ms)}ms`);
+    }
+    if (Number.isFinite(lastEntry.network_latency_ms)) {
+      lines.push(`- Latence réseau: ${Math.round(lastEntry.network_latency_ms)}ms`);
+    }
+    if (Number.isFinite(lastEntry.divergence_score)) {
+      lines.push(`- Divergence: ${lastEntry.divergence_score.toFixed(2)}`);
+    }
+    if (lastEntry.fallback_reason || lastEntry.fallback_path) {
+      lines.push(`- Fallback: ${lastEntry.fallback_reason || lastEntry.fallback_path}`);
+    }
+    if (lastEntry.transcription_path) {
+      lines.push(`- Chemin ASR: ${lastEntry.transcription_path}`);
+    }
+    if (lastEntry.audio_quality_class) {
+      lines.push(`- Qualité audio: ${lastEntry.audio_quality_class}`);
+    }
+  }
   if (snapshot.events && snapshot.events.length) {
     lines.push('Events:');
     snapshot.events.slice(0, 10).forEach((event) => {
@@ -2052,6 +2123,19 @@ function refreshActiveList() {
     if (!diagnosticsSnapshot) {
       fetchDiagnostics();
     }
+    return;
+  }
+  if (currentView === 'inbox') {
+    renderNotifications(notificationsData);
+    return;
+  }
+  if (currentView === 'insights') {
+    renderInsights(insightsData);
+    return;
+  }
+  if (currentView === 'crocomni') {
+    renderCrocOmniConversations(crocOmniConversations);
+    renderCrocOmniMessages();
     return;
   }
   if (currentView === 'diff') {
@@ -2452,6 +2536,225 @@ function renderSnippets(snippets) {
   });
 }
 
+function renderNotifications(notifications) {
+  if (!notificationsList || !notificationsEmpty) {
+    return;
+  }
+  notificationsList.innerHTML = '';
+  if (!notifications || notifications.length === 0) {
+    notificationsEmpty.style.display = 'flex';
+    setEmptyStateState(notificationsEmpty, false);
+    return;
+  }
+  notificationsEmpty.style.display = 'none';
+  notifications.forEach((entry) => {
+    if (entry.archived_at) {
+      return;
+    }
+    const row = document.createElement('div');
+    row.className = `notification-row${entry.read_at ? ' notification-read' : ''}`;
+    const content = document.createElement('div');
+    content.className = 'notification-content';
+    const title = document.createElement('div');
+    title.className = 'notification-title';
+    title.textContent = entry.title || 'Notification';
+    const body = document.createElement('div');
+    body.className = 'notification-body';
+    body.textContent = entry.body || '';
+    const meta = document.createElement('div');
+    meta.className = 'notification-meta';
+    meta.textContent = entry.created_at ? new Date(entry.created_at).toLocaleString() : '';
+    content.appendChild(title);
+    content.appendChild(body);
+    content.appendChild(meta);
+    const actions = document.createElement('div');
+    actions.className = 'notification-actions';
+    const readButton = document.createElement('button');
+    readButton.className = 'btn-secondary';
+    readButton.type = 'button';
+    readButton.textContent = entry.read_at ? 'Lu' : 'Marquer lu';
+    readButton.disabled = Boolean(entry.read_at);
+    readButton.addEventListener('click', async () => {
+      await window.electronAPI.markNotificationRead(entry.id);
+    });
+    const archiveButton = document.createElement('button');
+    archiveButton.className = 'btn-secondary';
+    archiveButton.type = 'button';
+    archiveButton.textContent = 'Archiver';
+    archiveButton.addEventListener('click', async () => {
+      await window.electronAPI.archiveNotification(entry.id);
+    });
+    actions.appendChild(readButton);
+    actions.appendChild(archiveButton);
+    row.appendChild(content);
+    row.appendChild(actions);
+    notificationsList.appendChild(row);
+  });
+}
+
+function renderInsights(insights) {
+  if (!insights) {
+    return;
+  }
+  if (insightsTotal) {
+    insightsTotal.textContent = `${insights.totalDictations || 0}`;
+  }
+  if (insightsWords) {
+    insightsWords.textContent = `${insights.totalWords || 0}`;
+  }
+  if (insightsAvgWpm) {
+    insightsAvgWpm.textContent = `${insights.averageWpm || 0}`;
+  }
+  if (insightsStreak) {
+    insightsStreak.textContent = `${insights.streakDays || 0} jours`;
+  }
+  if (insightsTopApps) {
+    insightsTopApps.innerHTML = '';
+    const apps = insights.topApps || [];
+    if (!apps.length) {
+      insightsTopApps.textContent = 'Aucune application détectée.';
+      return;
+    }
+    apps.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'insight-row';
+      row.textContent = `${item.app} · ${item.count}`;
+      insightsTopApps.appendChild(row);
+    });
+  }
+}
+
+function countWordsLocal(text) {
+  if (!text) {
+    return 0;
+  }
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function computeInsightsFromHistoryLocal(history, days) {
+  const stats = {
+    totalDictations: 0,
+    totalWords: 0,
+    averageWords: 0,
+    averageWpm: 0,
+    topApps: [],
+    streakDays: 0,
+  };
+  if (!Array.isArray(history) || !history.length) {
+    return stats;
+  }
+  const cutoff = days ? Date.now() - (days * 24 * 60 * 60 * 1000) : null;
+  const filtered = cutoff
+    ? history.filter((entry) => {
+      const createdAt = entry.created_at ? Date.parse(entry.created_at) : null;
+      return createdAt && createdAt >= cutoff;
+    })
+    : history;
+  let totalDurationMs = 0;
+  const appCounts = new Map();
+  const daysSet = new Set();
+  filtered.forEach((entry) => {
+    stats.totalDictations += 1;
+    const words = countWordsLocal(entry.text || '');
+    stats.totalWords += words;
+    if (Number.isFinite(entry.duration_ms)) {
+      totalDurationMs += entry.duration_ms;
+    }
+    if (entry.created_at) {
+      daysSet.add(entry.created_at.slice(0, 10));
+    }
+    if (entry.context_json) {
+      try {
+        const context = JSON.parse(entry.context_json);
+        const appName = context?.appName || context?.app || null;
+        if (appName) {
+          appCounts.set(appName, (appCounts.get(appName) || 0) + 1);
+        }
+      } catch {}
+    }
+  });
+  stats.averageWords = stats.totalDictations ? Math.round(stats.totalWords / stats.totalDictations) : 0;
+  if (totalDurationMs > 0) {
+    const totalMinutes = totalDurationMs / 60000;
+    stats.averageWpm = totalMinutes ? Math.round(stats.totalWords / totalMinutes) : 0;
+  }
+  stats.topApps = Array.from(appCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([app, count]) => ({ app, count }));
+  const sortedDays = Array.from(daysSet).sort();
+  let streak = 0;
+  let current = null;
+  sortedDays.forEach((day) => {
+    if (!current) {
+      current = day;
+      streak = 1;
+      return;
+    }
+    const prev = new Date(current);
+    const next = new Date(prev.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (day === next) {
+      streak += 1;
+    } else {
+      streak = 1;
+    }
+    current = day;
+  });
+  stats.streakDays = streak;
+  return stats;
+}
+
+function renderCrocOmniConversations(conversations) {
+  if (!crocOmniConversationList) {
+    return;
+  }
+  crocOmniConversationList.innerHTML = '';
+  if (!conversations || conversations.length === 0) {
+    crocOmniConversationList.innerHTML = '<div class="empty-state">Aucune conversation.</div>';
+    return;
+  }
+  conversations.forEach((conversation) => {
+    if (conversation.archived_at) {
+      return;
+    }
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `croc-omni-conversation${conversation.id === activeCrocOmniConversationId ? ' active' : ''}`;
+    row.textContent = conversation.title || 'Conversation';
+    row.addEventListener('click', async () => {
+      activeCrocOmniConversationId = conversation.id;
+      crocOmniMessagesData = await window.electronAPI.listCrocOmniMessages(conversation.id);
+      renderCrocOmniMessages();
+      renderCrocOmniConversations(crocOmniConversations);
+    });
+    crocOmniConversationList.appendChild(row);
+  });
+}
+
+function renderCrocOmniMessages() {
+  if (!crocOmniMessages) {
+    return;
+  }
+  crocOmniMessages.innerHTML = '';
+  if (crocOmniContextIndicator) {
+    crocOmniContextIndicator.textContent = 'Contexte: inactif';
+  }
+  if (!crocOmniMessagesData || crocOmniMessagesData.length === 0) {
+    crocOmniMessages.innerHTML = '<div class="empty-state">Démarrez une conversation CrocOmni.</div>';
+    return;
+  }
+  crocOmniMessagesData.forEach((msg) => {
+    const row = document.createElement('div');
+    row.className = `croc-omni-message croc-omni-${msg.role}`;
+    row.textContent = msg.content || '';
+    if (msg.context_used && crocOmniContextIndicator && msg.role === 'assistant') {
+      crocOmniContextIndicator.textContent = 'Contexte utilisé';
+    }
+    crocOmniMessages.appendChild(row);
+  });
+  crocOmniMessages.scrollTop = crocOmniMessages.scrollHeight;
+}
+
 function renderStyles(styles) {
   if (!styleList) {
     return;
@@ -2776,10 +3079,26 @@ function renderSettings(settings) {
     if (typeof settings[key] === 'undefined') {
       return;
     }
-    if (key === 'postProcessEnabled' || key === 'metricsEnabled') {
+    const booleanSelectKeys = new Set([
+      'postProcessEnabled',
+      'metricsEnabled',
+      'uploadCloudFallback',
+      'telemetryOptIn',
+      'telemetryIncludeSensitive',
+      'audioDiagnosticsEnabled',
+      'localAsrEnabled',
+      'localEnhancementEnabled',
+      'notificationsEnabled',
+    ]);
+    if (booleanSelectKeys.has(key)) {
       input.value = settings[key] ? 'true' : 'false';
     } else {
-      input.value = settings[key];
+      if (key === 'notificationsMutedTypes') {
+        const list = Array.isArray(settings[key]) ? settings[key] : [];
+        input.value = list.join(', ');
+      } else {
+        input.value = settings[key];
+      }
     }
   });
 
@@ -3002,13 +3321,17 @@ function handleSettingChange(event) {
   }
 
   let value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
-  if (setting === 'postProcessEnabled') {
-    value = value === 'true';
-  }
-  if (setting === 'metricsEnabled') {
-    value = value === 'true';
-  }
-  if (setting === 'uploadCloudFallback') {
+  if ([
+    'postProcessEnabled',
+    'metricsEnabled',
+    'uploadCloudFallback',
+    'telemetryOptIn',
+    'telemetryIncludeSensitive',
+    'audioDiagnosticsEnabled',
+    'localAsrEnabled',
+    'localEnhancementEnabled',
+    'notificationsEnabled',
+  ].includes(setting)) {
     value = value === 'true';
   }
   if (setting === 'streamChunkMs') {
@@ -3022,6 +3345,31 @@ function handleSettingChange(event) {
   if (setting === 'uploadMaxMb') {
     const parsed = Number.parseInt(value, 10);
     value = Number.isFinite(parsed) ? parsed : currentSettings.uploadMaxMb || 200;
+  }
+  if (setting === 'featureFlagsTtlMs') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.featureFlagsTtlMs || 300000;
+  }
+  if (setting === 'notificationsPollMinutes') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.notificationsPollMinutes || 60;
+  }
+  if (setting === 'localAsrMaxDurationMs') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.localAsrMaxDurationMs || 60000;
+  }
+  if (setting === 'localEnhancementMaxDurationMs') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.localEnhancementMaxDurationMs || 20000;
+  }
+  if (setting === 'notificationsRetentionDays') {
+    const parsed = Number.parseInt(value, 10);
+    value = Number.isFinite(parsed) ? parsed : currentSettings.notificationsRetentionDays || 30;
+  }
+  if (setting === 'notificationsMutedTypes') {
+    value = typeof value === 'string'
+      ? value.split(',').map((item) => item.trim()).filter(Boolean)
+      : [];
   }
 
   if (setting.startsWith('featureFlags.')) {
@@ -3190,12 +3538,26 @@ async function refreshDashboard() {
   notesData = dashboardData.notes || [];
   dictionaryData = dashboardData.dictionary || [];
   snippetsData = dashboardData.snippets || [];
+  notificationsData = dashboardData.notifications || [];
+  insightsData = computeInsightsFromHistoryLocal(historyData, insightsRangeDays);
+  crocOmniConversations = dashboardData.crocOmniConversations || [];
+  if (!activeCrocOmniConversationId && crocOmniConversations.length) {
+    activeCrocOmniConversationId = crocOmniConversations[0].id;
+  }
   refreshActiveList();
   renderDictionary(dictionaryData);
   renderSnippets(snippetsData);
+  renderNotifications(notificationsData);
+  renderInsights(insightsData);
+  renderCrocOmniConversations(crocOmniConversations);
+  if (activeCrocOmniConversationId) {
+    crocOmniMessagesData = await window.electronAPI.listCrocOmniMessages(activeCrocOmniConversationId);
+  }
+  renderCrocOmniMessages();
   renderStyles(dashboardData.styles);
   renderSettings(currentSettings);
   renderContext(dashboardData.context);
+  applyCrocOmniSettings(currentSettings, dashboardData.context);
   renderUploads(dashboardData.uploads);
   applyOnboardingStateFromSettings(currentSettings);
   renderAuth(dashboardData.auth, dashboardData.syncReady);
@@ -3218,8 +3580,38 @@ window.addEventListener('DOMContentLoaded', () => {
       if (event.key === 'Escape' && modalResolver) {
         modalCancel.click();
       }
-    });
+  });
+}
+
+function applyCrocOmniSettings(settings, contextState = {}) {
+  const crocOmniSettings = settings?.crocOmni || {};
+  if (crocOmniContextToggle) {
+    crocOmniContextToggle.checked = crocOmniSettings.contextEnabled === true;
   }
+  if (crocOmniContextIndicator) {
+    crocOmniContextIndicator.textContent = crocOmniSettings.contextEnabled
+      ? 'Contexte: prêt'
+      : 'Contexte: inactif';
+  }
+  if (crocOmniContextAppToggle) {
+    const contextId = contextState.contextId || '';
+    const overrides = crocOmniSettings.contextOverrides || {};
+    if (!contextId) {
+      crocOmniContextAppToggle.checked = false;
+      crocOmniContextAppToggle.disabled = true;
+    } else {
+      crocOmniContextAppToggle.disabled = false;
+      crocOmniContextAppToggle.checked = overrides[contextId] === true;
+    }
+  }
+}
+
+function updateCrocOmniSettings(nextSettings) {
+  currentSettings = { ...currentSettings, ...nextSettings };
+  if (window.electronAPI?.saveSettings) {
+    window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
+  }
+}
 
   document.addEventListener('keydown', (event) => {
     if (!document.body.classList.contains('note-focus-active')) {
@@ -3543,6 +3935,24 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (telemetryExportButton) {
+    telemetryExportButton.addEventListener('click', async () => {
+      if (!window.electronAPI?.exportTelemetry) {
+        showToast('Export télémétrie indisponible.', 'error');
+        return;
+      }
+      try {
+        const payload = await window.electronAPI.exportTelemetry();
+        if (telemetryOutput) {
+          telemetryOutput.textContent = JSON.stringify(payload, null, 2);
+        }
+        showToast('Export télémétrie généré.');
+      } catch (error) {
+        showToast('Export télémétrie échoué.', 'error');
+      }
+    });
+  }
+
   if (diagnosticsCopy) {
     diagnosticsCopy.addEventListener('click', async () => {
       const text = diagnosticsOutput?.textContent || '';
@@ -3736,6 +4146,96 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   settingsInputs.forEach((input) => input.addEventListener('change', handleSettingChange));
+
+  if (insightsRange) {
+    insightsRange.value = String(insightsRangeDays);
+    insightsRange.addEventListener('change', () => {
+      const parsed = Number.parseInt(insightsRange.value, 10);
+      insightsRangeDays = Number.isFinite(parsed) ? parsed : 30;
+      insightsData = computeInsightsFromHistoryLocal(historyData, insightsRangeDays);
+      renderInsights(insightsData);
+    });
+  }
+
+  if (notificationsRefresh) {
+    notificationsRefresh.addEventListener('click', async () => {
+      if (!window.electronAPI?.refreshNotifications) {
+        showToast('Notifications indisponibles.', 'error');
+        return;
+      }
+      await window.electronAPI.refreshNotifications();
+      await refreshDashboard();
+    });
+  }
+
+  if (crocOmniNew) {
+    crocOmniNew.addEventListener('click', async () => {
+      if (!window.electronAPI?.createCrocOmniConversation) {
+        showToast('CrocOmni indisponible.', 'error');
+        return;
+      }
+      const conversation = await window.electronAPI.createCrocOmniConversation({ title: 'Nouvelle conversation' });
+      activeCrocOmniConversationId = conversation?.id || null;
+      await refreshDashboard();
+      setActiveView('crocomni');
+    });
+  }
+
+  if (crocOmniArchive) {
+    crocOmniArchive.addEventListener('click', async () => {
+      if (!activeCrocOmniConversationId || !window.electronAPI?.archiveCrocOmniConversation) {
+        return;
+      }
+      await window.electronAPI.archiveCrocOmniConversation(activeCrocOmniConversationId);
+      activeCrocOmniConversationId = null;
+      await refreshDashboard();
+    });
+  }
+
+  if (crocOmniSend) {
+    crocOmniSend.addEventListener('click', async () => {
+      if (!crocOmniInput?.value.trim()) {
+        return;
+      }
+      const content = crocOmniInput.value.trim();
+      crocOmniInput.value = '';
+      if (!window.electronAPI?.sendCrocOmniMessage) {
+        showToast('CrocOmni indisponible.', 'error');
+        return;
+      }
+      const result = await window.electronAPI.sendCrocOmniMessage({
+        conversationId: activeCrocOmniConversationId,
+        content,
+      });
+      if (result?.conversationId) {
+        activeCrocOmniConversationId = result.conversationId;
+      }
+      await refreshDashboard();
+      setActiveView('crocomni');
+    });
+  }
+
+  if (crocOmniContextToggle) {
+    crocOmniContextToggle.addEventListener('change', (event) => {
+      const crocOmniSettings = { ...(currentSettings.crocOmni || {}) };
+      crocOmniSettings.contextEnabled = event.target.checked;
+      updateCrocOmniSettings({ crocOmni: crocOmniSettings });
+    });
+  }
+
+  if (crocOmniContextAppToggle) {
+    crocOmniContextAppToggle.addEventListener('change', (event) => {
+      const contextId = dashboardData?.context?.contextId;
+      if (!contextId) {
+        return;
+      }
+      const crocOmniSettings = { ...(currentSettings.crocOmni || {}) };
+      const overrides = { ...(crocOmniSettings.contextOverrides || {}) };
+      overrides[contextId] = event.target.checked;
+      crocOmniSettings.contextOverrides = overrides;
+      updateCrocOmniSettings({ crocOmni: crocOmniSettings });
+    });
+  }
 
   if (shortcutInput) {
     shortcutInput.addEventListener('focus', () => {
@@ -4237,6 +4737,8 @@ window.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onSettingsUpdated((nextSettings) => {
       currentSettings = nextSettings || currentSettings;
       applyOnboardingStateFromSettings(currentSettings);
+      renderSettings(currentSettings);
+      applyCrocOmniSettings(currentSettings, dashboardData?.context || {});
     });
   }
 

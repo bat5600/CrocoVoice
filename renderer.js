@@ -47,6 +47,9 @@ let audioRmsPeak = 0;
 let audioActiveMs = 0;
 let audioMetricsLastAt = null;
 let lastAudioActiveAt = null;
+let audioDiagnosticsWindow = [];
+let audioQualityClass = 'clean';
+let audioDiagnosticsSummary = null;
 let safetyIntervalId = null;
 let pendingNoAudioReason = null;
 let pendingWarningMessage = '';
@@ -95,6 +98,9 @@ const AUDIO_RMS_ACTIVE_THRESHOLD = 0.018;
 const AUDIO_MIN_TOTAL_MS = 350;
 const AUDIO_MIN_ACTIVE_MS = 200;
 const AUDIO_MIN_PEAK_RMS = 0.012;
+const AUDIO_DIAGNOSTICS_WINDOW_MS = 7000;
+const AUDIO_CLIP_THRESHOLD = 0.95;
+const AUDIO_SILENCE_THRESHOLD = 0.012;
 const RECORDING_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const RECORDING_MAX_DURATION_MS = 60 * 60 * 1000;
 const MIC_MONITOR_SEND_INTERVAL_MS = 80;
@@ -336,6 +342,9 @@ function resetAudioMetrics() {
   audioActiveMs = 0;
   audioMetricsLastAt = null;
   lastAudioActiveAt = null;
+  audioDiagnosticsWindow = [];
+  audioQualityClass = 'clean';
+  audioDiagnosticsSummary = null;
 }
 
 function clearSafetyMonitor() {
@@ -375,7 +384,11 @@ function startSafetyMonitor() {
   }, 1000);
 }
 
-function trackAudioMetrics(rms, frameTimeMs) {
+function trackAudioMetrics(metrics) {
+  const rms = metrics?.rms;
+  const peak = metrics?.peak;
+  const clipRatio = metrics?.clipRatio;
+  const frameTimeMs = metrics?.frameTimeMs;
   if (!Number.isFinite(rms)) {
     return;
   }
@@ -394,6 +407,64 @@ function trackAudioMetrics(rms, frameTimeMs) {
     audioActiveMs += dt;
     lastAudioActiveAt = Date.now();
   }
+
+  const noiseProxy = Number.isFinite(peak) && peak > 0 ? rms / peak : 0;
+  audioDiagnosticsWindow.push({
+    at: Date.now(),
+    rms,
+    peak: Number.isFinite(peak) ? peak : null,
+    clipRatio: Number.isFinite(clipRatio) ? clipRatio : 0,
+    noiseProxy,
+    silent: rms < AUDIO_SILENCE_THRESHOLD,
+  });
+  const cutoff = Date.now() - AUDIO_DIAGNOSTICS_WINDOW_MS;
+  audioDiagnosticsWindow = audioDiagnosticsWindow.filter((item) => item.at >= cutoff);
+  audioDiagnosticsSummary = summarizeAudioDiagnostics(audioDiagnosticsWindow);
+  audioQualityClass = classifyAudioQuality(audioDiagnosticsSummary);
+}
+
+function summarizeAudioDiagnostics(windowSamples) {
+  if (!Array.isArray(windowSamples) || windowSamples.length === 0) {
+    return null;
+  }
+  const totals = windowSamples.reduce(
+    (acc, sample) => {
+      acc.rms += sample.rms || 0;
+      acc.peak = Math.max(acc.peak, sample.peak || 0);
+      acc.clipRatio += sample.clipRatio || 0;
+      acc.noiseProxy += sample.noiseProxy || 0;
+      if (sample.silent) {
+        acc.silenceCount += 1;
+      }
+      return acc;
+    },
+    { rms: 0, peak: 0, clipRatio: 0, noiseProxy: 0, silenceCount: 0 },
+  );
+  const count = windowSamples.length;
+  return {
+    rmsAvg: totals.rms / count,
+    peakMax: totals.peak,
+    clipRatioAvg: totals.clipRatio / count,
+    noiseProxyAvg: totals.noiseProxy / count,
+    silenceRatio: totals.silenceCount / count,
+    samples: count,
+  };
+}
+
+function classifyAudioQuality(summary) {
+  if (!summary || summary.samples < 5) {
+    return 'clean';
+  }
+  if (summary.silenceRatio >= 0.6) {
+    return 'degraded';
+  }
+  if (summary.clipRatioAvg >= 0.02 || summary.noiseProxyAvg >= 0.6) {
+    return 'noisy';
+  }
+  if (summary.rmsAvg < AUDIO_SILENCE_THRESHOLD * 1.2) {
+    return 'degraded';
+  }
+  return 'clean';
 }
 
 function shouldTreatAsNoAudio() {
@@ -723,7 +794,15 @@ async function setupWaveform(stream, preferredSampleRate = null) {
   waveformData = new Uint8Array(analyserNode.fftSize);
 
   const source = audioContext.createMediaStreamSource(stream);
-  source.connect(analyserNode);
+  if (audioContext.createBiquadFilter && currentSettings.audioDiagnosticsEnabled !== false) {
+    const filter = audioContext.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 80;
+    source.connect(filter);
+    filter.connect(analyserNode);
+  } else {
+    source.connect(analyserNode);
+  }
 }
 
 function drawWaveform(frameTimeMs) {
@@ -734,6 +813,8 @@ function drawWaveform(frameTimeMs) {
   analyserNode.getByteTimeDomainData(waveformData);
 
   let rmsSum = 0;
+  let peak = 0;
+  let clipCount = 0;
   const { width, height } = waveformCanvas;
   waveformCtx.clearRect(0, 0, width, height);
   waveformCtx.lineWidth = 2;
@@ -748,6 +829,13 @@ function drawWaveform(frameTimeMs) {
     const centered = (waveformData[i] - 128) / 128.0;
     const y = (centered + 1) * (height / 2);
     rmsSum += centered * centered;
+    const abs = Math.abs(centered);
+    if (abs > peak) {
+      peak = abs;
+    }
+    if (abs >= AUDIO_CLIP_THRESHOLD) {
+      clipCount += 1;
+    }
 
     if (i === 0) {
       waveformCtx.moveTo(x, y);
@@ -761,7 +849,8 @@ function drawWaveform(frameTimeMs) {
   waveformCtx.stroke();
 
   const rms = Math.sqrt(rmsSum / waveformData.length);
-  trackAudioMetrics(rms, frameTimeMs);
+  const clipRatio = waveformData.length ? clipCount / waveformData.length : 0;
+  trackAudioMetrics({ rms, peak, clipRatio, frameTimeMs });
 }
 
 function startWaveform() {
@@ -994,7 +1083,17 @@ async function initializeMediaRecorder(streamingMode = false) {
       };
       window.mediaRecorder.onstop = () => {
         if (window.electronAPI?.sendStreamStop && streamSessionId) {
-          window.electronAPI.sendStreamStop({ sessionId: streamSessionId });
+          const diagnosticsPayload = currentSettings.audioDiagnosticsEnabled !== false && audioDiagnosticsSummary
+            ? {
+              audioDiagnostics: {
+                ...audioDiagnosticsSummary,
+                rmsPeak: audioRmsPeak,
+                activeMs: audioActiveMs,
+              },
+              audioQualityClass,
+            }
+            : {};
+          window.electronAPI.sendStreamStop({ sessionId: streamSessionId, ...diagnosticsPayload });
         }
         streamSessionId = null;
         streamSequence = 0;
@@ -1025,6 +1124,14 @@ async function initializeMediaRecorder(streamingMode = false) {
           mimeType: blob.type,
           micDevice: currentSettings.microphoneId || '',
         };
+        if (currentSettings.audioDiagnosticsEnabled !== false && audioDiagnosticsSummary) {
+          payload.audioDiagnostics = {
+            ...audioDiagnosticsSummary,
+            rmsPeak: audioRmsPeak,
+            activeMs: audioActiveMs,
+          };
+          payload.audioQualityClass = audioQualityClass;
+        }
         if (pendingWarningMessage) {
           payload.warningMessage = pendingWarningMessage;
           pendingWarningMessage = '';

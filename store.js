@@ -311,16 +311,21 @@ class Store {
       language: entry.language || 'fr',
       duration_ms: entry.duration_ms || null,
       latency_ms: typeof entry.latency_ms === 'number' ? entry.latency_ms : null,
+      network_latency_ms: typeof entry.network_latency_ms === 'number' ? entry.network_latency_ms : null,
       divergence_score: typeof entry.divergence_score === 'number' ? entry.divergence_score : null,
       mic_device: entry.mic_device || null,
       fallback_path: entry.fallback_path || null,
+      fallback_reason: entry.fallback_reason || null,
+      transcription_path: entry.transcription_path || null,
+      audio_diagnostics_json: entry.audio_diagnostics_json || null,
+      audio_quality_class: entry.audio_quality_class || null,
       title: entry.title || null,
       created_at: entry.created_at || now,
       updated_at: entry.updated_at || now,
     };
     await this._run(
-      `INSERT INTO history (id, user_id, text, raw_text, formatted_text, edited_text, context_json, language, duration_ms, latency_ms, divergence_score, mic_device, fallback_path, title, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO history (id, user_id, text, raw_text, formatted_text, edited_text, context_json, language, duration_ms, latency_ms, network_latency_ms, divergence_score, mic_device, fallback_path, fallback_reason, transcription_path, audio_diagnostics_json, audio_quality_class, title, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          user_id = excluded.user_id,
          text = excluded.text,
@@ -331,9 +336,14 @@ class Store {
          language = excluded.language,
          duration_ms = excluded.duration_ms,
          latency_ms = excluded.latency_ms,
+         network_latency_ms = excluded.network_latency_ms,
          divergence_score = excluded.divergence_score,
          mic_device = excluded.mic_device,
          fallback_path = excluded.fallback_path,
+         fallback_reason = excluded.fallback_reason,
+         transcription_path = excluded.transcription_path,
+         audio_diagnostics_json = excluded.audio_diagnostics_json,
+         audio_quality_class = excluded.audio_quality_class,
          title = excluded.title,
          updated_at = excluded.updated_at`,
       [
@@ -347,14 +357,173 @@ class Store {
         record.language,
         record.duration_ms,
         record.latency_ms,
+        record.network_latency_ms,
         record.divergence_score,
         record.mic_device,
         record.fallback_path,
+        record.fallback_reason,
+        record.transcription_path,
+        record.audio_diagnostics_json,
+        record.audio_quality_class,
         record.title,
         record.created_at,
         record.updated_at,
       ],
     );
+    return record;
+  }
+
+  async listNotifications({ limit = 100 } = {}) {
+    return this._all('SELECT * FROM notifications ORDER BY created_at DESC LIMIT ?', [limit]);
+  }
+
+  async upsertNotification(entry) {
+    const now = new Date().toISOString();
+    const record = {
+      id: entry.id,
+      title: entry.title || '',
+      body: entry.body || '',
+      level: entry.level || 'info',
+      source: entry.source || 'remote',
+      url: entry.url || null,
+      read_at: entry.read_at || null,
+      archived_at: entry.archived_at || null,
+      created_at: entry.created_at || now,
+      updated_at: entry.updated_at || now,
+    };
+    await this._run(
+      `INSERT INTO notifications (id, title, body, level, source, url, read_at, archived_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         body = excluded.body,
+         level = excluded.level,
+         source = excluded.source,
+         url = excluded.url,
+         read_at = excluded.read_at,
+         archived_at = excluded.archived_at,
+         updated_at = excluded.updated_at`,
+      [
+        record.id,
+        record.title,
+        record.body,
+        record.level,
+        record.source,
+        record.url,
+        record.read_at,
+        record.archived_at,
+        record.created_at,
+        record.updated_at,
+      ],
+    );
+    return record;
+  }
+
+  async markNotificationRead(id) {
+    const now = new Date().toISOString();
+    await this._run('UPDATE notifications SET read_at = ? WHERE id = ?', [now, id]);
+  }
+
+  async archiveNotification(id) {
+    const now = new Date().toISOString();
+    await this._run('UPDATE notifications SET archived_at = ? WHERE id = ?', [now, id]);
+  }
+
+  async clearNotifications() {
+    await this._run('DELETE FROM notifications');
+  }
+
+  async purgeNotifications(days = 30) {
+    const cutoff = new Date(Date.now() - days * DAY_MS).toISOString();
+    await this._run('DELETE FROM notifications WHERE created_at < ?', [cutoff]);
+  }
+
+  async listTelemetryEvents({ limit = 200 } = {}) {
+    return this._all('SELECT * FROM telemetry_events ORDER BY created_at DESC LIMIT ?', [limit]);
+  }
+
+  async addTelemetryEvent(entry) {
+    const now = new Date().toISOString();
+    const record = {
+      id: entry.id,
+      event: entry.event || 'event',
+      payload: entry.payload ? (typeof entry.payload === 'string' ? entry.payload : JSON.stringify(entry.payload)) : null,
+      created_at: entry.created_at || now,
+    };
+    await this._run(
+      `INSERT INTO telemetry_events (id, event, payload, created_at)
+       VALUES (?, ?, ?, ?)`,
+      [record.id, record.event, record.payload, record.created_at],
+    );
+    return record;
+  }
+
+  async listCrocOmniConversations({ limit = 50 } = {}) {
+    return this._all(
+      'SELECT * FROM crocomni_conversations ORDER BY updated_at DESC LIMIT ?',
+      [limit],
+    );
+  }
+
+  async createCrocOmniConversation(entry) {
+    const now = new Date().toISOString();
+    const record = {
+      id: entry.id,
+      title: entry.title || 'Nouvelle conversation',
+      archived_at: entry.archived_at || null,
+      created_at: entry.created_at || now,
+      updated_at: entry.updated_at || now,
+    };
+    await this._run(
+      `INSERT INTO crocomni_conversations (id, title, archived_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         archived_at = excluded.archived_at,
+         updated_at = excluded.updated_at`,
+      [record.id, record.title, record.archived_at, record.created_at, record.updated_at],
+    );
+    return record;
+  }
+
+  async archiveCrocOmniConversation(id) {
+    const now = new Date().toISOString();
+    await this._run(
+      'UPDATE crocomni_conversations SET archived_at = ?, updated_at = ? WHERE id = ?',
+      [now, now, id],
+    );
+  }
+
+  async listCrocOmniMessages(conversationId) {
+    return this._all(
+      'SELECT * FROM crocomni_messages WHERE conversation_id = ? ORDER BY created_at ASC',
+      [conversationId],
+    );
+  }
+
+  async addCrocOmniMessage(entry) {
+    const now = new Date().toISOString();
+    const record = {
+      id: entry.id,
+      conversation_id: entry.conversation_id,
+      role: entry.role || 'user',
+      content: entry.content || '',
+      context_used: entry.context_used ? 1 : 0,
+      created_at: entry.created_at || now,
+    };
+    await this._run(
+      `INSERT INTO crocomni_messages (id, conversation_id, role, content, context_used, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        record.id,
+        record.conversation_id,
+        record.role,
+        record.content,
+        record.context_used,
+        record.created_at,
+      ],
+    );
+    await this._run('UPDATE crocomni_conversations SET updated_at = ? WHERE id = ?', [now, record.conversation_id]);
     return record;
   }
 
@@ -614,9 +783,14 @@ class Store {
       language TEXT NOT NULL,
       duration_ms INTEGER,
       latency_ms INTEGER,
+      network_latency_ms INTEGER,
       divergence_score REAL,
       mic_device TEXT,
       fallback_path TEXT,
+      fallback_reason TEXT,
+      transcription_path TEXT,
+      audio_diagnostics_json TEXT,
+      audio_quality_class TEXT,
       title TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -626,9 +800,14 @@ class Store {
     await this._ensureColumn('history', 'edited_text', 'edited_text TEXT');
     await this._ensureColumn('history', 'context_json', 'context_json TEXT');
     await this._ensureColumn('history', 'latency_ms', 'latency_ms INTEGER');
+    await this._ensureColumn('history', 'network_latency_ms', 'network_latency_ms INTEGER');
     await this._ensureColumn('history', 'divergence_score', 'divergence_score REAL');
     await this._ensureColumn('history', 'mic_device', 'mic_device TEXT');
     await this._ensureColumn('history', 'fallback_path', 'fallback_path TEXT');
+    await this._ensureColumn('history', 'fallback_reason', 'fallback_reason TEXT');
+    await this._ensureColumn('history', 'transcription_path', 'transcription_path TEXT');
+    await this._ensureColumn('history', 'audio_diagnostics_json', 'audio_diagnostics_json TEXT');
+    await this._ensureColumn('history', 'audio_quality_class', 'audio_quality_class TEXT');
     await this._run(`CREATE TABLE IF NOT EXISTS dictionary (
       id TEXT PRIMARY KEY,
       user_id TEXT,
@@ -675,6 +854,40 @@ class Store {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`);
+    await this._run(`CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      level TEXT,
+      source TEXT,
+      url TEXT,
+      read_at TEXT,
+      archived_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    await this._run(`CREATE TABLE IF NOT EXISTS telemetry_events (
+      id TEXT PRIMARY KEY,
+      event TEXT NOT NULL,
+      payload TEXT,
+      created_at TEXT NOT NULL
+    )`);
+    await this._run(`CREATE TABLE IF NOT EXISTS crocomni_conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      archived_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    await this._run(`CREATE TABLE IF NOT EXISTS crocomni_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      context_used INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(conversation_id) REFERENCES crocomni_conversations(id) ON DELETE CASCADE
+    )`);
   }
 
   async _createIndexes() {
@@ -684,6 +897,10 @@ class Store {
     await this._run('CREATE INDEX IF NOT EXISTS idx_styles_updated_at ON styles(updated_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_snippets_updated_at ON snippets(updated_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_snippets_cue_norm ON snippets(cue_norm)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_telemetry_created_at ON telemetry_events(created_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_crocomni_conversations_updated_at ON crocomni_conversations(updated_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_crocomni_messages_conversation_id ON crocomni_messages(conversation_id)');
   }
 
   async _ensureColumn(table, columnName, definition) {

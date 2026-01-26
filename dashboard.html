@@ -1474,6 +1474,150 @@
       box-shadow: 0 2px 12px rgba(148, 163, 184, 0.2);
     }
 
+    .notifications-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .notification-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px;
+      border-radius: 16px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      box-shadow: 0 2px 12px rgba(148, 163, 184, 0.12);
+    }
+
+    .notification-row.notification-read {
+      opacity: 0.7;
+    }
+
+    .notification-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .notification-body {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .notification-meta {
+      margin-top: 6px;
+      font-size: 11px;
+      color: rgba(148, 163, 184, 0.8);
+    }
+
+    .notification-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .insights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .insights-top-apps {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .croc-omni-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .croc-omni-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .croc-omni-conversations {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .croc-omni-conversation {
+      width: 100%;
+      text-align: left;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #E2E8F0;
+      background: #FFFFFF;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    .croc-omni-conversation.active {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.08);
+    }
+
+    .croc-omni-main {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 320px;
+    }
+
+    .croc-omni-messages {
+      flex: 1;
+      min-height: 240px;
+      max-height: 420px;
+      overflow-y: auto;
+      padding: 12px;
+      border-radius: 16px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      box-shadow: 0 2px 12px rgba(148, 163, 184, 0.1);
+    }
+
+    .croc-omni-message {
+      padding: 8px 12px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .croc-omni-user {
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .croc-omni-assistant {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .croc-omni-input {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .context-indicator {
+      margin-top: 10px;
+      font-size: 12px;
+      color: rgba(148, 163, 184, 0.8);
+    }
+
     .subscription-panel {
       display: flex;
       flex-direction: column;
@@ -2913,6 +3057,18 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H7a2 2 0 0 0-2 2v12"></path><path d="M3 5a2 2 0 0 1 2-2h12"></path><path d="M9 11h6"></path><path d="M9 15h6"></path></svg>
             <span>Snippets</span>
           </button>
+          <button class="nav-item" data-view="crocomni" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>
+            <span>CrocOmni</span>
+          </button>
+          <button class="nav-item" data-view="inbox" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8"></path><path d="M3 12l4 4h10l4-4"></path><path d="M3 8h18"></path></svg>
+            <span>Inbox</span>
+          </button>
+          <button class="nav-item" data-view="insights" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 14l4-4 4 4 5-6"></path></svg>
+            <span>Insights</span>
+          </button>
           <button class="nav-item" data-view="context" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M3 12h18"></path></svg>
             <span>Context</span>
@@ -3193,6 +3349,101 @@
           </div>
         </section>
 
+        <section id="view-crocomni" class="view" style="max-width: 900px; margin: 0 auto;">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">CrocOmni</h2>
+              <p class="section-subtitle">Assistant conversationnel avec historique local.</p>
+            </div>
+            <div class="section-actions">
+              <button id="crocOmniNew" class="btn-secondary" type="button">Nouvelle conversation</button>
+              <button id="crocOmniArchive" class="btn-secondary" type="button">Archiver</button>
+            </div>
+          </div>
+
+          <div class="croc-omni-layout">
+            <aside class="croc-omni-sidebar">
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div>
+                    <div style="font-weight: 700;">Contexte CrocOmni</div>
+                    <div class="text-muted">Inclure le contexte dans les réponses.</div>
+                  </div>
+                  <input id="crocOmniContextToggle" type="checkbox" class="toggle-checkbox">
+                </div>
+                <div class="settings-row" style="margin-top: 12px;">
+                  <div>
+                    <div style="font-weight: 700;">Contexte pour cette app</div>
+                    <div class="text-muted">Activer pour l’application active.</div>
+                  </div>
+                  <input id="crocOmniContextAppToggle" type="checkbox" class="toggle-checkbox">
+                </div>
+                <div id="crocOmniContextIndicator" class="context-indicator">Contexte: inactif</div>
+              </div>
+              <div id="crocOmniConversationList" class="croc-omni-conversations"></div>
+            </aside>
+            <div class="croc-omni-main">
+              <div id="crocOmniMessages" class="croc-omni-messages"></div>
+              <div class="croc-omni-input">
+                <textarea id="crocOmniInput" class="input-field" rows="2" placeholder="Posez une question..."></textarea>
+                <button id="crocOmniSend" class="btn-primary" type="button">Envoyer</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-inbox" class="view" style="max-width: 760px; margin: 0 auto;">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Notifications</h2>
+              <p class="section-subtitle">Toutes vos annonces produit et alertes.</p>
+            </div>
+            <div class="section-actions">
+              <button id="notificationsRefresh" class="btn-secondary" type="button">Rafraîchir</button>
+            </div>
+          </div>
+          <div id="notificationsList" class="notifications-list"></div>
+          <div id="notificationsEmpty" class="empty-state" data-title="Aucune notification" data-body="Les notifications s’afficheront ici."></div>
+        </section>
+
+        <section id="view-insights" class="view" style="max-width: 720px; margin: 0 auto;">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Insights</h2>
+              <p class="section-subtitle">Vos stats et un mini Wrapped local.</p>
+            </div>
+            <div class="section-actions">
+              <select id="insightsRange" class="input-select" style="width: auto;">
+                <option value="7">7 jours</option>
+                <option value="30">30 jours</option>
+                <option value="90">90 jours</option>
+              </select>
+            </div>
+          </div>
+          <div class="insights-grid">
+            <div class="settings-card">
+              <div class="stat-label">Dictées</div>
+              <div id="insightsTotal" class="stat-value">0</div>
+            </div>
+            <div class="settings-card">
+              <div class="stat-label">Mots totaux</div>
+              <div id="insightsWords" class="stat-value">0</div>
+            </div>
+            <div class="settings-card">
+              <div class="stat-label">Vitesse moyenne (WPM)</div>
+              <div id="insightsAvgWpm" class="stat-value">0</div>
+            </div>
+            <div class="settings-card">
+              <div class="stat-label">Streak</div>
+              <div id="insightsStreak" class="stat-value">0 jours</div>
+            </div>
+          </div>
+          <div class="settings-card" style="margin-top: 16px;">
+            <div style="font-weight: 700;">Top applications</div>
+            <div id="insightsTopApps" class="insights-top-apps"></div>
+          </div>
+        </section>
+
         <section id="view-context" class="view" style="max-width: 720px; margin: 0 auto;">
           <div>
             <h1 class="section-title">Context</h1>
@@ -3463,6 +3714,122 @@
             <div class="settings-card">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                 <div>
+                  <div style="font-weight: 700;">Diagnostics audio</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">RMS, bruit et clipping pour décider d’un rehaussement local.</div>
+                </div>
+                <select id="audioDiagnosticsToggle" class="input-select" data-setting="audioDiagnosticsEnabled" style="width: auto;">
+                  <option value="true">Activé</option>
+                  <option value="false">Désactivé</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">Télémétrie (opt-in)</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Exporte des métriques anonymisées via Diagnostics.</div>
+                </div>
+                <select id="telemetryOptInToggle" class="input-select" data-setting="telemetryOptIn" style="width: auto;">
+                  <option value="false">Désactivé</option>
+                  <option value="true">Activé</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Inclure contexte sensible</label>
+                <select id="telemetrySensitiveToggle" class="input-select" data-setting="telemetryIncludeSensitive" style="width: auto;">
+                  <option value="false">Non</option>
+                  <option value="true">Oui</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="font-weight: 700;">Feature flags distants</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">URL JSON + TTL pour rollouts.</div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">URL remote</label>
+                <input class="input-field" type="text" data-setting="featureFlagsRemoteUrl" placeholder="https://.../flags.json">
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">TTL (ms)</label>
+                <input class="input-field" type="number" min="60000" step="1000" data-setting="featureFlagsTtlMs" placeholder="300000">
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="font-weight: 700;">Notifications</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Endpoint JSON pour inbox produit.</div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Notifications actives</label>
+                <select class="input-select" data-setting="notificationsEnabled" style="width: auto;">
+                  <option value="true">Activé</option>
+                  <option value="false">Désactivé</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Endpoint</label>
+                <input class="input-field" type="text" data-setting="notificationsEndpoint" placeholder="https://.../notifications.json">
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Polling (minutes)</label>
+                <input class="input-field" type="number" min="5" step="5" data-setting="notificationsPollMinutes" placeholder="60">
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Types silencés (comma)</label>
+                <input class="input-field" type="text" data-setting="notificationsMutedTypes" placeholder="billing, marketing">
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Rétention (jours)</label>
+                <input class="input-field" type="number" min="7" step="1" data-setting="notificationsRetentionDays" placeholder="30">
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">ASR local (optionnel)</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Commande locale pour transcrire sans cloud.</div>
+                </div>
+                <select class="input-select" data-setting="localAsrEnabled" style="width: auto;">
+                  <option value="false">Désactivé</option>
+                  <option value="true">Activé</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Commande</label>
+                <input class="input-field" type="text" data-setting="localAsrCommand" placeholder="/usr/local/bin/local-asr">
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Timeout (ms)</label>
+                <input class="input-field" type="number" min="10000" step="1000" data-setting="localAsrMaxDurationMs" placeholder="60000">
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                  <div style="font-weight: 700;">Enhancement audio local</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Applique un rehaussement si audio dégradé.</div>
+                </div>
+                <select class="input-select" data-setting="localEnhancementEnabled" style="width: auto;">
+                  <option value="false">Désactivé</option>
+                  <option value="true">Activé</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Commande</label>
+                <input class="input-field" type="text" data-setting="localEnhancementCommand" placeholder="/usr/local/bin/audio-enhance">
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Timeout (ms)</label>
+                <input class="input-field" type="number" min="5000" step="1000" data-setting="localEnhancementMaxDurationMs" placeholder="20000">
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
                   <div style="font-weight: 700;">Transcription de fichiers</div>
                   <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Fallback cloud requis pour traiter un fichier local.</div>
                 </div>
@@ -3513,6 +3880,17 @@
                   <button id="diagnosticsCopy" class="btn-secondary" type="button">Copier</button>
                 </div>
                 <pre id="diagnosticsOutput" class="input-textarea" style="margin-top: 12px; white-space: pre-wrap;"></pre>
+              </div>
+
+              <div class="settings-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                  <div>
+                    <div style="font-weight: 700;">Export télémétrie</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Export opt-in avec contenu redigé.</div>
+                  </div>
+                  <button id="telemetryExport" class="btn-secondary" type="button">Générer</button>
+                </div>
+                <pre id="telemetryOutput" class="input-textarea" style="margin-top: 12px; white-space: pre-wrap;"></pre>
               </div>
             </div>
 	        </section>

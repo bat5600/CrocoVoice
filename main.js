@@ -1,5 +1,6 @@
 require('dotenv').config();
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, clipboard, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, clipboard, shell, dialog, Notification } = require('electron');
+const { execFile } = require('child_process');
 
 app.disableHardwareAcceleration();
 const path = require('path');
@@ -180,9 +181,19 @@ const defaultSettings = {
     statusBubble: true,
     contextMenu: true,
     diagnostics: true,
+    notifications: true,
+    insights: true,
+    crocomni: true,
+    localAsr: false,
+    audioEnhancement: false,
   },
+  featureFlagsRemoteUrl: '',
+  featureFlagsTtlMs: 300000,
   activeStyleId: '',
   metricsEnabled: true,
+  telemetryOptIn: false,
+  telemetryIncludeSensitive: false,
+  audioDiagnosticsEnabled: true,
   context: {
     enabled: true,
     postProcessEnabled: false,
@@ -198,6 +209,22 @@ const defaultSettings = {
     overrides: {},
   },
   contextProfiles: [],
+  crocOmni: {
+    enabled: true,
+    contextEnabled: false,
+    contextOverrides: {},
+  },
+  notificationsEndpoint: '',
+  notificationsPollMinutes: 60,
+  notificationsEnabled: true,
+  notificationsMutedTypes: [],
+  notificationsRetentionDays: 30,
+  localAsrEnabled: false,
+  localAsrCommand: '',
+  localAsrMaxDurationMs: 60000,
+  localEnhancementEnabled: false,
+  localEnhancementCommand: '',
+  localEnhancementMaxDurationMs: 20000,
   subscription: {
     plan: 'free',
     status: 'inactive',
@@ -218,6 +245,11 @@ let lastPolishDiff = null;
 const DIAGNOSTIC_EVENT_LIMIT = 20;
 let diagnosticEvents = [];
 let lastDelivery = null;
+let lastNetworkLatencyMs = null;
+let lastFallbackReason = null;
+let lastTranscriptionPath = 'cloud';
+let featureFlagCache = { flags: {}, fetchedAt: 0, error: null };
+let notificationsLastFetchedAt = 0;
 let lastClipboardTest = null;
 const DEFAULT_CONTEXT_SETTINGS = {
   enabled: true,
@@ -288,10 +320,18 @@ function getContextProfiles() {
   return Array.isArray(profiles) ? profiles : [];
 }
 
+function getFeatureFlagsRemote() {
+  const remote = featureFlagCache?.flags && typeof featureFlagCache.flags === 'object'
+    ? featureFlagCache.flags
+    : {};
+  return remote;
+}
+
 function getFeatureFlags() {
   const base = defaultSettings.featureFlags || {};
   const current = settings.featureFlags && typeof settings.featureFlags === 'object' ? settings.featureFlags : {};
-  const flags = { ...base, ...current };
+  const remote = getFeatureFlagsRemote();
+  const flags = { ...base, ...remote, ...current };
   if (STREAMING_DEPRECATED) {
     flags.streaming = false;
     flags.worklet = false;
@@ -302,6 +342,44 @@ function getFeatureFlags() {
 function isFeatureEnabled(flag) {
   const flags = getFeatureFlags();
   return Boolean(flags[flag]);
+}
+
+async function refreshRemoteFeatureFlags({ force = false } = {}) {
+  const remoteUrl = typeof settings.featureFlagsRemoteUrl === 'string'
+    ? settings.featureFlagsRemoteUrl.trim()
+    : '';
+  if (!remoteUrl) {
+    featureFlagCache = { flags: {}, fetchedAt: 0, error: null };
+    return featureFlagCache;
+  }
+  const ttlMs = Number.isFinite(settings.featureFlagsTtlMs)
+    ? settings.featureFlagsTtlMs
+    : defaultSettings.featureFlagsTtlMs;
+  const now = Date.now();
+  if (!force && featureFlagCache.fetchedAt && now - featureFlagCache.fetchedAt < ttlMs) {
+    return featureFlagCache;
+  }
+  try {
+    const response = await fetch(remoteUrl);
+    if (!response.ok) {
+      throw new Error(`Remote feature flags failed (${response.status}).`);
+    }
+    const data = await response.json();
+    const flags = data && typeof data === 'object' ? data.flags || data : {};
+    featureFlagCache = {
+      flags,
+      fetchedAt: now,
+      error: null,
+    };
+    return featureFlagCache;
+  } catch (error) {
+    featureFlagCache = {
+      ...featureFlagCache,
+      fetchedAt: now,
+      error: error?.message || 'Remote feature flags unavailable.',
+    };
+    return featureFlagCache;
+  }
 }
 
 async function fallbackToFileMode(reason) {
@@ -319,6 +397,7 @@ async function fallbackToFileMode(reason) {
   }
   if (reason) {
     recordDiagnosticEvent('stream_fallback', reason);
+    lastFallbackReason = reason;
   }
 }
 
@@ -339,6 +418,92 @@ function recordDiagnosticEvent(code, message) {
   if (diagnosticEvents.length > DIAGNOSTIC_EVENT_LIMIT) {
     diagnosticEvents = diagnosticEvents.slice(0, DIAGNOSTIC_EVENT_LIMIT);
   }
+}
+
+async function recordTelemetryEvent(event, payload) {
+  if (!store || settings.telemetryOptIn !== true) {
+    return;
+  }
+  try {
+    await store.addTelemetryEvent({
+      id: crypto.randomUUID(),
+      event,
+      payload,
+    });
+  } catch (error) {
+    console.warn('Telemetry event failed:', error);
+  }
+}
+
+async function refreshNotifications({ force = false } = {}) {
+  if (!store) {
+    return [];
+  }
+  const notificationsEnabled = settings.notificationsEnabled !== false;
+  const mutedTypes = Array.isArray(settings.notificationsMutedTypes)
+    ? settings.notificationsMutedTypes
+    : typeof settings.notificationsMutedTypes === 'string'
+      ? settings.notificationsMutedTypes.split(',').map((item) => item.trim()).filter(Boolean)
+      : [];
+  const mutedTypesNormalized = mutedTypes.map((item) => String(item).toLowerCase());
+  const retentionDays = Number.isFinite(settings.notificationsRetentionDays)
+    ? settings.notificationsRetentionDays
+    : defaultSettings.notificationsRetentionDays;
+  await store.purgeNotifications(retentionDays);
+  if (!notificationsEnabled) {
+    return store.listNotifications({ limit: 200 });
+  }
+  const endpoint = typeof settings.notificationsEndpoint === 'string'
+    ? settings.notificationsEndpoint.trim()
+    : '';
+  if (!endpoint) {
+    return store.listNotifications({ limit: 200 });
+  }
+  const pollMinutes = Number.isFinite(settings.notificationsPollMinutes)
+    ? settings.notificationsPollMinutes
+    : defaultSettings.notificationsPollMinutes;
+  const pollMs = Math.max(5, pollMinutes) * 60000;
+  const now = Date.now();
+  if (!force && notificationsLastFetchedAt && (now - notificationsLastFetchedAt) < pollMs) {
+    return store.listNotifications({ limit: 200 });
+  }
+  try {
+    const response = await fetch(endpoint);
+    if (!response.ok) {
+      throw new Error(`Notifications fetch failed (${response.status}).`);
+    }
+    const payload = await response.json();
+    const items = Array.isArray(payload) ? payload : payload?.notifications || [];
+    for (const item of items) {
+      if (!item || !item.id) {
+        continue;
+      }
+      const type = String(item.type || item.level || 'info').toLowerCase();
+      if (mutedTypesNormalized.includes(type)) {
+        continue;
+      }
+      await store.upsertNotification({
+        id: String(item.id),
+        title: item.title || 'Notification',
+        body: item.body || '',
+        level: item.level || type,
+        source: item.source || 'remote',
+        url: item.url || null,
+        created_at: item.created_at || item.createdAt || new Date().toISOString(),
+      });
+      if ((item.level === 'high' || item.priority === 'high') && Notification.isSupported()) {
+        const notification = new Notification({
+          title: item.title || 'CrocoVoice',
+          body: item.body || '',
+        });
+        notification.show();
+      }
+    }
+    notificationsLastFetchedAt = now;
+  } catch (error) {
+    console.warn('Notifications refresh failed:', error?.message || error);
+  }
+  return store.listNotifications({ limit: 200 });
 }
 
 async function createUploadJobFromFile(filePath) {
@@ -2365,6 +2530,7 @@ async function transcribeAudio(audioBuffer, mimeType) {
       throw error;
     }
 
+    const startedAt = Date.now();
 
     const tempDir = require('os').tmpdir();
     const extension = getAudioExtension(mimeType);
@@ -2381,6 +2547,7 @@ async function transcribeAudio(audioBuffer, mimeType) {
         language: settings.language || 'fr',
       }),
     });
+    lastNetworkLatencyMs = Date.now() - startedAt;
 
     const transcribedText = transcription.text.trim();
 
@@ -2480,6 +2647,8 @@ function normalizeAudioPayload(audioData) {
   let payload = audioData;
   let warningMessage = '';
   let micDevice = null;
+  let audioDiagnostics = null;
+  let audioQualityClass = null;
 
   if (audioData && typeof audioData === 'object' && audioData.buffer) {
     payload = audioData.buffer;
@@ -2491,6 +2660,12 @@ function normalizeAudioPayload(audioData) {
     }
     if (typeof audioData.micDevice === 'string') {
       micDevice = audioData.micDevice;
+    }
+    if (audioData.audioDiagnostics && typeof audioData.audioDiagnostics === 'object') {
+      audioDiagnostics = audioData.audioDiagnostics;
+    }
+    if (typeof audioData.audioQualityClass === 'string') {
+      audioQualityClass = audioData.audioQualityClass;
     }
   }
 
@@ -2505,7 +2680,109 @@ function normalizeAudioPayload(audioData) {
     buffer = Buffer.from(payload);
   }
 
-  return { buffer, mimeType, warningMessage, micDevice };
+  return { buffer, mimeType, warningMessage, micDevice, audioDiagnostics, audioQualityClass };
+}
+
+function shouldAttemptLocalEnhancement(qualityClass) {
+  if (settings.localEnhancementEnabled !== true || !isFeatureEnabled('audioEnhancement')) {
+    return false;
+  }
+  if (!qualityClass) {
+    return false;
+  }
+  return qualityClass === 'noisy' || qualityClass === 'degraded';
+}
+
+function isSystemUnderLoad() {
+  const load = os.loadavg?.()[0] || 0;
+  return load >= 3;
+}
+
+async function runLocalEnhancement(buffer, mimeType) {
+  const command = typeof settings.localEnhancementCommand === 'string'
+    ? settings.localEnhancementCommand.trim()
+    : '';
+  if (!command) {
+    return { buffer, enhanced: false, reason: 'enhancer_missing' };
+  }
+  if (isSystemUnderLoad()) {
+    return { buffer, enhanced: false, reason: 'enhancer_skipped_load' };
+  }
+  const maxDurationMs = Number.isFinite(settings.localEnhancementMaxDurationMs)
+    ? settings.localEnhancementMaxDurationMs
+    : defaultSettings.localEnhancementMaxDurationMs;
+  const tempDir = os.tmpdir();
+  const extension = getAudioExtension(mimeType);
+  const inputPath = path.join(tempDir, `crocovoice-enhance-in-${Date.now()}.${extension}`);
+  const outputPath = path.join(tempDir, `crocovoice-enhance-out-${Date.now()}.${extension}`);
+  try {
+    fs.writeFileSync(inputPath, buffer);
+    await new Promise((resolve, reject) => {
+      const child = execFile(command, [inputPath, outputPath], { timeout: maxDurationMs }, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+      child.on('error', reject);
+    });
+    if (!fs.existsSync(outputPath)) {
+      return { buffer, enhanced: false, reason: 'enhancer_no_output' };
+    }
+    const enhancedBuffer = fs.readFileSync(outputPath);
+    return { buffer: enhancedBuffer, enhanced: true, reason: null };
+  } catch (error) {
+    console.warn('Local enhancement failed:', error);
+    return { buffer, enhanced: false, reason: 'enhancer_failed' };
+  } finally {
+    if (inputPath && fs.existsSync(inputPath)) {
+      fs.unlinkSync(inputPath);
+    }
+    if (outputPath && fs.existsSync(outputPath)) {
+      fs.unlinkSync(outputPath);
+    }
+  }
+}
+
+async function runLocalAsr(buffer, mimeType) {
+  const command = typeof settings.localAsrCommand === 'string'
+    ? settings.localAsrCommand.trim()
+    : '';
+  if (!settings.localAsrEnabled || !isFeatureEnabled('localAsr') || !command) {
+    return { text: '', used: false, reason: 'local_asr_disabled' };
+  }
+  const maxDurationMs = Number.isFinite(settings.localAsrMaxDurationMs)
+    ? settings.localAsrMaxDurationMs
+    : defaultSettings.localAsrMaxDurationMs;
+  const tempDir = os.tmpdir();
+  const extension = getAudioExtension(mimeType);
+  const inputPath = path.join(tempDir, `crocovoice-localasr-${Date.now()}.${extension}`);
+  try {
+    fs.writeFileSync(inputPath, buffer);
+    const output = await new Promise((resolve, reject) => {
+      const child = execFile(command, [inputPath], { timeout: maxDurationMs }, (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(stdout || '');
+      });
+      child.on('error', reject);
+    });
+    const text = String(output).trim();
+    if (!text) {
+      return { text: '', used: false, reason: 'local_asr_empty' };
+    }
+    return { text, used: true, reason: null };
+  } catch (error) {
+    console.warn('Local ASR failed:', error);
+    return { text: '', used: false, reason: 'local_asr_failed' };
+  } finally {
+    if (inputPath && fs.existsSync(inputPath)) {
+      fs.unlinkSync(inputPath);
+    }
+  }
 }
 
 function resolveRecordingTarget() {
@@ -2514,8 +2791,33 @@ function resolveRecordingTarget() {
   return target;
 }
 
-async function runTranscriptionPipeline(buffer, mimeType) {
-  const transcribedText = await transcribeAudio(buffer, mimeType);
+async function runTranscriptionPipeline(buffer, mimeType, diagnostics = null, qualityClass = null) {
+  lastNetworkLatencyMs = null;
+  lastFallbackReason = null;
+  lastTranscriptionPath = 'cloud';
+  let inputBuffer = buffer;
+  let enhancementReason = null;
+  if (shouldAttemptLocalEnhancement(qualityClass)) {
+    const enhancement = await runLocalEnhancement(buffer, mimeType);
+    inputBuffer = enhancement.buffer;
+    if (!enhancement.enhanced) {
+      enhancementReason = enhancement.reason;
+    }
+  }
+  if (enhancementReason) {
+    recordDiagnosticEvent('audio_enhancement_skipped', enhancementReason);
+  }
+  const localAsr = await runLocalAsr(inputBuffer, mimeType);
+  let transcribedText = '';
+  if (localAsr.used) {
+    lastTranscriptionPath = 'local';
+    transcribedText = localAsr.text;
+  } else {
+    if (localAsr.reason && localAsr.reason !== 'local_asr_disabled') {
+      lastFallbackReason = localAsr.reason;
+    }
+    transcribedText = await transcribeAudio(inputBuffer, mimeType);
+  }
   if (!transcribedText || isNoAudioTranscription(transcribedText)) {
     return { skip: true, transcribedText: '' };
   }
@@ -2561,12 +2863,28 @@ async function runTranscriptionPipeline(buffer, mimeType) {
   };
 }
 
-async function persistTranscription({ transcribedText, formattedText, finalText, title, latencyMs, divergenceScore, micDevice, fallbackPath, contextPayload }) {
+async function persistTranscription({
+  transcribedText,
+  formattedText,
+  finalText,
+  title,
+  latencyMs,
+  networkLatencyMs,
+  divergenceScore,
+  micDevice,
+  fallbackPath,
+  fallbackReason,
+  transcriptionPath,
+  audioDiagnostics,
+  audioQualityClass,
+  contextPayload,
+}) {
   if (!store) {
     return;
   }
   const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
   const metricsEnabled = settings.metricsEnabled !== false;
+  const diagnosticsEnabled = settings.audioDiagnosticsEnabled !== false;
   await store.addHistory({
     id: crypto.randomUUID(),
     user_id: userId,
@@ -2578,10 +2896,27 @@ async function persistTranscription({ transcribedText, formattedText, finalText,
     language: settings.language || 'fr',
     duration_ms: recordingStartTime ? Date.now() - recordingStartTime : null,
     latency_ms: metricsEnabled ? latencyMs : null,
+    network_latency_ms: metricsEnabled ? networkLatencyMs : null,
     divergence_score: metricsEnabled ? divergenceScore : null,
     mic_device: metricsEnabled ? micDevice : null,
     fallback_path: metricsEnabled ? fallbackPath : null,
+    fallback_reason: metricsEnabled ? fallbackReason : null,
+    transcription_path: metricsEnabled ? transcriptionPath : null,
+    audio_diagnostics_json: metricsEnabled && diagnosticsEnabled && audioDiagnostics
+      ? JSON.stringify(audioDiagnostics)
+      : null,
+    audio_quality_class: metricsEnabled && diagnosticsEnabled ? audioQualityClass : null,
     title,
+  });
+  await recordTelemetryEvent('dictation_metrics', {
+    latency_ms: metricsEnabled ? latencyMs : null,
+    network_latency_ms: metricsEnabled ? networkLatencyMs : null,
+    divergence_score: metricsEnabled ? divergenceScore : null,
+    mic_device: metricsEnabled ? micDevice : null,
+    fallback_path: metricsEnabled ? fallbackPath : null,
+    fallback_reason: metricsEnabled ? fallbackReason : null,
+    transcription_path: metricsEnabled ? transcriptionPath : null,
+    audio_quality_class: metricsEnabled ? audioQualityClass : null,
   });
   await store.setSetting('last_transcription', finalText);
   sendDashboardEvent('dashboard:data-updated');
@@ -2601,9 +2936,16 @@ async function handleAudioPayload(event, audioData) {
       event.reply('transcription-error', message);
       return;
     }
-    const { buffer, mimeType, warningMessage: safetyWarningMessage, micDevice } = normalizeAudioPayload(audioData);
+    const {
+      buffer,
+      mimeType,
+      warningMessage: safetyWarningMessage,
+      micDevice,
+      audioDiagnostics,
+      audioQualityClass,
+    } = normalizeAudioPayload(audioData);
 
-    const pipelineResult = await runTranscriptionPipeline(buffer, mimeType);
+    const pipelineResult = await runTranscriptionPipeline(buffer, mimeType, audioDiagnostics, audioQualityClass);
     if (pipelineResult.skip) {
       setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
       scheduleReturnToIdle(3000);
@@ -2631,6 +2973,11 @@ async function handleAudioPayload(event, audioData) {
       divergenceScore,
       micDevice: micDevice || settings.microphoneId || null,
       fallbackPath: 'file',
+      fallbackReason: lastFallbackReason,
+      networkLatencyMs: lastNetworkLatencyMs,
+      transcriptionPath: lastTranscriptionPath,
+      audioDiagnostics,
+      audioQualityClass,
       contextPayload: contextState?.payload || null,
     });
     lastPolishDiff = {
@@ -2857,6 +3204,128 @@ function sanitizeContextForExport(contextPayload, includeSensitive = false) {
     delete next.file.path;
   }
   return next;
+}
+
+function getCrocOmniSettings() {
+  const base = defaultSettings.crocOmni || { enabled: true, contextEnabled: false, contextOverrides: {} };
+  const current = settings.crocOmni && typeof settings.crocOmni === 'object' ? settings.crocOmni : {};
+  return {
+    enabled: current.enabled !== false,
+    contextEnabled: current.contextEnabled === true,
+    contextOverrides: current.contextOverrides && typeof current.contextOverrides === 'object'
+      ? current.contextOverrides
+      : base.contextOverrides || {},
+  };
+}
+
+function isCrocOmniContextEnabledFor(contextId) {
+  const crocOmniSettings = getCrocOmniSettings();
+  const override = crocOmniSettings.contextOverrides?.[contextId];
+  if (override === true) {
+    return true;
+  }
+  if (override === false) {
+    return false;
+  }
+  return crocOmniSettings.contextEnabled === true;
+}
+
+async function buildCrocOmniContextPayload() {
+  try {
+    const contextState = await getContextStateCached();
+    const contextId = contextState?.contextId || '';
+    if (!contextId || !isCrocOmniContextEnabledFor(contextId)) {
+      return { context: null, used: false, contextId };
+    }
+    const payload = contextState?.payload || null;
+    if (!payload) {
+      return { context: null, used: false, contextId };
+    }
+    return { context: payload, used: true, contextId };
+  } catch (error) {
+    console.warn('CrocOmni context capture failed:', error);
+    return { context: null, used: false, contextId: '' };
+  }
+}
+
+function redactCrocOmniContext(contextPayload) {
+  if (!contextPayload) {
+    return null;
+  }
+  const redacted = redactContextPayload(contextPayload);
+  return {
+    appName: redacted.appName || null,
+    windowTitle: redacted.windowTitle || null,
+    url: redacted.url || null,
+    signals: redacted.signals || null,
+  };
+}
+
+function computeInsightsFromHistory(history) {
+  const stats = {
+    totalDictations: 0,
+    totalWords: 0,
+    averageWords: 0,
+    averageWpm: 0,
+    topApps: [],
+    streakDays: 0,
+  };
+  if (!Array.isArray(history) || !history.length) {
+    return stats;
+  }
+  let totalDurationMs = 0;
+  const appCounts = new Map();
+  const days = new Set();
+  history.forEach((entry) => {
+    stats.totalDictations += 1;
+    const words = countWords(entry.text || '');
+    stats.totalWords += words;
+    if (Number.isFinite(entry.duration_ms)) {
+      totalDurationMs += entry.duration_ms;
+    }
+    if (entry.created_at) {
+      days.add(entry.created_at.slice(0, 10));
+    }
+    if (entry.context_json) {
+      try {
+        const context = JSON.parse(entry.context_json);
+        const appName = context?.appName || context?.app || null;
+        if (appName) {
+          appCounts.set(appName, (appCounts.get(appName) || 0) + 1);
+        }
+      } catch {}
+    }
+  });
+  stats.averageWords = stats.totalDictations ? Math.round(stats.totalWords / stats.totalDictations) : 0;
+  if (totalDurationMs > 0) {
+    const totalMinutes = totalDurationMs / 60000;
+    stats.averageWpm = totalMinutes ? Math.round(stats.totalWords / totalMinutes) : 0;
+  }
+  stats.topApps = Array.from(appCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([app, count]) => ({ app, count }));
+  const sortedDays = Array.from(days).sort();
+  const dayMs = 24 * 60 * 60 * 1000;
+  let streak = 0;
+  let current = null;
+  sortedDays.forEach((day) => {
+    if (!current) {
+      current = day;
+      streak = 1;
+      return;
+    }
+    const prev = new Date(current);
+    const next = new Date(prev.getTime() + dayMs).toISOString().slice(0, 10);
+    if (day === next) {
+      streak += 1;
+    } else {
+      streak = 1;
+    }
+    current = day;
+  });
+  stats.streakDays = streak;
+  return stats;
 }
 
 function splitParagraphs(text) {
@@ -3111,7 +3580,9 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
       ? Buffer.concat(session.encodedChunks)
       : encodeWavFromFloat32(session.samples, session.sampleRate);
     const mimeType = session.codec === 'opus' ? session.mimeType : 'audio/wav';
-    const pipelineResult = await runTranscriptionPipeline(buffer, mimeType);
+    const audioDiagnostics = payload.audioDiagnostics || null;
+    const audioQualityClass = payload.audioQualityClass || null;
+    const pipelineResult = await runTranscriptionPipeline(buffer, mimeType, audioDiagnostics, audioQualityClass);
     if (pipelineResult.skip) {
       setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
       scheduleReturnToIdle(3000);
@@ -3131,6 +3602,11 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
       divergenceScore,
       micDevice: settings.microphoneId || null,
       fallbackPath: 'stream',
+      fallbackReason: lastFallbackReason,
+      networkLatencyMs: lastNetworkLatencyMs,
+      transcriptionPath: lastTranscriptionPath,
+      audioDiagnostics,
+      audioQualityClass,
       contextPayload: contextState?.payload || null,
     });
     lastPolishDiff = {
@@ -3352,6 +3828,10 @@ ipcMain.handle('dashboard:data', async () => {
   const dictionary = await store.listDictionary();
   const snippets = await store.listSnippets();
   const styles = await store.listStyles();
+  await refreshRemoteFeatureFlags();
+  const notifications = await refreshNotifications();
+  const crocOmniConversations = await store.listCrocOmniConversations({ limit: 50 });
+  const insights = computeInsightsFromHistory(history);
   const contextState = await resolveContextState();
   const authUser = syncService && syncService.getUser();
   const quota = await getQuotaSnapshot();
@@ -3364,6 +3844,9 @@ ipcMain.handle('dashboard:data', async () => {
     dictionary,
     snippets,
     styles,
+    notifications,
+    crocOmniConversations,
+    insights,
     uploads: listUploadJobs(),
     context: {
       base: contextState.base,
@@ -3379,6 +3862,187 @@ ipcMain.handle('dashboard:data', async () => {
     auth: authUser ? { email: authUser.email, id: authUser.id } : null,
     syncReady: Boolean(syncService && syncService.isReady()),
   };
+});
+
+ipcMain.handle('feature-flags:refresh', async () => {
+  const result = await refreshRemoteFeatureFlags({ force: true });
+  return { ok: true, ...result };
+});
+
+ipcMain.handle('notifications:refresh', async () => {
+  const notifications = await refreshNotifications({ force: true });
+  sendDashboardEvent('dashboard:data-updated');
+  return notifications;
+});
+
+ipcMain.handle('notifications:read', async (event, id) => {
+  if (!id) {
+    return { ok: false };
+  }
+  await store.markNotificationRead(id);
+  sendDashboardEvent('dashboard:data-updated');
+  return { ok: true };
+});
+
+ipcMain.handle('notifications:archive', async (event, id) => {
+  if (!id) {
+    return { ok: false };
+  }
+  await store.archiveNotification(id);
+  sendDashboardEvent('dashboard:data-updated');
+  return { ok: true };
+});
+
+ipcMain.handle('telemetry:export', async () => {
+  const includeSensitive = settings.telemetryIncludeSensitive === true;
+  const events = await store.listTelemetryEvents({ limit: 500 });
+  const history = await store.listHistory({ limit: 200 });
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    events: events.map((event) => ({
+      ...event,
+      payload: event.payload ? JSON.parse(event.payload) : null,
+    })),
+    history: history.map((entry) => {
+      let contextPayload = null;
+      if (entry.context_json) {
+        try {
+          contextPayload = JSON.parse(entry.context_json);
+        } catch {
+          contextPayload = null;
+        }
+      }
+      return {
+        id: entry.id,
+        created_at: entry.created_at,
+        latency_ms: entry.latency_ms,
+        network_latency_ms: entry.network_latency_ms,
+        divergence_score: entry.divergence_score,
+        fallback_path: entry.fallback_path,
+        fallback_reason: entry.fallback_reason,
+        transcription_path: entry.transcription_path,
+        audio_quality_class: entry.audio_quality_class,
+        context: sanitizeContextForExport(contextPayload, includeSensitive),
+      };
+    }),
+  };
+  return payload;
+});
+
+ipcMain.handle('crocomni:create', async (event, payload = {}) => {
+  const record = await store.createCrocOmniConversation({
+    id: payload.id || crypto.randomUUID(),
+    title: payload.title || 'Nouvelle conversation',
+  });
+  sendDashboardEvent('dashboard:data-updated');
+  return record;
+});
+
+ipcMain.handle('crocomni:archive', async (event, conversationId) => {
+  if (!conversationId) {
+    return { ok: false };
+  }
+  await store.archiveCrocOmniConversation(conversationId);
+  sendDashboardEvent('dashboard:data-updated');
+  return { ok: true };
+});
+
+ipcMain.handle('crocomni:messages', async (event, conversationId) => {
+  if (!conversationId) {
+    return [];
+  }
+  return store.listCrocOmniMessages(conversationId);
+});
+
+ipcMain.handle('crocomni:send', async (event, payload = {}) => {
+  const conversationId = payload.conversationId || crypto.randomUUID();
+  const content = typeof payload.content === 'string' ? payload.content.trim() : '';
+  if (!content) {
+    return { ok: false, error: 'Message vide.' };
+  }
+  const crocOmniSettings = getCrocOmniSettings();
+  if (crocOmniSettings.enabled === false) {
+    return { ok: false, error: 'CrocOmni désactivé.' };
+  }
+  await store.createCrocOmniConversation({
+    id: conversationId,
+    title: payload.title || 'Conversation CrocOmni',
+  });
+  await store.addCrocOmniMessage({
+    id: crypto.randomUUID(),
+    conversation_id: conversationId,
+    role: 'user',
+    content,
+    context_used: false,
+  });
+  const client = getOpenAIClient();
+  if (!client) {
+    const fallbackMessage = 'CrocOmni indisponible : OPENAI_API_KEY manquante.';
+    await store.addCrocOmniMessage({
+      id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: fallbackMessage,
+      context_used: false,
+    });
+    sendDashboardEvent('dashboard:data-updated');
+    return { ok: true, conversationId };
+  }
+
+  const contextData = await buildCrocOmniContextPayload();
+  const redactedContext = contextData.used ? redactCrocOmniContext(contextData.context) : null;
+  const history = await store.listCrocOmniMessages(conversationId);
+  const trimmedHistory = history.slice(-12).map((msg) => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+  const systemPrompt = [
+    'You are CrocOmni, a helpful assistant for CrocoVoice.',
+    'Be concise, friendly, and actionable.',
+  ].join(' ');
+  const contextPrompt = redactedContext
+    ? `Context (redacted): ${JSON.stringify(redactedContext)}`
+    : '';
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...(contextPrompt ? [{ role: 'system', content: contextPrompt }] : []),
+    ...trimmedHistory,
+  ];
+
+  try {
+    const response = await executeOpenAICall({
+      label: 'chat.completions.crocomni',
+      timeoutMs: OPENAI_CHAT_TIMEOUT_MS,
+      action: () => client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.4,
+        messages,
+      }),
+    });
+    const reply = response?.choices?.[0]?.message?.content?.trim()
+      || 'Je suis la pour vous aider.';
+    await store.addCrocOmniMessage({
+      id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: reply,
+      context_used: Boolean(contextData.used),
+    });
+    sendDashboardEvent('dashboard:data-updated');
+    return { ok: true, conversationId, contextUsed: Boolean(contextData.used) };
+  } catch (error) {
+    console.error('CrocOmni message error:', error);
+    const fallbackMessage = getOpenAIUserMessage(error);
+    await store.addCrocOmniMessage({
+      id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: fallbackMessage,
+      context_used: Boolean(contextData.used),
+    });
+    sendDashboardEvent('dashboard:data-updated');
+    return { ok: true, conversationId, contextUsed: Boolean(contextData.used) };
+  }
 });
 
 ipcMain.handle('upload:select', async () => {
@@ -3562,9 +4226,14 @@ ipcMain.handle('history:upsert', async (event, payload) => {
     language: payload.language || settings.language || 'fr',
     duration_ms: payload.duration_ms || null,
     latency_ms: typeof payload.latency_ms === 'number' ? payload.latency_ms : null,
+    network_latency_ms: typeof payload.network_latency_ms === 'number' ? payload.network_latency_ms : null,
     divergence_score: typeof payload.divergence_score === 'number' ? payload.divergence_score : null,
     mic_device: payload.mic_device || null,
     fallback_path: payload.fallback_path || null,
+    fallback_reason: payload.fallback_reason || null,
+    transcription_path: payload.transcription_path || null,
+    audio_diagnostics_json: payload.audio_diagnostics_json || null,
+    audio_quality_class: payload.audio_quality_class || null,
     title: payload.title || null,
     created_at: payload.created_at,
     updated_at: payload.updated_at,
@@ -3979,6 +4648,8 @@ app.whenReady().then(async () => {
   if (contextRetentionDays > 0) {
     await store.purgeContext(contextRetentionDays);
   }
+  await refreshRemoteFeatureFlags({ force: true });
+  await refreshNotifications({ force: true });
 
   syncService = new SyncService({
     store,
