@@ -213,6 +213,8 @@ const defaultSettings = {
     enabled: true,
     contextEnabled: false,
     contextOverrides: {},
+    aiReplyEnabled: false,
+    aiReplyIncludeSensitive: false,
   },
   notificationsEndpoint: '',
   notificationsPollMinutes: 60,
@@ -3207,7 +3209,13 @@ function sanitizeContextForExport(contextPayload, includeSensitive = false) {
 }
 
 function getCrocOmniSettings() {
-  const base = defaultSettings.crocOmni || { enabled: true, contextEnabled: false, contextOverrides: {} };
+  const base = defaultSettings.crocOmni || {
+    enabled: true,
+    contextEnabled: false,
+    contextOverrides: {},
+    aiReplyEnabled: false,
+    aiReplyIncludeSensitive: false,
+  };
   const current = settings.crocOmni && typeof settings.crocOmni === 'object' ? settings.crocOmni : {};
   return {
     enabled: current.enabled !== false,
@@ -3215,6 +3223,8 @@ function getCrocOmniSettings() {
     contextOverrides: current.contextOverrides && typeof current.contextOverrides === 'object'
       ? current.contextOverrides
       : base.contextOverrides || {},
+    aiReplyEnabled: current.aiReplyEnabled === true,
+    aiReplyIncludeSensitive: current.aiReplyIncludeSensitive === true,
   };
 }
 
@@ -3929,6 +3939,129 @@ ipcMain.handle('telemetry:export', async () => {
   return payload;
 });
 
+ipcMain.handle('crocomni:search', async (event, query, options = {}) => {
+  if (!store) {
+    return [];
+  }
+  const raw = typeof query === 'string' ? query.trim() : '';
+  if (!raw) {
+    return [];
+  }
+  const source = options?.source === 'notes' || options?.source === 'history' ? options.source : 'all';
+  const limit = Number.isFinite(options?.limit) ? options.limit : 20;
+  let since = typeof options?.since === 'string' && options.since ? options.since : null;
+  const days = Number.parseInt(options?.rangeDays || options?.days || '', 10);
+  if (!since && Number.isFinite(days) && days > 0) {
+    since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  }
+  return store.searchDocuments(raw, { source, limit, since });
+});
+
+ipcMain.handle('crocomni:answer', async (event, payload = {}) => {
+  const query = typeof payload.query === 'string' ? payload.query.trim() : '';
+  const hits = Array.isArray(payload.hits) ? payload.hits : [];
+  if (!query || hits.length === 0) {
+    return { ok: false, error: 'missing_input' };
+  }
+  const crocOmniSettings = getCrocOmniSettings();
+  if (crocOmniSettings.aiReplyEnabled !== true) {
+    return { ok: false, error: 'ai_reply_disabled' };
+  }
+  const client = getOpenAIClient();
+  if (!client) {
+    return { ok: false, error: 'missing_api_key' };
+  }
+
+  const includeSensitive = crocOmniSettings.aiReplyIncludeSensitive === true;
+  const sources = [];
+  const seen = new Set();
+  for (const hit of hits.slice(0, 6)) {
+    const source = hit?.source === 'notes' ? 'notes' : (hit?.source === 'history' ? 'history' : '');
+    const docId = hit?.doc_id || hit?.docId || hit?.id || '';
+    if (!source || !docId) {
+      continue;
+    }
+    const key = `${source}:${docId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    let title = typeof hit?.title === 'string' ? hit.title : '';
+    let excerpt = typeof hit?.snippet === 'string' ? hit.snippet : '';
+    excerpt = excerpt.replace(/\u0001|\u0002/g, '').trim();
+
+    if (!excerpt) {
+      try {
+        const doc = source === 'notes'
+          ? await store.getNoteById(docId)
+          : await store.getHistoryById(docId);
+        const text = doc?.text || doc?.raw_text || '';
+        excerpt = String(text).slice(0, 360).trim();
+        if (String(text).length > 360) {
+          excerpt += '…';
+        }
+        if (!title) {
+          title = doc?.title || '';
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!includeSensitive) {
+      title = redactSensitiveText(title);
+      excerpt = redactSensitiveText(excerpt);
+    }
+    if (excerpt.length > 600) {
+      excerpt = `${excerpt.slice(0, 600).trim()}…`;
+    }
+    sources.push({
+      source,
+      doc_id: String(docId),
+      title,
+      excerpt,
+    });
+  }
+
+  if (!sources.length) {
+    return { ok: false, error: 'no_sources' };
+  }
+
+  const sourcesText = sources.map((source, index) => {
+    const header = `[${index + 1}] ${source.source.toUpperCase()}${source.title ? ` — ${source.title}` : ''}`;
+    return `${header}\n${source.excerpt}`;
+  }).join('\n\n');
+
+  const systemPrompt = [
+    'You are CrocOmni Search, a helpful assistant for CrocoVoice.',
+    'Answer using only the provided sources. If the sources are insufficient, say you cannot find the answer.',
+    'Be concise and actionable. Answer in French.',
+    'Always cite sources like [1], [2].',
+  ].join(' ');
+
+  try {
+    const response = await executeOpenAICall({
+      label: 'chat.completions.crocomni_answer',
+      timeoutMs: OPENAI_CHAT_TIMEOUT_MS,
+      action: () => client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Question: ${query}\n\nSources:\n${sourcesText}` },
+        ],
+      }),
+    });
+    const answer = response?.choices?.[0]?.message?.content?.trim()
+      || 'Je ne trouve pas la réponse dans vos sources.';
+    return { ok: true, answer, sources };
+  } catch (error) {
+    console.error('CrocOmni answer error:', error);
+    return { ok: false, error: error?.message || 'answer_failed' };
+  }
+});
+
 ipcMain.handle('crocomni:create', async (event, payload = {}) => {
   const record = await store.createCrocOmniConversation({
     id: payload.id || crypto.randomUUID(),
@@ -4197,6 +4330,20 @@ ipcMain.handle('styles:activate', async (event, id) => {
 
 ipcMain.handle('notes:list', async () => {
   return store.listNotes({ limit: 100 });
+});
+
+ipcMain.handle('notes:get', async (event, id) => {
+  if (!id) {
+    return null;
+  }
+  return store.getNoteById(id);
+});
+
+ipcMain.handle('history:get', async (event, id) => {
+  if (!id) {
+    return null;
+  }
+  return store.getHistoryById(id);
 });
 
 ipcMain.handle('history:delete', async (event, id) => {

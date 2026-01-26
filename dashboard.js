@@ -19,15 +19,17 @@ const insightsAvgWpm = document.getElementById('insightsAvgWpm');
 const insightsStreak = document.getElementById('insightsStreak');
 const insightsTopApps = document.getElementById('insightsTopApps');
 const insightsRange = document.getElementById('insightsRange');
-const crocOmniConversationList = document.getElementById('crocOmniConversationList');
-const crocOmniMessages = document.getElementById('crocOmniMessages');
-const crocOmniInput = document.getElementById('crocOmniInput');
-const crocOmniSend = document.getElementById('crocOmniSend');
-const crocOmniNew = document.getElementById('crocOmniNew');
-const crocOmniArchive = document.getElementById('crocOmniArchive');
-const crocOmniContextToggle = document.getElementById('crocOmniContextToggle');
-const crocOmniContextAppToggle = document.getElementById('crocOmniContextAppToggle');
-const crocOmniContextIndicator = document.getElementById('crocOmniContextIndicator');
+const crocOmniSearchInput = document.getElementById('crocOmniSearchInput');
+const crocOmniSearchButton = document.getElementById('crocOmniSearchButton');
+const crocOmniSearchSource = document.getElementById('crocOmniSearchSource');
+const crocOmniSearchRange = document.getElementById('crocOmniSearchRange');
+const crocOmniSearchStatus = document.getElementById('crocOmniSearchStatus');
+const crocOmniResults = document.getElementById('crocOmniResults');
+const crocOmniAnswerPanel = document.getElementById('crocOmniAnswerPanel');
+const crocOmniAnswerButton = document.getElementById('crocOmniAnswerButton');
+const crocOmniAnswerOutput = document.getElementById('crocOmniAnswerOutput');
+const crocOmniAiReplyToggle = document.getElementById('crocOmniAiReplyToggle');
+const crocOmniAiSensitiveToggle = document.getElementById('crocOmniAiSensitiveToggle');
 const snippetCueInput = document.getElementById('snippetCueInput');
 const snippetTemplateInput = document.getElementById('snippetTemplateInput');
 const snippetDescriptionInput = document.getElementById('snippetDescriptionInput');
@@ -178,9 +180,11 @@ let snippetsData = [];
 let dictionaryData = [];
 let notificationsData = [];
 let insightsData = null;
-let crocOmniConversations = [];
-let activeCrocOmniConversationId = null;
-let crocOmniMessagesData = [];
+let crocOmniSearchResults = [];
+let crocOmniSearchQuery = '';
+let crocOmniSearchPending = false;
+let crocOmniAnswerPending = false;
+let crocOmniSearchDebounceId = null;
 let insightsRangeDays = 30;
 let modalResolver = null;
 let platform = 'win32';
@@ -701,7 +705,7 @@ function updateBreadcrumb(viewName) {
     'note-focus': { primary: 'Notes', secondary: 'Focus' },
     dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
     snippets: { primary: 'Snippets', secondary: 'Templates' },
-    crocomni: { primary: 'CrocOmni', secondary: 'Assistant' },
+    crocomni: { primary: 'CrocOmni', secondary: 'Recherche' },
     inbox: { primary: 'Notifications', secondary: 'Inbox' },
     insights: { primary: 'Insights', secondary: 'Wrapped' },
     context: { primary: 'Context', secondary: 'Privacy' },
@@ -1705,6 +1709,10 @@ async function closeFocusedNote() {
 function buildEntryRow(entry, type) {
   const row = document.createElement('div');
   row.className = 'entry-row';
+  if (entry?.id) {
+    row.dataset.entryId = entry.id;
+  }
+  row.dataset.entryType = type;
   if (type === 'notes') {
     row.role = 'button';
     row.tabIndex = 0;
@@ -2134,8 +2142,8 @@ function refreshActiveList() {
     return;
   }
   if (currentView === 'crocomni') {
-    renderCrocOmniConversations(crocOmniConversations);
-    renderCrocOmniMessages();
+    renderCrocOmniResults(crocOmniSearchResults);
+    syncCrocOmniAnswerUiState();
     return;
   }
   if (currentView === 'diff') {
@@ -2704,55 +2712,199 @@ function computeInsightsFromHistoryLocal(history, days) {
   return stats;
 }
 
-function renderCrocOmniConversations(conversations) {
-  if (!crocOmniConversationList) {
+function setCrocOmniSearchStatus(message = '') {
+  if (!crocOmniSearchStatus) {
     return;
   }
-  crocOmniConversationList.innerHTML = '';
-  if (!conversations || conversations.length === 0) {
-    crocOmniConversationList.innerHTML = '<div class="empty-state">Aucune conversation.</div>';
+  crocOmniSearchStatus.textContent = message || '';
+}
+
+function formatCrocOmniSnippet(snippet) {
+  const safe = escapeHtml(snippet || '');
+  return safe.replace(/\u0001/g, '<mark>').replace(/\u0002/g, '</mark>');
+}
+
+async function openCrocOmniResult(result) {
+  if (!result) {
     return;
   }
-  conversations.forEach((conversation) => {
-    if (conversation.archived_at) {
+  if (result.source === 'notes') {
+    const existing = notesData.find((note) => note.id === result.doc_id) || null;
+    let note = existing;
+    if (!note && window.electronAPI?.getNoteById) {
+      note = await window.electronAPI.getNoteById(result.doc_id);
+    }
+    if (!note) {
+      showToast('Note introuvable.', 'error');
       return;
     }
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = `croc-omni-conversation${conversation.id === activeCrocOmniConversationId ? ' active' : ''}`;
-    row.textContent = conversation.title || 'Conversation';
-    row.addEventListener('click', async () => {
-      activeCrocOmniConversationId = conversation.id;
-      crocOmniMessagesData = await window.electronAPI.listCrocOmniMessages(conversation.id);
-      renderCrocOmniMessages();
-      renderCrocOmniConversations(crocOmniConversations);
+    openFocusedNote(note);
+    return;
+  }
+
+  setActiveView('home');
+  await delay(60);
+  const row = document.querySelector(`[data-entry-type="history"][data-entry-id="${CSS.escape(result.doc_id)}"]`);
+  if (!row) {
+    showToast('Dictée introuvable dans la liste.', 'error');
+    return;
+  }
+  row.classList.add('is-highlight');
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => row.classList.remove('is-highlight'), 1600);
+}
+
+function renderCrocOmniResults(results) {
+  if (!crocOmniResults) {
+    return;
+  }
+  crocOmniResults.innerHTML = '';
+  if (!results || results.length === 0) {
+    crocOmniResults.innerHTML = '<div class="empty-state">Aucun résultat.</div>';
+    return;
+  }
+
+  results.forEach((result) => {
+    const row = document.createElement('div');
+    row.className = 'croc-omni-result';
+    row.tabIndex = 0;
+    row.role = 'button';
+    row.addEventListener('click', () => openCrocOmniResult(result));
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openCrocOmniResult(result);
+      }
     });
-    crocOmniConversationList.appendChild(row);
+
+    const header = document.createElement('div');
+    header.className = 'croc-omni-result-header';
+
+    const title = document.createElement('div');
+    title.className = 'croc-omni-result-title';
+    const fallbackTitle = result.source === 'notes'
+      ? 'Note'
+      : (result.created_at ? `Dictée · ${formatDateLabel(result.created_at)}` : 'Dictée');
+    title.textContent = result.title || fallbackTitle;
+
+    const meta = document.createElement('div');
+    meta.className = 'croc-omni-result-meta';
+    const stamp = result.updated_at || result.created_at || null;
+    const typeLabel = result.source === 'notes' ? 'NOTE' : 'DICTÉE';
+    meta.textContent = `${typeLabel}${stamp ? ` · ${formatDateTimeLabel(stamp)}` : ''}`;
+
+    header.appendChild(title);
+    header.appendChild(meta);
+
+    const snippet = document.createElement('div');
+    snippet.className = 'croc-omni-result-snippet';
+    snippet.innerHTML = formatCrocOmniSnippet(result.snippet) || escapeHtml('—');
+
+    row.appendChild(header);
+    row.appendChild(snippet);
+    crocOmniResults.appendChild(row);
   });
 }
 
-function renderCrocOmniMessages() {
-  if (!crocOmniMessages) {
+function syncCrocOmniAnswerUiState() {
+  if (!crocOmniAnswerButton) {
     return;
   }
-  crocOmniMessages.innerHTML = '';
-  if (crocOmniContextIndicator) {
-    crocOmniContextIndicator.textContent = 'Contexte: inactif';
+  const crocOmniSettings = currentSettings?.crocOmni || {};
+  const aiEnabled = crocOmniSettings.aiReplyEnabled === true;
+  const apiReady = Boolean(currentSettings.apiKeyPresent);
+  const hasResults = Array.isArray(crocOmniSearchResults) && crocOmniSearchResults.length > 0;
+  crocOmniAnswerButton.disabled = crocOmniAnswerPending || !aiEnabled || !apiReady || !hasResults;
+  if (crocOmniAnswerPanel) {
+    crocOmniAnswerPanel.style.opacity = aiEnabled ? '1' : '0.85';
   }
-  if (!crocOmniMessagesData || crocOmniMessagesData.length === 0) {
-    crocOmniMessages.innerHTML = '<div class="empty-state">Démarrez une conversation CrocOmni.</div>';
-    return;
-  }
-  crocOmniMessagesData.forEach((msg) => {
-    const row = document.createElement('div');
-    row.className = `croc-omni-message croc-omni-${msg.role}`;
-    row.textContent = msg.content || '';
-    if (msg.context_used && crocOmniContextIndicator && msg.role === 'assistant') {
-      crocOmniContextIndicator.textContent = 'Contexte utilisé';
+  if (!aiEnabled) {
+    if (crocOmniAnswerOutput) {
+      crocOmniAnswerOutput.textContent = 'Activez “Répondre avec IA” pour générer une réponse.';
     }
-    crocOmniMessages.appendChild(row);
-  });
-  crocOmniMessages.scrollTop = crocOmniMessages.scrollHeight;
+  } else if (!apiReady) {
+    if (crocOmniAnswerOutput) {
+      crocOmniAnswerOutput.textContent = 'Ajoutez OPENAI_API_KEY pour générer une réponse.';
+    }
+  }
+}
+
+async function runCrocOmniSearch() {
+  if (!window.electronAPI?.searchCrocOmni) {
+    showToast('Recherche CrocOmni indisponible.', 'error');
+    return;
+  }
+  const query = crocOmniSearchInput?.value?.trim() || '';
+  crocOmniSearchQuery = query;
+  if (!query) {
+    crocOmniSearchResults = [];
+    renderCrocOmniResults(crocOmniSearchResults);
+    setCrocOmniSearchStatus('');
+    syncCrocOmniAnswerUiState();
+    return;
+  }
+  const source = crocOmniSearchSource?.value || 'all';
+  const rangeValue = crocOmniSearchRange?.value || 'all';
+  const rangeDays = rangeValue && rangeValue !== 'all' ? Number.parseInt(rangeValue, 10) : null;
+
+  crocOmniSearchPending = true;
+  setCrocOmniSearchStatus('Recherche en cours…');
+  syncCrocOmniAnswerUiState();
+  try {
+    const results = await window.electronAPI.searchCrocOmni(query, {
+      source,
+      rangeDays: Number.isFinite(rangeDays) ? rangeDays : null,
+      limit: 20,
+    });
+    crocOmniSearchResults = Array.isArray(results) ? results : [];
+    renderCrocOmniResults(crocOmniSearchResults);
+    setCrocOmniSearchStatus(`${crocOmniSearchResults.length} résultat(s)`);
+  } catch (error) {
+    crocOmniSearchResults = [];
+    renderCrocOmniResults(crocOmniSearchResults);
+    setCrocOmniSearchStatus('Recherche impossible.');
+    showToast(error?.message || 'Recherche impossible.', 'error');
+  } finally {
+    crocOmniSearchPending = false;
+    syncCrocOmniAnswerUiState();
+  }
+}
+
+async function runCrocOmniAnswer() {
+  if (!window.electronAPI?.answerCrocOmni) {
+    showToast('Réponse IA indisponible.', 'error');
+    return;
+  }
+  const query = crocOmniSearchQuery || crocOmniSearchInput?.value?.trim() || '';
+  if (!query || crocOmniSearchResults.length === 0) {
+    showToast('Lancez une recherche avant.', 'error');
+    return;
+  }
+  crocOmniAnswerPending = true;
+  if (crocOmniAnswerOutput) {
+    crocOmniAnswerOutput.textContent = 'Génération de la réponse…';
+  }
+  syncCrocOmniAnswerUiState();
+  try {
+    const res = await window.electronAPI.answerCrocOmni({
+      query,
+      hits: crocOmniSearchResults.slice(0, 6),
+    });
+    if (!res?.ok) {
+      throw new Error(res?.error || 'answer_failed');
+    }
+    if (crocOmniAnswerOutput) {
+      crocOmniAnswerOutput.textContent = res.answer || 'Aucune réponse.';
+    }
+  } catch (error) {
+    if (crocOmniAnswerOutput) {
+      crocOmniAnswerOutput.textContent = 'Impossible de générer la réponse.';
+    }
+    showToast(error?.message || 'Impossible de générer la réponse.', 'error');
+  } finally {
+    crocOmniAnswerPending = false;
+    syncCrocOmniAnswerUiState();
+  }
 }
 
 function renderStyles(styles) {
@@ -3540,24 +3692,16 @@ async function refreshDashboard() {
   snippetsData = dashboardData.snippets || [];
   notificationsData = dashboardData.notifications || [];
   insightsData = computeInsightsFromHistoryLocal(historyData, insightsRangeDays);
-  crocOmniConversations = dashboardData.crocOmniConversations || [];
-  if (!activeCrocOmniConversationId && crocOmniConversations.length) {
-    activeCrocOmniConversationId = crocOmniConversations[0].id;
-  }
   refreshActiveList();
   renderDictionary(dictionaryData);
   renderSnippets(snippetsData);
   renderNotifications(notificationsData);
   renderInsights(insightsData);
-  renderCrocOmniConversations(crocOmniConversations);
-  if (activeCrocOmniConversationId) {
-    crocOmniMessagesData = await window.electronAPI.listCrocOmniMessages(activeCrocOmniConversationId);
-  }
-  renderCrocOmniMessages();
   renderStyles(dashboardData.styles);
   renderSettings(currentSettings);
   renderContext(dashboardData.context);
-  applyCrocOmniSettings(currentSettings, dashboardData.context);
+  applyCrocOmniSettings(currentSettings);
+  syncCrocOmniAnswerUiState();
   renderUploads(dashboardData.uploads);
   applyOnboardingStateFromSettings(currentSettings);
   renderAuth(dashboardData.auth, dashboardData.syncReady);
@@ -3583,28 +3727,18 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 }
 
-function applyCrocOmniSettings(settings, contextState = {}) {
-  const crocOmniSettings = settings?.crocOmni || {};
-  if (crocOmniContextToggle) {
-    crocOmniContextToggle.checked = crocOmniSettings.contextEnabled === true;
-  }
-  if (crocOmniContextIndicator) {
-    crocOmniContextIndicator.textContent = crocOmniSettings.contextEnabled
-      ? 'Contexte: prêt'
-      : 'Contexte: inactif';
-  }
-  if (crocOmniContextAppToggle) {
-    const contextId = contextState.contextId || '';
-    const overrides = crocOmniSettings.contextOverrides || {};
-    if (!contextId) {
-      crocOmniContextAppToggle.checked = false;
-      crocOmniContextAppToggle.disabled = true;
-    } else {
-      crocOmniContextAppToggle.disabled = false;
-      crocOmniContextAppToggle.checked = overrides[contextId] === true;
-    }
-  }
-}
+	function applyCrocOmniSettings(settings) {
+	  const crocOmniSettings = settings?.crocOmni || {};
+	  const aiEnabled = crocOmniSettings.aiReplyEnabled === true;
+	  if (crocOmniAiReplyToggle) {
+	    crocOmniAiReplyToggle.checked = aiEnabled;
+	  }
+	  if (crocOmniAiSensitiveToggle) {
+	    crocOmniAiSensitiveToggle.checked = crocOmniSettings.aiReplyIncludeSensitive === true;
+	    crocOmniAiSensitiveToggle.disabled = !aiEnabled;
+	  }
+	  syncCrocOmniAnswerUiState();
+	}
 
 function updateCrocOmniSettings(nextSettings) {
   currentSettings = { ...currentSettings, ...nextSettings };
@@ -4168,72 +4302,64 @@ function updateCrocOmniSettings(nextSettings) {
     });
   }
 
-  if (crocOmniNew) {
-    crocOmniNew.addEventListener('click', async () => {
-      if (!window.electronAPI?.createCrocOmniConversation) {
-        showToast('CrocOmni indisponible.', 'error');
+  if (crocOmniSearchButton) {
+    crocOmniSearchButton.addEventListener('click', () => runCrocOmniSearch());
+  }
+
+  if (crocOmniSearchInput) {
+    crocOmniSearchInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') {
         return;
       }
-      const conversation = await window.electronAPI.createCrocOmniConversation({ title: 'Nouvelle conversation' });
-      activeCrocOmniConversationId = conversation?.id || null;
-      await refreshDashboard();
-      setActiveView('crocomni');
+      event.preventDefault();
+      runCrocOmniSearch();
+    });
+    crocOmniSearchInput.addEventListener('input', () => {
+      if (crocOmniSearchDebounceId) {
+        clearTimeout(crocOmniSearchDebounceId);
+      }
+      crocOmniSearchDebounceId = setTimeout(() => runCrocOmniSearch(), 250);
     });
   }
 
-  if (crocOmniArchive) {
-    crocOmniArchive.addEventListener('click', async () => {
-      if (!activeCrocOmniConversationId || !window.electronAPI?.archiveCrocOmniConversation) {
-        return;
+  if (crocOmniSearchSource) {
+    crocOmniSearchSource.addEventListener('change', () => {
+      if (crocOmniSearchInput?.value?.trim()) {
+        runCrocOmniSearch();
       }
-      await window.electronAPI.archiveCrocOmniConversation(activeCrocOmniConversationId);
-      activeCrocOmniConversationId = null;
-      await refreshDashboard();
     });
   }
 
-  if (crocOmniSend) {
-    crocOmniSend.addEventListener('click', async () => {
-      if (!crocOmniInput?.value.trim()) {
-        return;
+  if (crocOmniSearchRange) {
+    crocOmniSearchRange.addEventListener('change', () => {
+      if (crocOmniSearchInput?.value?.trim()) {
+        runCrocOmniSearch();
       }
-      const content = crocOmniInput.value.trim();
-      crocOmniInput.value = '';
-      if (!window.electronAPI?.sendCrocOmniMessage) {
-        showToast('CrocOmni indisponible.', 'error');
-        return;
-      }
-      const result = await window.electronAPI.sendCrocOmniMessage({
-        conversationId: activeCrocOmniConversationId,
-        content,
-      });
-      if (result?.conversationId) {
-        activeCrocOmniConversationId = result.conversationId;
-      }
-      await refreshDashboard();
-      setActiveView('crocomni');
     });
   }
 
-  if (crocOmniContextToggle) {
-    crocOmniContextToggle.addEventListener('change', (event) => {
+  if (crocOmniAnswerButton) {
+    crocOmniAnswerButton.addEventListener('click', () => runCrocOmniAnswer());
+  }
+
+  if (crocOmniAiReplyToggle) {
+    crocOmniAiReplyToggle.addEventListener('change', (event) => {
       const crocOmniSettings = { ...(currentSettings.crocOmni || {}) };
-      crocOmniSettings.contextEnabled = event.target.checked;
+      crocOmniSettings.aiReplyEnabled = Boolean(event.target.checked);
+      if (!crocOmniSettings.aiReplyEnabled) {
+        crocOmniSettings.aiReplyIncludeSensitive = false;
+      }
       updateCrocOmniSettings({ crocOmni: crocOmniSettings });
+      applyCrocOmniSettings(currentSettings);
     });
   }
 
-  if (crocOmniContextAppToggle) {
-    crocOmniContextAppToggle.addEventListener('change', (event) => {
-      const contextId = dashboardData?.context?.contextId;
-      if (!contextId) {
-        return;
-      }
+  if (crocOmniAiSensitiveToggle) {
+    crocOmniAiSensitiveToggle.addEventListener('change', (event) => {
       const crocOmniSettings = { ...(currentSettings.crocOmni || {}) };
-      const overrides = { ...(crocOmniSettings.contextOverrides || {}) };
-      overrides[contextId] = event.target.checked;
-      crocOmniSettings.contextOverrides = overrides;
+      crocOmniSettings.aiReplyIncludeSensitive = Boolean(event.target.checked);
       updateCrocOmniSettings({ crocOmni: crocOmniSettings });
+      applyCrocOmniSettings(currentSettings);
     });
   }
 
@@ -4738,7 +4864,7 @@ function updateCrocOmniSettings(nextSettings) {
       currentSettings = nextSettings || currentSettings;
       applyOnboardingStateFromSettings(currentSettings);
       renderSettings(currentSettings);
-      applyCrocOmniSettings(currentSettings, dashboardData?.context || {});
+      applyCrocOmniSettings(currentSettings);
     });
   }
 

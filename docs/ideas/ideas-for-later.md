@@ -60,3 +60,9 @@
 [ ] Je veux que le changement de langue se fasse par un dropdown menu avec search 
 
 [ ] Je veux que le widget pill soit légérement plus bas qu'actuellement
+
+[ ] Je veux voir 'lavancement de la transcription de mon fichier audio avec une barre d'avancement.
+
+[ ] Je veux une erreur claire si l'upload d'audio échoue
+
+[ ] Je veux savoir quels fichiers sont acceptés pour la transcription audio

@@ -3,6 +3,7 @@ const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SEARCH_INDEX_VERSION = 1;
 
 function countWords(text) {
   if (!text) {
@@ -143,6 +144,50 @@ function recordingStateReducer(current, action) {
   }
 }
 
+function buildSearchTokens(query, maxTokens = 12) {
+  const raw = typeof query === 'string' ? query.trim() : '';
+  if (!raw) {
+    return [];
+  }
+  const tokens = raw
+    .split(/\s+/)
+    .map((token) => token.replace(/[^\p{L}\p{N}_-]/gu, ''))
+    .filter(Boolean);
+  return tokens.slice(0, maxTokens);
+}
+
+function buildFtsMatchQuery(query) {
+  const tokens = buildSearchTokens(query);
+  if (!tokens.length) {
+    return '';
+  }
+  return tokens.join(' ');
+}
+
+function buildFallbackSnippet(text, query, windowSize = 140) {
+  const raw = typeof text === 'string' ? text : '';
+  const needle = typeof query === 'string' ? query.trim().toLowerCase() : '';
+  if (!raw) {
+    return '';
+  }
+  if (!needle) {
+    return raw.length > windowSize ? `${raw.slice(0, windowSize).trim()}…` : raw;
+  }
+  const haystack = raw.toLowerCase();
+  const index = haystack.indexOf(needle);
+  if (index === -1) {
+    return raw.length > windowSize ? `${raw.slice(0, windowSize).trim()}…` : raw;
+  }
+  const start = Math.max(0, index - Math.floor(windowSize / 2));
+  const end = Math.min(raw.length, index + needle.length + Math.floor(windowSize / 2));
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < raw.length ? '…' : '';
+  const before = raw.slice(start, index);
+  const match = raw.slice(index, index + needle.length);
+  const after = raw.slice(index + needle.length, end);
+  return `${prefix}${before}\u0001${match}\u0002${after}${suffix}`;
+}
+
 class Store {
   constructor({ userDataPath, defaults }) {
     this.userDataPath = userDataPath;
@@ -161,6 +206,185 @@ class Store {
     await this._createSchema();
     await this._createIndexes();
     await this._migrateFromJsonSettings();
+    await this._maybeRebuildSearchIndex();
+  }
+
+  async _searchIndexExists() {
+    const row = await this._get(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'search_index'",
+      [],
+    );
+    return Boolean(row?.name);
+  }
+
+  async _maybeRebuildSearchIndex() {
+    if (!(await this._searchIndexExists())) {
+      return;
+    }
+    const version = await this.getSetting('search_index_version', 0);
+    const docsRow = await this._get(
+      'SELECT (SELECT COUNT(*) FROM notes) + (SELECT COUNT(*) FROM history) AS count',
+      [],
+    );
+    const docsCount = Number.parseInt(docsRow?.count || '0', 10) || 0;
+
+    let indexCount = 0;
+    try {
+      const indexRow = await this._get('SELECT COUNT(*) AS count FROM search_index', []);
+      indexCount = Number.parseInt(indexRow?.count || '0', 10) || 0;
+    } catch {
+      indexCount = 0;
+    }
+
+    if (version !== SEARCH_INDEX_VERSION || (docsCount > 0 && indexCount === 0)) {
+      await this.rebuildSearchIndex();
+      await this.setSetting('search_index_version', SEARCH_INDEX_VERSION);
+    }
+  }
+
+  async rebuildSearchIndex() {
+    if (!(await this._searchIndexExists())) {
+      return { ok: false, reason: 'search_index_unavailable' };
+    }
+    await this._run('DELETE FROM search_index');
+    const notes = await this._all('SELECT id, title, text, created_at, updated_at FROM notes', []);
+    const history = await this._all('SELECT id, title, text, created_at, updated_at FROM history', []);
+    for (const row of notes) {
+      await this._run(
+        'INSERT INTO search_index (source, doc_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+        ['notes', row.id, row.title || '', row.text || '', row.created_at || '', row.updated_at || ''],
+      );
+    }
+    for (const row of history) {
+      await this._run(
+        'INSERT INTO search_index (source, doc_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+        ['history', row.id, row.title || '', row.text || '', row.created_at || '', row.updated_at || ''],
+      );
+    }
+    return { ok: true, notes: notes.length, history: history.length };
+  }
+
+  async _upsertSearchDocument(doc) {
+    if (!doc || !doc.source || !doc.doc_id) {
+      return;
+    }
+    if (!(await this._searchIndexExists())) {
+      return;
+    }
+    await this._run('DELETE FROM search_index WHERE source = ? AND doc_id = ?', [doc.source, doc.doc_id]);
+    await this._run(
+      'INSERT INTO search_index (source, doc_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        doc.source,
+        doc.doc_id,
+        doc.title || '',
+        doc.body || '',
+        doc.created_at || '',
+        doc.updated_at || '',
+      ],
+    );
+  }
+
+  async _deleteSearchDocument(source, docId) {
+    if (!source || !docId) {
+      return;
+    }
+    if (!(await this._searchIndexExists())) {
+      return;
+    }
+    await this._run('DELETE FROM search_index WHERE source = ? AND doc_id = ?', [source, docId]);
+  }
+
+  async searchDocuments(query, options = {}) {
+    const raw = typeof query === 'string' ? query.trim() : '';
+    if (!raw) {
+      return [];
+    }
+    const source = options?.source === 'notes' || options?.source === 'history' ? options.source : 'all';
+    const limit = Number.isFinite(options?.limit) ? Math.max(1, Math.min(50, options.limit)) : 20;
+    const since = typeof options?.since === 'string' && options.since ? options.since : null;
+    const match = buildFtsMatchQuery(raw);
+    if (!match) {
+      return [];
+    }
+
+    if (await this._searchIndexExists()) {
+      try {
+        const params = [match];
+        let extra = '';
+        if (source !== 'all') {
+          extra += ' AND source = ?';
+          params.push(source);
+        }
+        if (since) {
+          extra += ' AND created_at >= ?';
+          params.push(since);
+        }
+        params.push(limit);
+        const rows = await this._all(
+          `SELECT source, doc_id, title, created_at, updated_at,
+                  snippet(search_index, 3, char(1), char(2), '…', 12) AS snippet,
+                  bm25(search_index) AS score
+           FROM search_index
+           WHERE search_index MATCH ?${extra}
+           ORDER BY score
+           LIMIT ?`,
+          params,
+        );
+        return rows.map((row) => ({
+          source: row.source,
+          doc_id: row.doc_id,
+          title: row.title || '',
+          created_at: row.created_at || null,
+          updated_at: row.updated_at || null,
+          snippet: row.snippet || '',
+          score: row.score,
+        }));
+      } catch (error) {
+        console.warn('FTS search failed, falling back:', error?.message || error);
+      }
+    }
+
+    const like = `%${raw.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+    const results = [];
+    if (source === 'all' || source === 'notes') {
+      const noteRows = await this._all(
+        'SELECT id, title, text, created_at, updated_at FROM notes WHERE title LIKE ? ESCAPE \'\\\' OR text LIKE ? ESCAPE \'\\\' ORDER BY updated_at DESC LIMIT ?',
+        [like, like, limit],
+      );
+      noteRows.forEach((row) => results.push({
+        source: 'notes',
+        doc_id: row.id,
+        title: row.title || '',
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+        snippet: buildFallbackSnippet(row.text || '', raw),
+        score: null,
+      }));
+    }
+    if (source === 'all' || source === 'history') {
+      const remaining = Math.max(0, limit - results.length);
+      if (remaining > 0) {
+        const histRows = await this._all(
+          'SELECT id, title, text, created_at, updated_at FROM history WHERE text LIKE ? ESCAPE \'\\\' ORDER BY created_at DESC LIMIT ?',
+          [like, remaining],
+        );
+        histRows.forEach((row) => results.push({
+          source: 'history',
+          doc_id: row.id,
+          title: row.title || '',
+          created_at: row.created_at || null,
+          updated_at: row.updated_at || null,
+          snippet: buildFallbackSnippet(row.text || '', raw),
+          score: null,
+        }));
+      }
+    }
+
+    if (!since) {
+      return results;
+    }
+    return results.filter((row) => !row.created_at || row.created_at >= since);
   }
 
   async getSettings() {
@@ -248,10 +472,18 @@ class Store {
 
   async deleteHistory(id) {
     await this._run('DELETE FROM history WHERE id = ?', [id]);
+    await this._deleteSearchDocument('history', id);
   }
 
   async listNotes({ limit = 50 } = {}) {
     return this._all('SELECT * FROM notes ORDER BY created_at DESC LIMIT ?', [limit]);
+  }
+
+  async getNoteById(id) {
+    if (!id) {
+      return null;
+    }
+    return this._get('SELECT * FROM notes WHERE id = ?', [id]);
   }
 
   async getNotesCount() {
@@ -291,11 +523,20 @@ class Store {
         record.updated_at,
       ],
     );
+    await this._upsertSearchDocument({
+      source: 'notes',
+      doc_id: record.id,
+      title: record.title,
+      body: record.text,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+    });
     return record;
   }
 
   async deleteNote(id) {
     await this._run('DELETE FROM notes WHERE id = ?', [id]);
+    await this._deleteSearchDocument('notes', id);
   }
 
   async addHistory(entry) {
@@ -370,6 +611,14 @@ class Store {
         record.updated_at,
       ],
     );
+    await this._upsertSearchDocument({
+      source: 'history',
+      doc_id: record.id,
+      title: record.title || '',
+      body: record.text,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+    });
     return record;
   }
 
@@ -530,6 +779,9 @@ class Store {
   async purgeHistory(days = 14) {
     const cutoff = new Date(Date.now() - days * DAY_MS).toISOString();
     await this._run('DELETE FROM history WHERE created_at < ?', [cutoff]);
+    if (await this._searchIndexExists()) {
+      await this._run('DELETE FROM search_index WHERE source = ? AND created_at < ?', ['history', cutoff]);
+    }
   }
 
   async purgeContext(days = 30) {
@@ -539,6 +791,9 @@ class Store {
 
   async clearHistory() {
     await this._run('DELETE FROM history');
+    if (await this._searchIndexExists()) {
+      await this._run('DELETE FROM search_index WHERE source = ?', ['history']);
+    }
   }
 
   async clearContext() {
@@ -551,6 +806,9 @@ class Store {
     await this._run('DELETE FROM styles');
     await this._run('DELETE FROM notes');
     await this._run('DELETE FROM snippets');
+    if (await this._searchIndexExists()) {
+      await this._run('DELETE FROM search_index');
+    }
     await this._run("DELETE FROM settings WHERE key = 'supabase_session' OR key LIKE 'sync:%'");
   }
 
@@ -888,6 +1146,20 @@ class Store {
       created_at TEXT NOT NULL,
       FOREIGN KEY(conversation_id) REFERENCES crocomni_conversations(id) ON DELETE CASCADE
     )`);
+
+    try {
+      await this._run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+        source UNINDEXED,
+        doc_id UNINDEXED,
+        title,
+        body,
+        created_at UNINDEXED,
+        updated_at UNINDEXED,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )`);
+    } catch (error) {
+      console.warn('FTS5 unavailable, CrocOmni search will fall back to LIKE.', error?.message || error);
+    }
   }
 
   async _createIndexes() {

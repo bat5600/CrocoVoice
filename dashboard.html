@@ -1051,6 +1051,10 @@
       background: #F8FAFC;
     }
 
+    .entry-row.is-highlight {
+      background: rgba(245, 158, 11, 0.08);
+    }
+
     .entry-icon {
       width: 40px;
       height: 40px;
@@ -1547,26 +1551,37 @@
       gap: 12px;
     }
 
-    .croc-omni-conversations {
+    .croc-omni-search {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .croc-omni-search input {
+      flex: 1;
+    }
+
+    .croc-omni-results {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
 
-    .croc-omni-conversation {
+    .croc-omni-result {
       width: 100%;
       text-align: left;
-      padding: 10px 12px;
-      border-radius: 12px;
+      padding: 12px 12px;
+      border-radius: 14px;
       border: 1px solid #E2E8F0;
       background: #FFFFFF;
       color: inherit;
       cursor: pointer;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
     }
 
-    .croc-omni-conversation.active {
-      border-color: rgba(16, 185, 129, 0.4);
-      background: rgba(16, 185, 129, 0.08);
+    .croc-omni-result:hover {
+      border-color: rgba(59, 130, 246, 0.35);
+      box-shadow: 0 2px 12px rgba(59, 130, 246, 0.08);
     }
 
     .croc-omni-main {
@@ -1576,11 +1591,47 @@
       min-height: 320px;
     }
 
-    .croc-omni-messages {
-      flex: 1;
-      min-height: 240px;
-      max-height: 420px;
-      overflow-y: auto;
+    .croc-omni-result-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+    }
+
+    .croc-omni-result-title {
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .croc-omni-result-meta {
+      font-size: 11px;
+      color: rgba(148, 163, 184, 0.85);
+      white-space: nowrap;
+    }
+
+    .croc-omni-result-snippet {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .croc-omni-result-snippet mark {
+      background: rgba(245, 158, 11, 0.18);
+      color: inherit;
+      padding: 0 2px;
+      border-radius: 4px;
+    }
+
+    .croc-omni-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .croc-omni-answer {
+      margin-top: 12px;
       padding: 12px;
       border-radius: 16px;
       background: #FFFFFF;
@@ -1588,32 +1639,23 @@
       box-shadow: 0 2px 12px rgba(148, 163, 184, 0.1);
     }
 
-    .croc-omni-message {
-      padding: 8px 12px;
-      border-radius: 12px;
-      margin-bottom: 8px;
-      font-size: 13px;
-      line-height: 1.4;
-    }
-
-    .croc-omni-user {
-      background: rgba(59, 130, 246, 0.12);
-      border: 1px solid rgba(59, 130, 246, 0.3);
-    }
-
-    .croc-omni-assistant {
-      background: rgba(16, 185, 129, 0.12);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-
-    .croc-omni-input {
+    .croc-omni-answer-header {
       display: flex;
-      gap: 8px;
       align-items: center;
+      justify-content: space-between;
+      gap: 12px;
     }
 
-    .context-indicator {
+    .croc-omni-answer-output {
       margin-top: 10px;
+      white-space: pre-wrap;
+      font-size: 13px;
+      color: var(--text-muted);
+      min-height: 90px;
+    }
+
+    .croc-omni-status {
+      margin-top: 8px;
       font-size: 12px;
       color: rgba(148, 163, 184, 0.8);
     }
@@ -3353,11 +3395,7 @@
           <div class="section-header">
             <div>
               <h2 class="section-title">CrocOmni</h2>
-              <p class="section-subtitle">Assistant conversationnel avec historique local.</p>
-            </div>
-            <div class="section-actions">
-              <button id="crocOmniNew" class="btn-secondary" type="button">Nouvelle conversation</button>
-              <button id="crocOmniArchive" class="btn-secondary" type="button">Archiver</button>
+              <p class="section-subtitle">Recherche locale dans vos notes et dictées.</p>
             </div>
           </div>
 
@@ -3366,27 +3404,58 @@
               <div class="settings-card">
                 <div class="settings-row">
                   <div>
-                    <div style="font-weight: 700;">Contexte CrocOmni</div>
-                    <div class="text-muted">Inclure le contexte dans les réponses.</div>
+                    <div style="font-weight: 700;">Sources</div>
+                    <div class="text-muted">Notes, dictées, ou les deux.</div>
                   </div>
-                  <input id="crocOmniContextToggle" type="checkbox" class="toggle-checkbox">
+                  <select id="crocOmniSearchSource" class="input-select" style="width: auto;">
+                    <option value="all">Tout</option>
+                    <option value="notes">Notes</option>
+                    <option value="history">Dictées</option>
+                  </select>
                 </div>
                 <div class="settings-row" style="margin-top: 12px;">
                   <div>
-                    <div style="font-weight: 700;">Contexte pour cette app</div>
-                    <div class="text-muted">Activer pour l’application active.</div>
+                    <div style="font-weight: 700;">Période</div>
+                    <div class="text-muted">Filtrer par date.</div>
                   </div>
-                  <input id="crocOmniContextAppToggle" type="checkbox" class="toggle-checkbox">
+                  <select id="crocOmniSearchRange" class="input-select" style="width: auto;">
+                    <option value="all">Tout</option>
+                    <option value="7">7 jours</option>
+                    <option value="30">30 jours</option>
+                    <option value="90">90 jours</option>
+                    <option value="365">365 jours</option>
+                  </select>
                 </div>
-                <div id="crocOmniContextIndicator" class="context-indicator">Contexte: inactif</div>
+                <div class="settings-row" style="margin-top: 12px;">
+                  <div>
+                    <div style="font-weight: 700;">Répondre avec IA (opt-in)</div>
+                    <div class="text-muted">Génère une réponse à partir des extraits.</div>
+                  </div>
+                  <input id="crocOmniAiReplyToggle" type="checkbox" class="toggle-checkbox">
+                </div>
+                <div class="settings-row" style="margin-top: 12px;">
+                  <div>
+                    <div style="font-weight: 700;">Inclure contenu sensible</div>
+                    <div class="text-muted">Envoie des extraits non-redactés.</div>
+                  </div>
+                  <input id="crocOmniAiSensitiveToggle" type="checkbox" class="toggle-checkbox">
+                </div>
               </div>
-              <div id="crocOmniConversationList" class="croc-omni-conversations"></div>
             </aside>
             <div class="croc-omni-main">
-              <div id="crocOmniMessages" class="croc-omni-messages"></div>
-              <div class="croc-omni-input">
-                <textarea id="crocOmniInput" class="input-field" rows="2" placeholder="Posez une question..."></textarea>
-                <button id="crocOmniSend" class="btn-primary" type="button">Envoyer</button>
+              <div class="croc-omni-search">
+                <input id="crocOmniSearchInput" class="input-field" type="text" placeholder="Rechercher dans vos notes et dictées…">
+                <button id="crocOmniSearchButton" class="btn-primary" type="button">Rechercher</button>
+              </div>
+              <div id="crocOmniSearchStatus" class="croc-omni-status"></div>
+              <div id="crocOmniResults" class="croc-omni-results"></div>
+
+              <div class="croc-omni-answer" id="crocOmniAnswerPanel">
+                <div class="croc-omni-answer-header">
+                  <div style="font-weight: 800;">Réponse (optionnel)</div>
+                  <button id="crocOmniAnswerButton" class="btn-secondary" type="button">Répondre</button>
+                </div>
+                <div id="crocOmniAnswerOutput" class="croc-omni-answer-output">Aucune réponse générée.</div>
               </div>
             </div>
           </div>
