@@ -21,6 +21,16 @@ Create a `.env` file in the repo root (or set env vars another way):
 
 See `docs/configuration.md` for the full list and defaults.
 
+## Supabase schema snapshot
+
+`schema.sql` is a CLI-generated snapshot of the live Supabase schema.
+Do not edit it by hand; regenerate it after any Supabase-facing change:
+
+- `npm run supabase:link`
+- `npm run supabase:schema`
+
+More details in `docs/supabase.md`.
+
 ## Documentation
 
 - Global PRD: `docs/prd.md`
