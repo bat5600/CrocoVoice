@@ -2621,26 +2621,11 @@
       font-weight: 600;
     }
 
-    body.note-focus-active .sidebar,
-    body.note-focus-active .top-header {
-      display: none;
-    }
-
-    body.note-focus-active .main-content {
-      padding: 0;
-    }
-
-    body.note-focus-active .content-scroll {
-      padding: 0;
-      height: 100vh;
-      overflow: hidden;
-    }
-
     .note-focus-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.12);
-      backdrop-filter: blur(2px);
+      background: transparent;
+      backdrop-filter: none;
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s ease;
@@ -3292,7 +3277,7 @@
         </section>
 
         <section id="view-note-focus" class="view note-focus-view">
-          <div class="note-focus-shell">
+          <div id="noteFocusShell" class="note-focus-shell">
             <div class="note-focus-card">
               <div class="note-focus-header">
                 <button id="noteFocusBack" class="ghost-btn" type="button">← Notes</button>
@@ -3864,7 +3849,7 @@
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                 <div>
                   <div style="font-weight: 700;">ASR local (optionnel)</div>
-                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Commande locale pour transcrire sans cloud.</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Commande locale ou serveur HTTP pour transcrire sans cloud.</div>
                 </div>
                 <select class="input-select" data-setting="localAsrEnabled" style="width: auto;">
                   <option value="false">Désactivé</option>
@@ -3872,8 +3857,27 @@
                 </select>
               </div>
               <div style="margin-top: 12px;">
+                <label class="form-label">Mode</label>
+                <select class="input-select" data-setting="localAsrMode" style="width: auto;">
+                  <option value="command">Commande</option>
+                  <option value="server">Serveur HTTP</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Usage</label>
+                <select class="input-select" data-setting="localAsrScope" style="width: auto;">
+                  <option value="uploads">Uploads uniquement</option>
+                  <option value="dictation">Dictées uniquement</option>
+                  <option value="both">Uploads + dictées</option>
+                </select>
+              </div>
+              <div style="margin-top: 12px;">
                 <label class="form-label">Commande</label>
                 <input class="input-field" type="text" data-setting="localAsrCommand" placeholder="/usr/local/bin/local-asr">
+              </div>
+              <div style="margin-top: 12px;">
+                <label class="form-label">Endpoint HTTP</label>
+                <input class="input-field" type="text" data-setting="localAsrEndpoint" placeholder="http://127.0.0.1:8100/transcribe">
               </div>
               <div style="margin-top: 12px;">
                 <label class="form-label">Timeout (ms)</label>

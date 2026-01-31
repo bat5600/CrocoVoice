@@ -194,6 +194,28 @@ function renderLanguageList(filterValue = '') {
   });
 }
 
+function resolveMicrophoneDevice() {
+  if (!availableMicrophones.length) {
+    return null;
+  }
+  if (currentSettings.microphoneId) {
+    const direct = availableMicrophones.find((mic) => mic.deviceId === currentSettings.microphoneId);
+    if (direct) {
+      return direct;
+    }
+  }
+  const label = (currentSettings.microphoneLabel || '').trim().toLowerCase();
+  if (!label) {
+    return null;
+  }
+  return availableMicrophones.find((mic) => (mic.label || '').trim().toLowerCase() === label) || null;
+}
+
+function resolveMicrophoneId() {
+  const device = resolveMicrophoneDevice();
+  return device ? device.deviceId : '';
+}
+
 function renderMicrophoneList() {
   if (!widgetMicrophoneList) {
     return;
@@ -203,7 +225,8 @@ function renderMicrophoneList() {
   defaultButton.type = 'button';
   defaultButton.className = 'submenu-item';
   defaultButton.dataset.micId = '';
-  const isDefault = !currentSettings.microphoneId;
+  const resolvedId = resolveMicrophoneId();
+  const isDefault = !resolvedId;
   const defaultLabel = document.createElement('span');
   defaultLabel.className = 'submenu-text';
   defaultLabel.textContent = 'Detection auto';
@@ -221,8 +244,9 @@ function renderMicrophoneList() {
     button.type = 'button';
     button.className = 'submenu-item';
     button.dataset.micId = mic.deviceId;
+    button.dataset.micLabel = mic.label || '';
     const label = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
-    const isSelected = currentSettings.microphoneId === mic.deviceId;
+    const isSelected = resolvedId === mic.deviceId;
     const labelSpan = document.createElement('span');
     labelSpan.className = 'submenu-text';
     labelSpan.textContent = wrapLabel(label, MIC_LABEL_MAX_CHARS);
@@ -248,7 +272,7 @@ function updateMenuLabels() {
     widgetMicrophoneLabel.textContent = 'Changer le micro';
   }
   if (widgetMicrophoneCurrent) {
-    const selected = availableMicrophones.find((mic) => mic.deviceId === currentSettings.microphoneId);
+    const selected = resolveMicrophoneDevice();
     const label = selected ? (selected.label || `Micro ${selected.deviceId.slice(0, 4)}...`) : 'Detection auto';
     widgetMicrophoneCurrent.textContent = wrapLabel(label, MIC_LABEL_MAX_CHARS);
   }
@@ -337,6 +361,21 @@ function saveWidgetSetting(key, value) {
   }
   renderMicrophoneList();
   renderLanguageList(widgetLanguageSearch ? widgetLanguageSearch.value : '');
+  updateMenuLabels();
+}
+
+function saveWidgetMicrophone(deviceId, label) {
+  currentSettings = {
+    ...currentSettings,
+    microphoneId: deviceId || '',
+    microphoneLabel: deviceId ? (label || '') : '',
+  };
+  if (window.electronAPI?.saveSettings) {
+    const payload = { ...currentSettings };
+    delete payload.apiKeyPresent;
+    window.electronAPI.saveSettings(payload);
+  }
+  renderMicrophoneList();
   updateMenuLabels();
 }
 
@@ -902,8 +941,9 @@ async function startMicMonitor() {
       noiseSuppression: true,
       autoGainControl: true,
     };
-    if (currentSettings.microphoneId) {
-      audioConstraints.deviceId = { exact: currentSettings.microphoneId };
+    const resolvedMicId = resolveMicrophoneId();
+    if (resolvedMicId) {
+      audioConstraints.deviceId = { exact: resolvedMicId };
     }
     micMonitorStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
 
@@ -1039,8 +1079,9 @@ async function initializeMediaRecorder(streamingMode = false) {
       noiseSuppression: true,
       autoGainControl: true,
     };
-    if (currentSettings.microphoneId) {
-      audioConstraints.deviceId = { exact: currentSettings.microphoneId };
+    const resolvedMicId = resolveMicrophoneId();
+    if (resolvedMicId) {
+      audioConstraints.deviceId = { exact: resolvedMicId };
     }
     audioStream = await navigator.mediaDevices.getUserMedia({
       audio: audioConstraints,
@@ -1144,10 +1185,11 @@ async function initializeMediaRecorder(streamingMode = false) {
       window.mediaRecorder.onstop = async () => {
         const blob = new Blob(window.audioChunks, { type: window.mediaRecorder.mimeType || 'audio/webm' });
         const ab = await blob.arrayBuffer();
+        const resolvedMicId = resolveMicrophoneId();
         const payload = {
           buffer: ab,
           mimeType: blob.type,
-          micDevice: currentSettings.microphoneId || '',
+          micDevice: resolvedMicId || currentSettings.microphoneId || '',
         };
         if (currentSettings.audioDiagnosticsEnabled !== false && audioDiagnosticsSummary) {
           payload.audioDiagnostics = {
@@ -1221,8 +1263,9 @@ async function initializeStreamingRecorder() {
       noiseSuppression: true,
       autoGainControl: true,
     };
-    if (currentSettings.microphoneId) {
-      audioConstraints.deviceId = { exact: currentSettings.microphoneId };
+    const resolvedMicId = resolveMicrophoneId();
+    if (resolvedMicId) {
+      audioConstraints.deviceId = { exact: resolvedMicId };
     }
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
 
@@ -1468,7 +1511,7 @@ if (window.electronAPI.onStreamPong) {
   });
 }
 
-window.electronAPI.onTranscriptionSuccess(() => {
+window.electronAPI.onTranscriptionSuccess((text) => {
   partialTranscript = '';
 });
 
@@ -1650,13 +1693,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.electronAPI.onSettingsUpdated) {
     window.electronAPI.onSettingsUpdated((nextSettings) => {
       const previousMic = currentSettings.microphoneId;
+      const previousMicLabel = currentSettings.microphoneLabel;
       currentSettings = nextSettings || {};
       updateShortcutLabel(currentSettings.shortcut);
       applyWidgetFeatureFlags(currentSettings.featureFlags || {});
       if (isProSubscription(currentSettings.subscription)) {
         clearQuotaGate();
       }
-      if (!isRecording && previousMic !== currentSettings.microphoneId) {
+      if (!isRecording && (previousMic !== currentSettings.microphoneId || previousMicLabel !== currentSettings.microphoneLabel)) {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
         }
@@ -1728,8 +1772,17 @@ document.addEventListener('DOMContentLoaded', () => {
         openItem?.classList.remove('submenu-open');
         openSubmenu = null;
       }
+      if (window.electronAPI?.setWidgetContextMenuOpen) {
+        window.electronAPI.setWidgetContextMenuOpen(false);
+      }
       updateExpandedState();
     };
+
+    if (window.electronAPI?.onWidgetContextMenuClose) {
+      window.electronAPI.onWidgetContextMenuClose(() => {
+        closeContextMenu();
+      });
+    }
 
     const toggleSubmenu = (submenuName) => {
       if (!widgetContextMenu) {
@@ -1801,6 +1854,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       widgetContainer.classList.toggle('context-open');
       isContextOpen = widgetContainer.classList.contains('context-open');
+      if (window.electronAPI?.setWidgetContextMenuOpen) {
+        window.electronAPI.setWidgetContextMenuOpen(isContextOpen);
+      }
       updateExpandedState();
     });
 
@@ -1855,7 +1911,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const micTarget = event.target.closest('[data-mic-id]');
         const langTarget = event.target.closest('[data-language]');
         if (micTarget && micTarget.dataset.micId !== undefined) {
-          saveWidgetSetting('microphoneId', micTarget.dataset.micId);
+          saveWidgetMicrophone(micTarget.dataset.micId, micTarget.dataset.micLabel || '');
           event.stopPropagation();
           closeContextMenu();
           return;

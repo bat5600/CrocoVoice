@@ -76,6 +76,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setWidgetErrorVisible: (visible) => {
     ipcRenderer.send('widget-error-visibility', visible);
   },
+  setWidgetContextMenuOpen: (isOpen) => {
+    ipcRenderer.send('widget:context-menu', isOpen);
+  },
+  closeWidgetContextMenu: () => {
+    ipcRenderer.send('widget:context-menu-close');
+  },
+  onWidgetContextMenuClose: (callback) => {
+    return registerListener('widget:context-menu-close', () => callback());
+  },
   setRecordingTarget: (target) => ipcRenderer.invoke('recording:set-target', target),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),

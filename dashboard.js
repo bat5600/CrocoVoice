@@ -80,6 +80,7 @@ const modalCancel = document.getElementById('modalCancel');
 const modalConfirm = document.getElementById('modalConfirm');
 const createNoteButton = document.getElementById('createNoteButton');
 const noteFocusOverlay = document.getElementById('noteFocusOverlay');
+const noteFocusShell = document.getElementById('noteFocusShell');
 const noteFocusBack = document.getElementById('noteFocusBack');
 const noteFocusTitle = document.getElementById('noteFocusTitle');
 const noteFocusEditor = document.getElementById('noteFocusEditor');
@@ -194,6 +195,7 @@ let historyLoadError = false;
 let quotaSnapshot = null;
 let currentSubscription = null;
 let currentAuth = null;
+let uploadsData = [];
 let onboardingState = { step: 'welcome', completed: false, firstRunSuccess: false, hotkeyReady: false, updatedAt: null };
 let onboardingSessionDismissed = false;
 let onboardingMicReady = false;
@@ -224,6 +226,8 @@ let onboardingShortcutCaptureActive = false;
 let onboardingShortcutBeforeCapture = '';
 let micDeviceCount = 0;
 let onboardingMicIgnoreUntil = 0;
+let uploadsInitialized = false;
+let uploadStatusCache = new Map();
 const UPGRADE_NUDGE_THRESHOLD = 500;
 const STYLE_PRESETS = ['Default', 'Casual', 'Formel', 'Croco'];
 const STYLE_EXAMPLES = {
@@ -1909,6 +1913,37 @@ function renderHistoryList() {
   });
 }
 
+function normalizeUploadsSnapshot(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function hasActiveUploads(items) {
+  return items.some((job) => job && ['queued', 'processing', 'cancelling'].includes(job.status));
+}
+
+function mergeUploadsSnapshot(next) {
+  const nextItems = normalizeUploadsSnapshot(next);
+  if (!nextItems.length && hasActiveUploads(uploadsData)) {
+    return uploadsData;
+  }
+  return nextItems;
+}
+
+function applyUploadsSnapshot(next) {
+  uploadsData = mergeUploadsSnapshot(next);
+  renderUploads(uploadsData);
+  updateUploadNotifications(uploadsData);
+}
+
+function upsertUploadJob(job) {
+  if (!job || !job.id) {
+    return;
+  }
+  uploadsData = [job, ...uploadsData.filter((item) => item && item.id !== job.id)].slice(0, 20);
+  renderUploads(uploadsData);
+  updateUploadNotifications(uploadsData);
+}
+
 function renderUploads(uploads) {
   if (!uploadQueue) {
     return;
@@ -1970,6 +2005,52 @@ function renderUploads(uploads) {
     }
     uploadQueue.appendChild(row);
   });
+}
+
+function updateUploadNotifications(uploads) {
+  const items = Array.isArray(uploads) ? uploads : [];
+  const nextCache = new Map();
+  items.forEach((job) => {
+    if (job && job.id) {
+      nextCache.set(job.id, job);
+    }
+  });
+
+  if (!uploadsInitialized) {
+    uploadStatusCache = nextCache;
+    uploadsInitialized = true;
+    return;
+  }
+
+  items.forEach((job) => {
+    if (!job || !job.id) {
+      return;
+    }
+    const prev = uploadStatusCache.get(job.id);
+    if (!prev) {
+      showToast(`Import en cours : ${job.fileName || 'Fichier audio'}.`);
+      return;
+    }
+    if (prev.status === job.status) {
+      return;
+    }
+    if (job.status === 'completed') {
+      showToast(`Transcription terminée : ${job.fileName || 'Fichier audio'}.`);
+      return;
+    }
+    if (job.status === 'failed') {
+      const message = job.error
+        ? `Import échoué : ${job.error}`
+        : `Import échoué : ${job.fileName || 'Fichier audio'}.`;
+      showToast(message, 'error');
+      return;
+    }
+    if (job.status === 'cancelled') {
+      showToast(`Import annulé : ${job.fileName || 'Fichier audio'}.`, 'error');
+    }
+  });
+
+  uploadStatusCache = nextCache;
 }
 
 async function fetchDiagnostics() {
@@ -3469,6 +3550,14 @@ async function populateMicrophones() {
       if (currentSettings.microphoneId) {
         select.value = currentSettings.microphoneId;
       }
+      if (!select.value && currentSettings.microphoneLabel) {
+        const match = Array.from(select.options).find((option) =>
+          option.textContent?.trim().toLowerCase() === currentSettings.microphoneLabel.trim().toLowerCase()
+        );
+        if (match) {
+          select.value = match.value;
+        }
+      }
     });
     if (onboardingState?.step === 'mic_check') {
       updateOnboardingUI();
@@ -3545,7 +3634,18 @@ function handleSettingChange(event) {
     flags[flag] = value === true || value === 'true';
     currentSettings = { ...currentSettings, featureFlags: flags };
   } else {
-    currentSettings = { ...currentSettings, [setting]: value };
+    if (setting === 'microphoneId') {
+      const selectedLabel = event.target?.selectedOptions?.[0]?.textContent || '';
+      const normalizedLabel = selectedLabel.trim().toLowerCase();
+      const isDefaultLabel = normalizedLabel === 'défaut système' || normalizedLabel === 'defaut systeme';
+      currentSettings = {
+        ...currentSettings,
+        microphoneId: value,
+        microphoneLabel: value ? selectedLabel : (isDefaultLabel ? '' : selectedLabel),
+      };
+    } else {
+      currentSettings = { ...currentSettings, [setting]: value };
+    }
   }
   if (window.electronAPI?.saveSettings) {
     window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
@@ -3717,7 +3817,7 @@ async function refreshDashboard() {
   renderContext(dashboardData.context);
   applyCrocOmniSettings(currentSettings);
   syncCrocOmniAnswerUiState();
-  renderUploads(dashboardData.uploads);
+  applyUploadsSnapshot(dashboardData.uploads);
   applyOnboardingStateFromSettings(currentSettings);
   renderAuth(dashboardData.auth, dashboardData.syncReady);
   renderSubscription(dashboardData.subscription, dashboardData.auth);
@@ -4033,7 +4133,10 @@ function updateCrocOmniSettings(nextSettings) {
         }
         return;
       }
-      showToast('Fichier ajouté.');
+      if (result?.job) {
+        upsertUploadJob(result.job);
+      }
+      showToast('Import en cours...');
       await refreshDashboard();
     });
   }
@@ -4065,7 +4168,10 @@ function updateCrocOmniSettings(nextSettings) {
         }
         return;
       }
-      showToast('Fichier ajouté.');
+      if (result?.job) {
+        upsertUploadJob(result.job);
+      }
+      showToast('Import en cours...');
       await refreshDashboard();
     });
     uploadDropzone.addEventListener('click', (event) => {
@@ -4137,6 +4243,14 @@ function updateCrocOmniSettings(nextSettings) {
   if (noteFocusBack) {
     noteFocusBack.addEventListener('click', () => {
       closeFocusedNote();
+    });
+  }
+
+  if (noteFocusShell) {
+    noteFocusShell.addEventListener('click', (event) => {
+      if (event.target === noteFocusShell) {
+        closeFocusedNote();
+      }
     });
   }
 

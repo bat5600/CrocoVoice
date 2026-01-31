@@ -68,7 +68,12 @@ let mainWindow = null;
 let dashboardWindow = null;
 let tray = null;
 let trayMenuWindow = null;
+let widgetOverlayWindow = null;
+let widgetOverlayMoveInterval = null;
+let widgetOverlayBounds = null;
+let widgetOverlayDisplayId = null;
 let trayMenuOpen = false;
+let widgetContextMenuOpen = false;
 let trayIconDefault = null;
 let trayIconHover = null;
 let isRecording = false;
@@ -130,7 +135,7 @@ const WEEKLY_QUOTA_WORDS = Number.isFinite(parsedWeeklyQuota) ? parsedWeeklyQuot
 const QUOTA_MODE = (process.env.CROCOVOICE_QUOTA_MODE || 'local').toLowerCase(); // local | hybrid | server
 const QUOTA_CACHE_TTL_MS = Number.parseInt(process.env.CROCOVOICE_QUOTA_CACHE_TTL_MS || '300000', 10); // 5 min
 let recordingDestination = 'clipboard';
-const WIDGET_BOTTOM_MARGIN = 4;
+const WIDGET_BOTTOM_MARGIN = 2;
 const WIDGET_DISPLAY_POLL_MS = 500;
 const UPLOAD_AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.ogg', '.oga'];
 const UPLOAD_AUDIO_EXTENSIONS_NO_DOT = UPLOAD_AUDIO_EXTENSIONS.map((ext) => ext.replace('.', ''));
@@ -171,12 +176,15 @@ function scheduleReturnToIdle(delayMs = 3000) {
 }
 
 const compactWindowSize = { width: 220, height: 52 };
+const recordingWindowSize = { width: 260, height: 120 };
 const undoWindowSize = { width: 420, height: 120 };
 const errorWindowSize = { width: 420, height: 120 };
 const expandedWindowSize = { width: 900, height: 420 };
 let widgetExpanded = false;
 let widgetUndoVisible = false;
 let widgetErrorVisible = false;
+let widgetHiddenUntil = null;
+let widgetHideTimer = null;
 
 const defaultSettings = {
   language: process.env.CROCOVOICE_LANGUAGE || 'fr',
@@ -184,6 +192,7 @@ const defaultSettings = {
     process.env.CROCOVOICE_SHORTCUT
     || (process.platform === 'darwin' ? 'Command+Shift+R' : 'Ctrl+Shift+R'),
   microphoneId: '',
+  microphoneLabel: '',
   postProcessEnabled: true,
   onboarding: {
     step: 'welcome',
@@ -209,7 +218,7 @@ const defaultSettings = {
     notifications: true,
     insights: true,
     crocomni: true,
-    localAsr: false,
+    localAsr: true,
     audioEnhancement: false,
   },
   featureFlagsRemoteUrl: '',
@@ -247,7 +256,10 @@ const defaultSettings = {
   notificationsMutedTypes: [],
   notificationsRetentionDays: 30,
   localAsrEnabled: false,
+  localAsrScope: 'uploads',
+  localAsrMode: 'command',
   localAsrCommand: '',
+  localAsrEndpoint: '',
   localAsrMaxDurationMs: 60000,
   localEnhancementEnabled: false,
   localEnhancementCommand: '',
@@ -1669,6 +1681,7 @@ function setRecordingState(state, message) {
   isRecording = state === RecordingState.RECORDING;
   lastStatusMessage = message || '';
   sendStatus(state, message);
+  updateWidgetBounds();
   updateTrayMenu();
   if (state === RecordingState.IDLE && pendingSync) {
     const deferred = pendingSync;
@@ -2474,9 +2487,12 @@ function setMainWindowBounds(targetSize, displayOverride = null) {
 }
 
 function updateWidgetBounds() {
+  const isActiveRecording = recordingState === RecordingState.RECORDING
+    || recordingState === RecordingState.PROCESSING;
+  const baseSize = isActiveRecording ? recordingWindowSize : compactWindowSize;
   const targetSize = widgetUndoVisible
     ? undoWindowSize
-    : (widgetErrorVisible ? errorWindowSize : (widgetExpanded ? expandedWindowSize : compactWindowSize));
+    : (widgetErrorVisible ? errorWindowSize : (widgetExpanded ? expandedWindowSize : baseSize));
   const display = getWidgetDisplay();
   if (display && widgetExpanded) {
     const maxWidth = Math.max(compactWindowSize.width, display.workArea.width - 20);
@@ -2541,11 +2557,53 @@ function attachExternalNavigationGuards(targetWindow) {
   });
 }
 
+function isWidgetTemporarilyHidden() {
+  return typeof widgetHiddenUntil === 'number' && widgetHiddenUntil > Date.now();
+}
+
+function clearWidgetHideTimer() {
+  if (widgetHideTimer) {
+    clearTimeout(widgetHideTimer);
+    widgetHideTimer = null;
+  }
+}
+
+function scheduleWidgetShow() {
+  if (!widgetHiddenUntil) {
+    clearWidgetHideTimer();
+    return;
+  }
+  clearWidgetHideTimer();
+  const delay = Math.max(0, widgetHiddenUntil - Date.now());
+  widgetHideTimer = setTimeout(() => {
+    widgetHideTimer = null;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      widgetHiddenUntil = null;
+      return;
+    }
+    if (isWidgetTemporarilyHidden()) {
+      scheduleWidgetShow();
+      return;
+    }
+    widgetHiddenUntil = null;
+    if (canAccessPremium()) {
+      mainWindow.show();
+    }
+  }, delay);
+}
+
 function updateWindowVisibility() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
   if (canAccessPremium()) {
+    if (isWidgetTemporarilyHidden()) {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      }
+      hideWidgetContextOverlay();
+      return;
+    }
     if (!mainWindow.isVisible()) {
       mainWindow.show();
     }
@@ -2554,10 +2612,12 @@ function updateWindowVisibility() {
   if (mainWindow.isVisible()) {
     mainWindow.hide();
   }
+  hideWidgetContextOverlay();
   ensureDashboardWindow();
 }
 
 function createMainWindow() {
+  const appRoot = app.getAppPath();
   mainWindow = new BrowserWindow({
     show: false,
     width: compactWindowSize.width,
@@ -2577,8 +2637,10 @@ function createMainWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  mainWindow.loadFile('index.html');
+  mainWindow.loadFile(path.join(appRoot, 'index.html'));
   mainWindow.setBackgroundColor('#00000000');
+  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   attachExternalNavigationGuards(mainWindow);
 
   updateWidgetBounds();
@@ -2604,8 +2666,8 @@ function createDashboardWindow() {
   }
 
   dashboardWindow = new BrowserWindow({
-    width: 980,
-    height: 720,
+    width: 1200,
+    height: 800,
     frame: false,
     backgroundColor: '#ffffff',
     resizable: true,
@@ -2635,6 +2697,12 @@ function sendDashboardEvent(channel, ...args) {
   }
 }
 
+function sendWidgetEvent(channel, ...args) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args);
+  }
+}
+
 function getVirtualScreenBounds() {
   const displays = screen.getAllDisplays();
   if (!displays.length) {
@@ -2659,10 +2727,145 @@ function getVirtualScreenBounds() {
   };
 }
 
+function getDisplayBounds(display) {
+  if (!display) {
+    return screen.getPrimaryDisplay().bounds;
+  }
+  return display.bounds;
+}
+
+function createWidgetOverlayWindow() {
+  if (widgetOverlayWindow && !widgetOverlayWindow.isDestroyed()) {
+    return widgetOverlayWindow;
+  }
+  const appRoot = app.getAppPath();
+  widgetOverlayWindow = new BrowserWindow({
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000001',
+    resizable: false,
+    movable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+  widgetOverlayWindow.loadFile(path.join(appRoot, 'widget-overlay.html'));
+  widgetOverlayWindow.setAlwaysOnTop(true, 'screen-saver', 0);
+  widgetOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  widgetOverlayWindow.setFullScreenable(false);
+  widgetOverlayWindow.on('closed', () => {
+    widgetOverlayWindow = null;
+    widgetContextMenuOpen = false;
+    widgetOverlayBounds = null;
+    widgetOverlayDisplayId = null;
+    if (widgetOverlayMoveInterval) {
+      clearInterval(widgetOverlayMoveInterval);
+      widgetOverlayMoveInterval = null;
+    }
+  });
+  return widgetOverlayWindow;
+}
+
+function updateWidgetOverlayBounds(force = false) {
+  if (!widgetOverlayWindow || widgetOverlayWindow.isDestroyed()) {
+    return;
+  }
+  const display = getWidgetDisplay() || screen.getPrimaryDisplay();
+  const bounds = getDisplayBounds(display);
+  const nextBounds = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+  };
+  if (!force && widgetOverlayBounds
+    && widgetOverlayBounds.x === nextBounds.x
+    && widgetOverlayBounds.y === nextBounds.y
+    && widgetOverlayBounds.width === nextBounds.width
+    && widgetOverlayBounds.height === nextBounds.height
+    && widgetOverlayDisplayId === display.id) {
+    return;
+  }
+  widgetOverlayBounds = nextBounds;
+  widgetOverlayDisplayId = display.id;
+  widgetOverlayWindow.setBounds(nextBounds, false);
+}
+
+function startWidgetOverlayTracking() {
+  if (widgetOverlayMoveInterval) {
+    return;
+  }
+  widgetOverlayMoveInterval = setInterval(() => {
+    if (!widgetContextMenuOpen) {
+      hideWidgetContextOverlay();
+      return;
+    }
+    updateWidgetOverlayBounds();
+  }, 400);
+}
+
+function stopWidgetOverlayTracking() {
+  if (!widgetOverlayMoveInterval) {
+    return;
+  }
+  clearInterval(widgetOverlayMoveInterval);
+  widgetOverlayMoveInterval = null;
+}
+
+function showWidgetContextOverlay() {
+  if (widgetContextMenuOpen || isWidgetTemporarilyHidden()) {
+    return;
+  }
+  const overlayWindow = createWidgetOverlayWindow();
+  updateWidgetOverlayBounds(true);
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver', 0);
+  overlayWindow.setIgnoreMouseEvents(false);
+  overlayWindow.showInactive();
+  widgetContextMenuOpen = true;
+  startWidgetOverlayTracking();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    mainWindow.showInactive();
+    mainWindow.moveTop();
+  }
+}
+
+function hideWidgetContextOverlay() {
+  const overlayVisible = widgetOverlayWindow && !widgetOverlayWindow.isDestroyed()
+    && widgetOverlayWindow.isVisible();
+  if (!widgetContextMenuOpen && !overlayVisible) {
+    return;
+  }
+  widgetContextMenuOpen = false;
+  stopWidgetOverlayTracking();
+  if (!widgetOverlayWindow || widgetOverlayWindow.isDestroyed()) {
+    return;
+  }
+  widgetOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  widgetOverlayWindow.hide();
+  widgetOverlayWindow.setAlwaysOnTop(false);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    if (!isWidgetTemporarilyHidden()) {
+      mainWindow.showInactive();
+      mainWindow.moveTop();
+    }
+  }
+}
+
 function createTrayMenuWindow() {
   if (trayMenuWindow && !trayMenuWindow.isDestroyed()) {
     return trayMenuWindow;
   }
+  const appRoot = app.getAppPath();
   trayMenuWindow = new BrowserWindow({
     show: false,
     frame: false,
@@ -2679,7 +2882,7 @@ function createTrayMenuWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  trayMenuWindow.loadFile('tray-menu.html');
+  trayMenuWindow.loadFile(path.join(appRoot, 'tray-menu.html'));
   trayMenuWindow.setIgnoreMouseEvents(true, { forward: true });
   trayMenuWindow.on('closed', () => {
     trayMenuWindow = null;
@@ -2873,12 +3076,11 @@ function hideWidgetFor(ms) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
+  widgetHiddenUntil = Date.now() + ms;
+  clearWidgetHideTimer();
   mainWindow.hide();
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-    }
-  }, ms);
+  hideWidgetContextOverlay();
+  scheduleWidgetShow();
 }
 
 async function startRecording() {
@@ -3204,16 +3406,98 @@ async function runLocalEnhancement(buffer, mimeType) {
   }
 }
 
-async function runLocalAsr(buffer, mimeType) {
-  const command = typeof settings.localAsrCommand === 'string'
-    ? settings.localAsrCommand.trim()
+async function runLocalAsrServer(buffer, mimeType, endpoint, maxDurationMs) {
+  if (!endpoint) {
+    return { text: '', used: false, reason: 'local_asr_missing_endpoint' };
+  }
+  if (typeof fetch !== 'function') {
+    return { text: '', used: false, reason: 'local_asr_fetch_unavailable' };
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), maxDurationMs || 60000);
+  try {
+    const headers = {
+      'Content-Type': 'application/octet-stream',
+    };
+    if (mimeType) {
+      headers['X-Audio-Mime'] = mimeType;
+    }
+    if (settings.language) {
+      headers['X-Language'] = settings.language;
+    }
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: buffer,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return { text: '', used: false, reason: `local_asr_http_${response.status}` };
+    }
+    const contentType = response.headers.get('content-type') || '';
+    let text = '';
+    if (contentType.includes('application/json')) {
+      const payload = await response.json();
+      text = String(payload?.text || payload?.transcript || '').trim();
+    } else {
+      text = String(await response.text()).trim();
+    }
+    if (!text) {
+      return { text: '', used: false, reason: 'local_asr_empty' };
+    }
+    return { text, used: true, reason: null };
+  } catch (error) {
+    const reason = error?.name === 'AbortError' ? 'local_asr_timeout' : 'local_asr_failed';
+    console.warn('Local ASR server failed:', error);
+    return { text: '', used: false, reason };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function isLocalAsrAllowed(scope) {
+  const scopeSetting = typeof settings.localAsrScope === 'string'
+    ? settings.localAsrScope.trim().toLowerCase()
     : '';
-  if (!settings.localAsrEnabled || !isFeatureEnabled('localAsr') || !command) {
+  if (!scopeSetting || scopeSetting === 'both' || scopeSetting === 'all') {
+    return true;
+  }
+  if (scopeSetting === 'uploads' || scopeSetting === 'upload') {
+    return scope === 'upload';
+  }
+  if (scopeSetting === 'dictation' || scopeSetting === 'dictations') {
+    return scope === 'dictation';
+  }
+  return true;
+}
+
+async function runLocalAsr(buffer, mimeType, options = {}) {
+  const enabled = settings.localAsrEnabled === true;
+  if (!enabled || !isFeatureEnabled('localAsr')) {
     return { text: '', used: false, reason: 'local_asr_disabled' };
+  }
+  const scope = options.scope === 'upload' ? 'upload' : 'dictation';
+  if (!isLocalAsrAllowed(scope)) {
+    return { text: '', used: false, reason: 'local_asr_scope_blocked' };
   }
   const maxDurationMs = Number.isFinite(settings.localAsrMaxDurationMs)
     ? settings.localAsrMaxDurationMs
     : defaultSettings.localAsrMaxDurationMs;
+  const mode = typeof settings.localAsrMode === 'string'
+    ? settings.localAsrMode.trim().toLowerCase()
+    : '';
+  const endpoint = typeof settings.localAsrEndpoint === 'string'
+    ? settings.localAsrEndpoint.trim()
+    : '';
+  if (mode === 'server' || endpoint) {
+    return runLocalAsrServer(buffer, mimeType, endpoint, maxDurationMs);
+  }
+  const command = typeof settings.localAsrCommand === 'string'
+    ? settings.localAsrCommand.trim()
+    : '';
+  if (!command) {
+    return { text: '', used: false, reason: 'local_asr_missing_command' };
+  }
   const tempDir = os.tmpdir();
   const extension = getAudioExtension(mimeType);
   const inputPath = path.join(tempDir, `crocovoice-localasr-${Date.now()}.${extension}`);
@@ -3313,7 +3597,7 @@ async function runTranscriptionPipeline(buffer, mimeType, diagnostics = null, qu
   if (enhancementReason) {
     recordDiagnosticEvent('audio_enhancement_skipped', enhancementReason);
   }
-  const localAsr = await runLocalAsr(inputBuffer, mimeType);
+  const localAsr = await runLocalAsr(inputBuffer, mimeType, { scope: 'dictation' });
   let transcribedText = '';
   if (localAsr.used) {
     lastTranscriptionPath = 'local';
@@ -3645,7 +3929,7 @@ async function processUploadJob(job) {
   updateUploadJob(job.id, { status: 'processing', progress: 35 });
   const mimeType = getMimeTypeForPath(job.filePath);
   let transcribedText = '';
-  const localAsr = await runLocalAsr(buffer, mimeType);
+  const localAsr = await runLocalAsr(buffer, mimeType, { scope: 'upload' });
   if (localAsr.used) {
     transcribedText = localAsr.text;
   } else if (config.cloudFallback) {
@@ -4401,9 +4685,25 @@ ipcMain.on('tray-menu:action', (event, action) => {
   }
 });
 
+ipcMain.on('widget:context-menu', (event, isOpen) => {
+  if (isOpen) {
+    showWidgetContextOverlay();
+  } else {
+    hideWidgetContextOverlay();
+  }
+});
+
+ipcMain.on('widget:context-menu-close', () => {
+  hideWidgetContextOverlay();
+  sendWidgetEvent('widget:context-menu-close');
+});
+
 ipcMain.on('widget-expanded', (event, expanded) => {
   widgetExpanded = Boolean(expanded);
   updateWidgetBounds();
+  if (!widgetExpanded) {
+    hideWidgetContextOverlay();
+  }
 });
 
 ipcMain.on('widget-undo-visibility', (event, visible) => {

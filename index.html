@@ -25,7 +25,7 @@
 
     :root {
       --pill-bg: #0a0b0d;
-      --pill-edge: rgba(255, 255, 255, 0.08);
+      --pill-edge: rgba(255, 255, 255, 0.2);
       --pill-text: #f3f4f6;
       --pill-muted: rgba(243, 244, 246, 0.6);
       --croco-green: #36d96f;
@@ -39,7 +39,7 @@
       position: fixed;
       left: 0;
       right: 0;
-      bottom: 4px;
+      bottom: 2px;
       display: flex;
       justify-content: center;
       pointer-events: none;
@@ -285,12 +285,12 @@
     }
 
     .widget-container.idle .pill-button {
-      width: 64px;
-      height: 10px;
-      background: radial-gradient(70% 160% at 50% 50%, rgba(18, 20, 24, 0.95) 0%, rgba(12, 13, 16, 0.8) 55%, rgba(10, 11, 13, 0.65) 100%);
+      width: 76px;
+      height: 12px;
+      background: radial-gradient(70% 160% at 50% 50%, rgba(18, 20, 24, 0.95) 0%, rgba(12, 13, 16, 0.8) 55%, rgba(10, 11, 13, 0.7) 100%);
       border: 1px solid rgba(255, 255, 255, 0.14);
       box-shadow: none;
-      opacity: 0.85;
+      opacity: 0.9;
     }
 
     .widget-container.idle:hover .pill-button {
@@ -657,6 +657,7 @@
     .widget-container.error .status-text {
       opacity: 1;
     }
+
 
     .widget-container:hover .tooltip,
     .tooltip:hover {
