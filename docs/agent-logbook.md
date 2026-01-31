@@ -7,7 +7,7 @@ Purpose: a short project summary plus a single, persistent log where AI agents r
 - Product: CrocoVoice is an Electron desktop app for hotkey-first voice dictation.
 - Core flow: record -> transcribe (Whisper) -> optional AI cleanup -> deliver (type/paste/clipboard), with a premium dashboard UI.
 - Integrations: OpenAI API for transcription/cleanup; optional Supabase (auth/sync); optional Stripe (billing links).
-- Canonical docs: `docs/prd.md`, `docs/architecture.md`, `docs/architecture-vnext.md`, `docs/front-end-spec.md`, `docs/ux/`, `docs/epics/`, `docs/stories/`, `docs/qa/`.
+- Canonical docs are defined in `docs/ssot.md` (start there). Primary sources: `docs/prd.md`, `docs/architecture.md`, `docs/front-end-spec.md`, `docs/configuration.md`, and `docs/architecture/` appendices.
 - App entry points (repo root): `main.js`, `preload.js`, `renderer.js`, `index.html`, `dashboard.html`.
 
 If you need details, read the canonical docs above before making product or architecture decisions.
@@ -39,3 +39,11 @@ Use this exact template for each new entry:
 
 <!-- Add new entries here -->
 
+### 2026-01-31 13:47 +07 - Codex
+
+- Scope: Docs SSOT restructure + roadmap alignment
+- Summary: Added SSOT map/rules, aligned PRD milestones, added architecture roadmap alignment, and deprecated vNext doc with guidance.
+- Files touched: docs/ssot.md, docs/prd.md, docs/architecture.md, docs/architecture-vnext.md, docs/agent-quickstart.md, docs/agent-logbook.md, docs/README.md
+- Commands/tests: rg; sed; tail; git show; date
+- Outcome: done
+- Notes: No code changes; existing non-doc modifications left untouched.

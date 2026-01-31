@@ -1760,12 +1760,31 @@
       font-weight: 600;
       color: var(--text-main);
       display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .dictionary-main {
+      display: flex;
       align-items: center;
       gap: 8px;
     }
 
     .dictionary-term .arrow {
       color: #94A3B8;
+    }
+
+    .dictionary-meta {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .dictionary-hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-muted);
     }
 
     .dictionary-row-actions button {
@@ -3252,7 +3271,7 @@
             <div id="uploadDropzone" class="upload-dropzone" role="button" tabindex="0" aria-label="Importer un fichier audio">
               <div>
                 <div class="upload-dropzone-title">Importer un audio dans vos notes</div>
-                <div class="upload-dropzone-subtitle">Glissez-déposez un fichier audio ou cliquez pour choisir un fichier.</div>
+                <div class="upload-dropzone-subtitle">Glissez-déposez un fichier audio ou cliquez pour choisir un fichier. Formats acceptés: .wav, .mp3, .m4a, .ogg, .oga.</div>
               </div>
               <button id="uploadAudioButton" class="btn-secondary" type="button">Importer audio</button>
             </div>
@@ -3311,7 +3330,7 @@
 
           <div class="dictionary-card" style="margin-top: 24px;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-weight: 700;">Correction automatique</span>
+              <span style="font-weight: 700;">Correction manuelle</span>
               <label class="toggle">
                 <input type="checkbox" id="misspellingToggle" class="toggle-checkbox">
                 <span class="toggle-label"></span>
@@ -3319,9 +3338,10 @@
             </div>
 
             <div class="dictionary-grid" style="margin-top: 16px;">
-              <input id="dictionaryWordInput" class="input-field" type="text" placeholder="Mot entendu (ex: Croco)">
+              <input id="dictionaryWordInput" class="input-field" type="text" placeholder="Mot entendu (exact, ex: Croco)">
               <input id="dictionaryCorrectionInput" class="input-field" type="text" placeholder="Remplacer par (ex: Crocodile)" style="display: none;">
             </div>
+            <div class="dictionary-hint">Correspondance exacte, sans auto-apprentissage.</div>
 
             <div class="dictionary-actions">
               <button id="dictionaryCancelButton" class="btn-secondary" type="button">Annuler</button>
@@ -3716,7 +3736,7 @@
             <div class="settings-card">
               <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">Général</h3>
               <label class="form-label">Langue de transcription</label>
-              <input id="languageInput" class="input-field" type="text" data-setting="language">
+              <input id="languageInput" class="input-field" type="text" data-setting="language" placeholder="fr / en / es">
               <p id="apiKeyStatus" style="margin-top: 12px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--emerald-600);">
                 <span style="width: 8px; height: 8px; border-radius: 999px; background: var(--emerald-500);"></span>
                 API OpenAI connectée
@@ -3886,7 +3906,7 @@
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                 <div>
                   <div style="font-weight: 700;">Transcription de fichiers</div>
-                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Fallback cloud requis pour traiter un fichier local.</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Priorité à la transcription locale, fallback cloud si activé.</div>
                 </div>
                 <select id="uploadCloudFallbackToggle" class="input-select" data-setting="uploadCloudFallback" style="width: auto;">
                   <option value="false">Désactivé</option>

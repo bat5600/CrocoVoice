@@ -239,7 +239,9 @@ function renderMicrophoneList() {
 
 function updateMenuLabels() {
   if (widgetLanguageLabel) {
-    widgetLanguageLabel.textContent = 'Choisir la langue';
+    const currentLanguage = currentSettings.language || 'fr';
+    const label = resolveLanguageLabel(currentLanguage) || currentLanguage;
+    widgetLanguageLabel.textContent = label ? `Langue: ${label}` : 'Choisir la langue';
   }
   if (widgetMicrophoneLabel) {
     widgetMicrophoneLabel.textContent = 'Changer le micro';
@@ -971,6 +973,19 @@ function stopStreamHeartbeat() {
 
 function handleStreamingDisconnect(message) {
   stopStreamHeartbeat();
+  if (window.electronAPI?.sendStreamDiag) {
+    window.electronAPI.sendStreamDiag({
+      code: 'stream_disconnect',
+      details: {
+        reason: message || 'Streaming interrompu.',
+        sessionId: streamSessionId,
+        lastPongAt: lastStreamPongAt || null,
+        now: Date.now(),
+        backoffMs: streamPingBackoffMs,
+        pongTimeoutMs: STREAM_PONG_TIMEOUT_MS,
+      },
+    });
+  }
   if (window.electronAPI?.sendRecordingError) {
     window.electronAPI.sendRecordingError(message || 'Streaming interrompu.');
   }
@@ -981,11 +996,6 @@ function handleStreamingDisconnect(message) {
   streamSequence = 0;
   streamingActive = false;
   streamingUsesWorklet = false;
-  const flags = { ...(currentSettings.featureFlags || {}), streaming: false };
-  currentSettings = { ...currentSettings, featureFlags: flags };
-  if (window.electronAPI?.saveSettings) {
-    window.electronAPI.saveSettings({ featureFlags: flags });
-  }
 }
 
 function scheduleStreamPing() {
@@ -1003,7 +1013,7 @@ function scheduleStreamPing() {
     if (now - lastStreamPongAt > STREAM_PONG_TIMEOUT_MS) {
       streamPingBackoffMs = Math.min(streamPingBackoffMs * 2, STREAM_PING_MAX_MS);
       if (streamPingBackoffMs >= STREAM_PING_MAX_MS && now - lastStreamPongAt > STREAM_PONG_TIMEOUT_MS * 2) {
-        handleStreamingDisconnect('Streaming déconnecté. Mode fichier activé.');
+        handleStreamingDisconnect('Streaming déconnecté.');
         return;
       }
     } else {
@@ -1171,6 +1181,14 @@ async function initializeMediaRecorder(streamingMode = false) {
 
     return true;
   } catch (error) {
+    if (window.electronAPI?.sendStreamDiag) {
+      window.electronAPI.sendStreamDiag({
+        code: 'stream_worklet_init_error',
+        details: {
+          message: error?.message || String(error),
+        },
+      });
+    }
     window.electronAPI.sendRecordingError(error.message);
     return false;
   }
@@ -1247,6 +1265,14 @@ async function initializeStreamingRecorder() {
     startStreamHeartbeat();
     return true;
   } catch (error) {
+    if (streamingMode && window.electronAPI?.sendStreamDiag) {
+      window.electronAPI.sendStreamDiag({
+        code: 'stream_mediarec_init_error',
+        details: {
+          message: error?.message || String(error),
+        },
+      });
+    }
     window.electronAPI.sendRecordingError(error.message);
     return false;
   }

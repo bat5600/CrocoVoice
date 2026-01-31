@@ -117,14 +117,18 @@ const OPENAI_BASE_BACKOFF_MS = 800;
 const OPENAI_MAX_BACKOFF_MS = 5000;
 const SYNC_DEBOUNCE_MS = 120000;
 const STREAM_START_GRACE_MS = 8000;
-const STREAMING_DEPRECATED = true;
+const STREAMING_DEPRECATED = ['1', 'true', 'yes']
+  .includes(String(process.env.CROCOVOICE_STREAMING_DISABLED || '').trim().toLowerCase());
 const parsedWeeklyQuota = Number.parseInt(process.env.CROCOVOICE_WEEKLY_QUOTA_WORDS || '1000', 10);
 const WEEKLY_QUOTA_WORDS = Number.isFinite(parsedWeeklyQuota) ? parsedWeeklyQuota : 1000;
 const QUOTA_MODE = (process.env.CROCOVOICE_QUOTA_MODE || 'local').toLowerCase(); // local | hybrid | server
 const QUOTA_CACHE_TTL_MS = Number.parseInt(process.env.CROCOVOICE_QUOTA_CACHE_TTL_MS || '300000', 10); // 5 min
 let recordingDestination = 'clipboard';
-const WIDGET_BOTTOM_MARGIN = 8;
+const WIDGET_BOTTOM_MARGIN = 4;
 const WIDGET_DISPLAY_POLL_MS = 500;
+const UPLOAD_AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.ogg', '.oga'];
+const UPLOAD_AUDIO_EXTENSIONS_NO_DOT = UPLOAD_AUDIO_EXTENSIONS.map((ext) => ext.replace('.', ''));
+const UPLOAD_AUDIO_EXTENSIONS_LABEL = UPLOAD_AUDIO_EXTENSIONS.join(', ');
 
 const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
 
@@ -385,18 +389,6 @@ async function refreshRemoteFeatureFlags({ force = false } = {}) {
 }
 
 async function fallbackToFileMode(reason) {
-  const flags = getFeatureFlags();
-  if (flags.streaming) {
-    const nextFlags = { ...flags, streaming: false };
-    await setSettingValue('featureFlags', nextFlags);
-    scheduleDebouncedSync({ refreshSettings: true });
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('settings-updated', settings);
-    }
-    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-      dashboardWindow.webContents.send('settings-updated', settings);
-    }
-  }
   if (reason) {
     recordDiagnosticEvent('stream_fallback', reason);
     lastFallbackReason = reason;
@@ -420,6 +412,26 @@ function recordDiagnosticEvent(code, message) {
   if (diagnosticEvents.length > DIAGNOSTIC_EVENT_LIMIT) {
     diagnosticEvents = diagnosticEvents.slice(0, DIAGNOSTIC_EVENT_LIMIT);
   }
+}
+
+function recordStreamEvent(code, details) {
+  if (!code) {
+    return;
+  }
+  if (typeof details === 'string') {
+    recordDiagnosticEvent(code, details);
+    return;
+  }
+  if (details && typeof details === 'object') {
+    try {
+      recordDiagnosticEvent(code, JSON.stringify(details));
+      return;
+    } catch (error) {
+      recordDiagnosticEvent(code, 'details_unserializable');
+      return;
+    }
+  }
+  recordDiagnosticEvent(code, '');
 }
 
 async function recordTelemetryEvent(event, payload) {
@@ -512,10 +524,10 @@ async function createUploadJobFromFile(filePath) {
   if (!filePath || typeof filePath !== 'string') {
     return { ok: false, reason: 'Fichier invalide.' };
   }
-  const allowedExtensions = new Set(['.wav', '.mp3', '.m4a', '.ogg', '.oga']);
+  const allowedExtensions = new Set(UPLOAD_AUDIO_EXTENSIONS);
   const ext = path.extname(filePath).toLowerCase();
   if (ext && !allowedExtensions.has(ext)) {
-    return { ok: false, reason: 'Format audio non supporte.' };
+    return { ok: false, reason: `Format audio non supporte. Formats acceptes: ${UPLOAD_AUDIO_EXTENSIONS_LABEL}.` };
   }
   let stats = null;
   try {
@@ -581,6 +593,23 @@ function invalidateSnippetCache() {
   snippetCache = { entries: null, updatedAt: 0 };
 }
 
+function filterManualDictionaryEntries(entries) {
+  return (entries || []).filter((entry) => {
+    if (!entry || !entry.from_text) {
+      return false;
+    }
+    const source = typeof entry.source === 'string' ? entry.source.toLowerCase() : 'manual';
+    const autoLearned = Number(entry.auto_learned) || 0;
+    if (autoLearned) {
+      return false;
+    }
+    if (source && source !== 'manual') {
+      return false;
+    }
+    return true;
+  });
+}
+
 async function getDictionaryEntriesCached() {
   if (!store) {
     return [];
@@ -589,7 +618,7 @@ async function getDictionaryEntriesCached() {
   if (dictionaryCache.entries && (now - dictionaryCache.updatedAt) < DICTIONARY_CACHE_TTL_MS) {
     return dictionaryCache.entries;
   }
-  const entries = await store.listDictionary();
+  const entries = filterManualDictionaryEntries(await store.listDictionary());
   const sorted = [...entries].sort((a, b) => b.from_text.length - a.from_text.length);
   dictionaryCache = { entries: sorted, updatedAt: now };
   return sorted;
@@ -801,6 +830,62 @@ function applyAdaptiveFormatting(text, profile) {
     if (!/[.!?…]$/.test(result.trim()) && result.trim().length > 3) {
       result = `${result.trim()}.`;
     }
+  }
+  return result;
+}
+
+function applyDictatedListFormatting(text) {
+  if (!text || typeof text !== 'string') {
+    return text;
+  }
+  const tokenRegex = /(^|[ \t\n\r])(\d{1,2})([.)]|:)?\s+/g;
+  const tokens = [];
+  let match = null;
+  while ((match = tokenRegex.exec(text))) {
+    const number = Number.parseInt(match[2], 10);
+    if (!Number.isFinite(number)) {
+      continue;
+    }
+    tokens.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      number,
+    });
+  }
+  if (tokens.length < 2) {
+    return text;
+  }
+  let seqStart = -1;
+  let seqEnd = -1;
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i].number !== 1) {
+      continue;
+    }
+    let expected = 2;
+    let end = i;
+    for (let j = i + 1; j < tokens.length; j += 1) {
+      if (tokens[j].number === expected) {
+        end = j;
+        expected += 1;
+      } else {
+        break;
+      }
+    }
+    if (end > i) {
+      seqStart = i;
+      seqEnd = end;
+      break;
+    }
+  }
+  if (seqStart === -1) {
+    return text;
+  }
+  let result = text;
+  for (let i = seqEnd; i >= seqStart; i -= 1) {
+    const token = tokens[i];
+    const prefix = token.start === 0 ? '' : '\n';
+    const replacement = `${prefix}${token.number}. `;
+    result = result.slice(0, token.start) + replacement + result.slice(token.end);
   }
   return result;
 }
@@ -1672,6 +1757,7 @@ async function postProcessText(text, prompt, contextHint) {
     'Remove filler words, hesitations, and repetitions.',
     'Remove stray quotation marks.',
     'Fix punctuation, spelling, grammar, and add natural line breaks.',
+    'Infer punctuation naturally; do not keep spoken punctuation commands (e.g., "virgule", "point", "?").',
     'Do not summarize.',
   ].join(' ');
   const contextBlock = contextHint
@@ -1720,7 +1806,11 @@ async function applyDictionary(text) {
   if (!entries.length) {
     return text;
   }
-  const result = applyDictionaryEntries(text, entries, { trackUsage: true });
+  const result = applyDictionaryEntries(text, entries, {
+    trackUsage: true,
+    allowAutoLearned: false,
+    allowNonManual: false,
+  });
   if (result && result.usage && result.usage.length) {
     await store.updateDictionaryUsage(result.usage);
   }
@@ -1922,6 +2012,7 @@ async function ensureDefaultStyle() {
       name: 'Default',
       prompt: [
         'Corriger l orthographe, la grammaire et la ponctuation.',
+        'Ponctuation naturelle, sans mots de commande (virgule, point, question).',
         'Supprimer les scories de langage (euh, hesitations, repetitions).',
         'Ajouter des retours a la ligne naturels.',
         'Rester au plus pres du texte dicte (pas de reformulation).',
@@ -1934,6 +2025,7 @@ async function ensureDefaultStyle() {
         'Style naturel, simple, conversationnel.',
         'Reecriture legere autorisee pour rendre le texte plus fluide.',
         'Ponctuation legere, vocabulaire simple.',
+        'Ponctuation naturelle, sans mots de commande (virgule, point, question).',
         'Conserver le sens et les faits, ne pas inventer.',
         'Ne pas resumer.',
 
@@ -1945,6 +2037,7 @@ async function ensureDefaultStyle() {
         'Style professionnel et structure.',
         'Reecriture legere autorisee pour clarifier et structurer.',
         'Phrases completes, ponctuation soignee, vocabulaire precis.',
+        'Ponctuation naturelle, sans mots de commande (virgule, point, question).',
         'Conserver le sens et les faits, ne pas inventer.',
         'Ne pas resumer.',
 
@@ -1956,6 +2049,7 @@ async function ensureDefaultStyle() {
         'Style direct, vivant et percutant.',
         'Reecriture plus libre autorisee tant que le sens est conserve.',
         'Ajouter au plus une metaphore courte ou une analogie creative si naturel.',
+        'Ponctuation naturelle, sans mots de commande (virgule, point, question).',
         'Ne pas inventer de faits, ne pas resumer.',
       ].join(' '),
     },
@@ -2850,6 +2944,7 @@ async function runTranscriptionPipeline(buffer, mimeType, diagnostics = null, qu
   if (contextState.enabled && contextState.profile) {
     formattedText = applyAdaptiveFormatting(editedText, contextState.profile);
   }
+  formattedText = applyDictatedListFormatting(formattedText);
   const snippetText = await applySnippets(formattedText);
   const finalText = await applyDictionary(snippetText);
   const title = await generateEntryTitle(finalText);
@@ -3124,11 +3219,6 @@ function listUploadJobs() {
 
 async function processUploadJob(job) {
   const config = getUploadConfig();
-  if (!config.cloudFallback) {
-    updateUploadJob(job.id, { status: 'failed', error: 'Transcription locale indisponible. Activez la fallback cloud.' });
-    return;
-  }
-
   updateUploadJob(job.id, { status: 'processing', progress: 10 });
   let buffer = null;
   try {
@@ -3145,10 +3235,22 @@ async function processUploadJob(job) {
   updateUploadJob(job.id, { status: 'processing', progress: 35 });
   const mimeType = getMimeTypeForPath(job.filePath);
   let transcribedText = '';
-  try {
-    transcribedText = await transcribeAudio(buffer, mimeType);
-  } catch (error) {
-    updateUploadJob(job.id, { status: 'failed', error: error?.message || 'Transcription impossible.' });
+  const localAsr = await runLocalAsr(buffer, mimeType);
+  if (localAsr.used) {
+    transcribedText = localAsr.text;
+  } else if (config.cloudFallback) {
+    try {
+      transcribedText = await transcribeAudio(buffer, mimeType);
+    } catch (error) {
+      updateUploadJob(job.id, { status: 'failed', error: error?.message || 'Transcription impossible.' });
+      return;
+    }
+  } else {
+    const fallbackHint = 'Activez la transcription locale ou le fallback cloud.';
+    const baseReason = localAsr.reason === 'local_asr_disabled'
+      ? 'Transcription locale indisponible.'
+      : 'Transcription locale en echec.';
+    updateUploadJob(job.id, { status: 'failed', error: `${baseReason} ${fallbackHint}` });
     return;
   }
   if (job.cancelled) {
@@ -3438,10 +3540,12 @@ ipcMain.on('audio-ready', (event, audioData) => {
 
 ipcMain.on('stream:start', (event, payload = {}) => {
   if (!isFeatureEnabled('streaming')) {
+    recordStreamEvent('stream_start_ignored', { reason: 'streaming_disabled' });
     return;
   }
   const sessionId = payload.sessionId;
   if (!sessionId) {
+    recordStreamEvent('stream_start_invalid', { reason: 'missing_session_id' });
     return;
   }
   streamSessions.set(sessionId, {
@@ -3461,6 +3565,13 @@ ipcMain.on('stream:start', (event, payload = {}) => {
     lastChunkAt: null,
     stallTimer: null,
   });
+  recordStreamEvent('stream_start', {
+    id: sessionId,
+    codec: payload.codec || 'pcm',
+    sampleRate: payload.sampleRate || settings.streamSampleRate || 16000,
+    chunkMs: payload.chunkMs || settings.streamChunkMs || 900,
+    mimeType: payload.mimeType || null,
+  });
   const session = streamSessions.get(sessionId);
   session.stallTimer = setInterval(() => {
     if (!session.active) {
@@ -3475,6 +3586,10 @@ ipcMain.on('stream:start', (event, payload = {}) => {
       session.active = false;
       clearInterval(session.stallTimer);
       streamSessions.delete(session.id);
+      recordStreamEvent('stream_timeout_no_chunks', {
+        id: session.id,
+        waitedMs: now - session.startedAt,
+      });
       void fallbackToFileMode('Streaming interrompu (timeout).');
       setRecordingState(RecordingState.ERROR, 'Streaming interrompu (timeout).');
       scheduleReturnToIdle(3000);
@@ -3484,6 +3599,10 @@ ipcMain.on('stream:start', (event, payload = {}) => {
       session.active = false;
       clearInterval(session.stallTimer);
       streamSessions.delete(session.id);
+      recordStreamEvent('stream_timeout_gap', {
+        id: session.id,
+        gapMs: now - session.lastChunkAt,
+      });
       void fallbackToFileMode('Streaming interrompu (timeout).');
       setRecordingState(RecordingState.ERROR, 'Streaming interrompu (timeout).');
       scheduleReturnToIdle(3000);
@@ -3494,11 +3613,19 @@ ipcMain.on('stream:start', (event, payload = {}) => {
 ipcMain.on('stream:chunk', async (event, payload = {}) => {
   const session = streamSessions.get(payload.sessionId);
   if (!session || !session.active) {
+    if (payload.sessionId) {
+      recordStreamEvent('stream_chunk_orphan', { id: payload.sessionId });
+    }
     return;
   }
   if (payload.seq !== session.seqExpected) {
     session.active = false;
     streamSessions.delete(session.id);
+    recordStreamEvent('stream_chunk_invalid_order', {
+      id: session.id,
+      expected: session.seqExpected,
+      got: payload.seq,
+    });
     void fallbackToFileMode('Streaming interrompu (ordre invalide).');
     setRecordingState(RecordingState.ERROR, 'Streaming interrompu (ordre invalide).');
     scheduleReturnToIdle(3000);
@@ -3516,6 +3643,12 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
     if (chunkSize > 5 * 1024 * 1024) {
       session.active = false;
       streamSessions.delete(session.id);
+      recordStreamEvent('stream_chunk_too_large', {
+        id: session.id,
+        codec: session.codec,
+        size: chunkSize,
+        max: 5 * 1024 * 1024,
+      });
       void fallbackToFileMode('Chunk audio trop volumineux.');
       setRecordingState(RecordingState.ERROR, 'Chunk audio trop volumineux.');
       scheduleReturnToIdle(3000);
@@ -3530,6 +3663,12 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
     if (samples.length > STREAM_MAX_CHUNK_SAMPLES) {
       session.active = false;
       streamSessions.delete(session.id);
+      recordStreamEvent('stream_chunk_too_large', {
+        id: session.id,
+        codec: session.codec,
+        size: samples.length,
+        max: STREAM_MAX_CHUNK_SAMPLES,
+      });
       void fallbackToFileMode('Chunk audio trop volumineux.');
       setRecordingState(RecordingState.ERROR, 'Chunk audio trop volumineux.');
       scheduleReturnToIdle(3000);
@@ -3542,6 +3681,11 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
   if (Date.now() - session.startedAt > STREAM_MAX_DURATION_MS) {
     session.active = false;
     streamSessions.delete(session.id);
+    recordStreamEvent('stream_session_too_long', {
+      id: session.id,
+      durationMs: Date.now() - session.startedAt,
+      maxMs: STREAM_MAX_DURATION_MS,
+    });
     void fallbackToFileMode('Session streaming trop longue.');
     setRecordingState(RecordingState.ERROR, 'Session streaming trop longue.');
     scheduleReturnToIdle(3000);
@@ -3567,6 +3711,10 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
         mainWindow.webContents.send('transcription-partial', session.partialText);
       }
     } catch (error) {
+      recordStreamEvent('stream_partial_error', {
+        id: session.id,
+        message: error?.message || String(error),
+      });
       console.warn('Partial transcription failed:', error?.message || error);
     }
   }
@@ -3575,6 +3723,9 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
 ipcMain.on('stream:stop', async (event, payload = {}) => {
   const session = streamSessions.get(payload.sessionId);
   if (!session) {
+    if (payload.sessionId) {
+      recordStreamEvent('stream_stop_unknown', { id: payload.sessionId });
+    }
     return;
   }
   clearProcessingTimeout();
@@ -3583,6 +3734,13 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
   }
   session.active = false;
   streamSessions.delete(session.id);
+  recordStreamEvent('stream_stop', {
+    id: session.id,
+    codec: session.codec,
+    durationMs: Date.now() - session.startedAt,
+    samples: session.samples?.length || 0,
+    chunks: session.encodedChunks?.length || 0,
+  });
   const target = resolveRecordingTarget();
   const shouldSkipPaste = target === 'notes' || target === 'notes-editor' || target === 'onboarding';
   try {
@@ -3651,6 +3809,15 @@ ipcMain.on('stream:ping', (event, payload = {}) => {
     return;
   }
   event.sender.send('stream:pong', { sessionId: session.id, at: Date.now() });
+});
+
+ipcMain.on('stream:diag', (event, payload = {}) => {
+  if (!payload || typeof payload !== 'object') {
+    return;
+  }
+  const code = payload.code || 'stream_diag';
+  const details = payload.message || payload.details || '';
+  recordStreamEvent(code, details);
 });
 
 ipcMain.on('mic-monitor:level', (event, payload) => {
@@ -3835,7 +4002,7 @@ ipcMain.handle('dashboard:data', async () => {
   const notesTotal = await store.getNotesCount();
   const history = await store.listHistory({ limit: 200 });
   const notes = await store.listNotes({ limit: 100 });
-  const dictionary = await store.listDictionary();
+  const dictionary = filterManualDictionaryEntries(await store.listDictionary());
   const snippets = await store.listSnippets();
   const styles = await store.listStyles();
   await refreshRemoteFeatureFlags();
@@ -4182,7 +4349,7 @@ ipcMain.handle('upload:select', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [
-      { name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'oga'] },
+      { name: 'Audio', extensions: UPLOAD_AUDIO_EXTENSIONS_NO_DOT },
     ],
   });
   if (result.canceled || !result.filePaths || !result.filePaths.length) {
@@ -4218,8 +4385,8 @@ ipcMain.handle('dictionary:upsert', async (event, entry) => {
     to_text: entry.to_text,
     frequency_used: typeof entry.frequency_used === 'number' ? entry.frequency_used : undefined,
     last_used: entry.last_used,
-    source: entry.source || 'manual',
-    auto_learned: typeof entry.auto_learned === 'number' ? entry.auto_learned : 0,
+    source: 'manual',
+    auto_learned: 0,
     created_at: entry.created_at || now,
     updated_at: now,
   });

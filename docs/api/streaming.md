@@ -1,6 +1,6 @@
 # Streaming Protocol (v1)
 
-> **Deprecated**: streaming is currently disabled due to stability issues. This protocol is kept for reference.
+> Streaming is gated by feature flags (`featureFlags.streaming`, `featureFlags.worklet`) and can be hard-disabled by setting `CROCOVOICE_STREAMING_DISABLED=1`.
 
 ## Overview
 This document specifies the client-to-server streaming protocol used by CrocoVoice for low-latency dictation. It supports PCM (default) and optional Opus payloads, with a file-upload fallback on failure.

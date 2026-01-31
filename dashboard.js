@@ -2382,9 +2382,11 @@ function renderDictionary(dictionary) {
 
     const content = document.createElement('div');
     content.className = 'dictionary-term';
+    const main = document.createElement('div');
+    main.className = 'dictionary-main';
     const from = document.createElement('span');
     from.textContent = entry.from_text;
-    content.appendChild(from);
+    main.appendChild(from);
 
     if (entry.to_text && entry.to_text !== entry.from_text) {
       const arrow = document.createElement('span');
@@ -2393,9 +2395,21 @@ function renderDictionary(dictionary) {
       const to = document.createElement('span');
       to.style.color = '#059669';
       to.textContent = entry.to_text;
-      content.appendChild(arrow);
-      content.appendChild(to);
+      main.appendChild(arrow);
+      main.appendChild(to);
     }
+    content.appendChild(main);
+
+    const meta = document.createElement('div');
+    meta.className = 'dictionary-meta';
+    const usageCountRaw = Number.parseInt(entry.frequency_used ?? 0, 10);
+    const usageCount = Number.isFinite(usageCountRaw) ? usageCountRaw : 0;
+    const usageLabel = usageCount > 0
+      ? `${usageCount} utilisation${usageCount > 1 ? 's' : ''}`
+      : 'Jamais utilisé';
+    const lastUsedLabel = entry.last_used ? formatDateLabel(entry.last_used) : '';
+    meta.textContent = lastUsedLabel ? `${usageLabel} · Dernière utilisation: ${lastUsedLabel}` : usageLabel;
+    content.appendChild(meta);
 
     const actions = document.createElement('div');
     actions.className = 'dictionary-row-actions';

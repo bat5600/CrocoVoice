@@ -20,6 +20,7 @@ CrocoVoice is a local-first Electron dictation app with a clear pipeline but lim
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-01-24 | v1.0 | Reframed PRD toward robustness parity with FakeWispr | PM |
+| 2026-01-31 | v1.1 | Added milestone roadmap alignment (M1/M2/M3) | Codex |
 
 ## Requirements
 
@@ -106,6 +107,11 @@ Unit + Integration; light E2E where feasible.
 - Use existing OpenAI integration; allow alternate ASR providers as optional fallback.
 - Use SQLite for local storage; sync via Supabase remains optional.
 - Add WebSocket service for streaming, with configurable endpoint and defined protocol.
+
+## Milestones (Roadmap)
+- **M1 (NOW):** Epic 4 + Epic 7 + Epic 9 - daily driver data, permissions/diagnostics, status bubble + context menu.
+- **M2 (NEXT):** Epic 5 + Epic 8 + Epic 10 + Epic 11 - context capture/privacy, streaming transport, feature flags/telemetry/notifications, onboarding/insights.
+- **M3 (LATER):** Epic 6 + Epic 12 + Epic 13 - long-form uploads/exports, CrocOmni, local inference fallback.
 
 ## Epic List (aligned with docs/stories)
 

@@ -13,6 +13,7 @@ Existing Electron codebase (main.js, renderer.js, preload.js, store.js, sync.js)
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-01-24 | v1.0 | Architecture updated for robustness parity roadmap | Architect |
+| 2026-01-31 | v1.1 | Added roadmap alignment section + SSOT linkage | Codex |
 
 ## High Level Architecture
 
@@ -81,6 +82,28 @@ graph TD
 - **Repository Pattern:** Abstract DB access for History, Dictionary, Notes, Snippets, Flags.
 - **Feature Flag Gating:** Central flag service to enable safe rollout and kill-switch.
 - **Local-First Data Model:** SQLite is the source of truth; sync is best-effort.
+
+## Roadmap Alignment (M1/M2/M3)
+This architecture supports the PRD milestones; see `docs/prd.md` for epic-level scope.
+
+- **M1 (NOW):** Epic 4 + Epic 7 + Epic 9 - daily driver data (history/notes/dictionary/snippets), permissions/diagnostics, status bubble + context menu.
+- **M2 (NEXT):** Epic 5 + Epic 8 + Epic 10 + Epic 11 - context capture/privacy, streaming transport, feature flags/telemetry/notifications, onboarding/insights.
+- **M3 (LATER):** Epic 6 + Epic 12 + Epic 13 - long-form uploads/exports, CrocOmni, local inference fallback.
+
+### Architectural Goals for the Roadmap
+- Add low-latency streaming (AudioWorklet + WebSocket) with file-upload fallback.
+- Expand local-first data surfaces without breaking offline behavior.
+- Make permissions and delivery failures diagnosable with clear reason codes.
+- Capture context with explicit privacy controls and per-app opt-in.
+- Add feature flags, telemetry, and notifications for safe rollout.
+- Prepare local-first CrocOmni sessions and long-form workflows.
+
+### Operational Defaults
+Quota mode, entitlement authority, and offline TTL expectations are defined in `docs/configuration.md`.
+
+### Open Questions
+- Snippets storage: dedicated SQLite table vs settings blob.
+- Entitlement TTL: exact storage location and enforcement mechanism.
 
 ## Tech Stack
 

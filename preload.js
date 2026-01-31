@@ -203,6 +203,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   sendStreamStart: (payload) => ipcRenderer.send('stream:start', payload),
   sendStreamStop: (payload) => ipcRenderer.send('stream:stop', payload),
+  sendStreamDiag: (payload) => ipcRenderer.send('stream:diag', payload),
   sendStreamChunk: (payload, transferList = []) => {
     if (ipcRenderer.postMessage) {
       ipcRenderer.postMessage('stream:chunk', payload, transferList);

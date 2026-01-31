@@ -62,11 +62,30 @@ function applyDictionaryEntries(text, entries, options = {}) {
   const matches = [];
   const usageCounts = new Map();
   const trackUsage = Boolean(options.trackUsage);
+  const allowAutoLearned = options.allowAutoLearned === true;
+  const allowNonManual = options.allowNonManual === true;
 
   const isOverlapping = (start, end) => usedRanges.some((range) => start < range.end && end > range.start);
+  const isEligibleEntry = (entry) => {
+    if (!entry) {
+      return false;
+    }
+    const source = typeof entry.source === 'string' ? entry.source.toLowerCase() : 'manual';
+    const autoLearned = Number(entry.auto_learned) || 0;
+    if (!allowAutoLearned && autoLearned) {
+      return false;
+    }
+    if (!allowNonManual && source && source !== 'manual') {
+      return false;
+    }
+    return true;
+  };
 
   entries.forEach((entry) => {
     if (!entry || !entry.from_text) {
+      return;
+    }
+    if (!isEligibleEntry(entry)) {
       return;
     }
     const needle = String(entry.from_text);

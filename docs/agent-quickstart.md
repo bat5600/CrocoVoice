@@ -2,11 +2,19 @@
 
 This guide helps BMAD-method agents find the minimal, correct artifacts quickly. It is the recommended entry point for all agent roles.
 
-## Canonical Sources (Do Not Move)
+## Start Here (SSOT)
+- **Single Source of Truth:** `docs/ssot.md`  
+  Always read this first. It defines what is canonical and how to resolve conflicts.
+
+## Canonical Sources (Authoritative)
 - PRD: `docs/prd.md`
 - Architecture: `docs/architecture.md`
 - Front-end spec: `docs/front-end-spec.md`
-- UX brief: `docs/ux/cahier-des-charges-crocovoice-2-0.md`
+- Configuration defaults: `docs/configuration.md`
+- Architecture references: `docs/architecture/`
+
+## Supporting / Derived
+- UX research input: `docs/ux/`
 - Epic overviews: `docs/epics/`
 - Stories: `docs/stories/`
 - QA gates/assessments: `docs/qa/`
@@ -42,3 +50,8 @@ This guide helps BMAD-method agents find the minimal, correct artifacts quickly.
 ## Traceability Expectations
 - Each story should map to a PRD epic and an architecture component.
 - UI stories should cite the relevant UX/front-end sections.
+
+## SSOT Update Rules (Mandatory)
+- If you change product scope, architecture, UX behavior, or defaults, update the canonical doc **first**.
+- Add a change log entry in that canonical doc.
+- Then update stories/epics/QA and log the change in `docs/agent-logbook.md`.

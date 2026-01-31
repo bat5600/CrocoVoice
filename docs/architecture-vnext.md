@@ -1,5 +1,7 @@
 # CrocoVoice Architecture — vNext (M1/M2+)
 
+> Deprecated as of 2026-01-31. Canonical roadmap alignment now lives in `docs/prd.md` (Milestones) and `docs/architecture.md` (Roadmap Alignment). See `docs/ssot.md` and update canonical docs instead of this file.
+
 This document aligns architecture guidance with the **global PRD roadmap** (`docs/prd.md`), focusing on the next milestones:
 
 - **M1 (NOW):** Epic 4 + Epic 7 + Epic 9 (Daily Driver data + permissions/diagnostics + status bubble)
