@@ -48,6 +48,8 @@ Notes:
   "samples": <Float32Array or binary payload>
 }
 ```
+Notes:
+- If `encoding: "base64"` is provided, `samples` is a base64-encoded Float32Array buffer.
 
 #### chunk (Opus)
 ```
@@ -60,6 +62,8 @@ Notes:
   "payload": <binary>
 }
 ```
+Notes:
+- If `encoding: "base64"` is provided, `payload` is a base64-encoded binary chunk.
 
 #### stop
 ```

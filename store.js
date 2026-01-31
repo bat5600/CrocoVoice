@@ -48,6 +48,61 @@ function isWordChar(value) {
   return /[\p{L}\p{N}_]/u.test(value);
 }
 
+function normalizeFuzzyToken(value) {
+  if (!value) {
+    return '';
+  }
+  return value
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function buildWordTokens(text) {
+  if (!text) {
+    return [];
+  }
+  const tokens = [];
+  const regex = /[\p{L}\p{N}_]+/gu;
+  let match = null;
+  while ((match = regex.exec(text))) {
+    tokens.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      raw: match[0],
+      norm: normalizeFuzzyToken(match[0]),
+    });
+  }
+  return tokens;
+}
+
+function editDistanceRatio(a, b) {
+  if (!a || !b) {
+    return null;
+  }
+  if (a === b) {
+    return 0;
+  }
+  const lenA = a.length;
+  const lenB = b.length;
+  const dp = new Array(lenB + 1).fill(0).map((_, i) => i);
+  for (let i = 1; i <= lenA; i += 1) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= lenB; j += 1) {
+      const temp = dp[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+      prev = temp;
+    }
+  }
+  const distance = dp[lenB];
+  const maxLen = Math.max(lenA, lenB);
+  return maxLen ? distance / maxLen : null;
+}
+
 function applyDictionaryEntries(text, entries, options = {}) {
   if (text === null || text === undefined) {
     return text;
@@ -64,6 +119,10 @@ function applyDictionaryEntries(text, entries, options = {}) {
   const trackUsage = Boolean(options.trackUsage);
   const allowAutoLearned = options.allowAutoLearned === true;
   const allowNonManual = options.allowNonManual === true;
+  const fuzzyEnabled = options.fuzzy === true;
+  const fuzzyMinLength = Number.isFinite(options.fuzzyMinLength) ? options.fuzzyMinLength : 6;
+  const fuzzyPrefixLength = Number.isFinite(options.fuzzyPrefixLength) ? options.fuzzyPrefixLength : 4;
+  const fuzzyMaxDistanceRatio = Number.isFinite(options.fuzzyMaxDistanceRatio) ? options.fuzzyMaxDistanceRatio : 0.4;
 
   const isOverlapping = (start, end) => usedRanges.some((range) => start < range.end && end > range.start);
   const isEligibleEntry = (entry) => {
@@ -120,6 +179,73 @@ function applyDictionaryEntries(text, entries, options = {}) {
       searchIndex = endIndex;
     }
   });
+
+  if (fuzzyEnabled) {
+    const tokens = buildWordTokens(sourceText);
+    const candidates = (entries || [])
+      .filter((entry) => isEligibleEntry(entry))
+      .map((entry) => {
+        const fromText = typeof entry.from_text === 'string' ? entry.from_text.trim() : '';
+        if (!fromText || /\s/.test(fromText)) {
+          return null;
+        }
+        const norm = normalizeFuzzyToken(fromText);
+        if (!norm) {
+          return null;
+        }
+        return {
+          entry,
+          norm,
+          length: norm.length,
+        };
+      })
+      .filter(Boolean);
+
+    if (tokens.length && candidates.length) {
+      tokens.forEach((token) => {
+        if (!token.norm || token.norm.length < fuzzyMinLength) {
+          return;
+        }
+        if (isOverlapping(token.start, token.end)) {
+          return;
+        }
+        let best = null;
+        candidates.forEach((candidate) => {
+          if (!candidate || candidate.length < fuzzyMinLength) {
+            return;
+          }
+          const prefixLen = Math.min(fuzzyPrefixLength, candidate.length, token.norm.length);
+          if (prefixLen > 0 && candidate.norm.slice(0, prefixLen) !== token.norm.slice(0, prefixLen)) {
+            return;
+          }
+          const ratio = editDistanceRatio(token.norm, candidate.norm);
+          if (ratio === null || ratio > fuzzyMaxDistanceRatio) {
+            return;
+          }
+          if (!best || ratio < best.ratio || (ratio === best.ratio && candidate.length > best.length)) {
+            best = {
+              entry: candidate.entry,
+              ratio,
+              length: candidate.length,
+            };
+          }
+        });
+        if (!best) {
+          return;
+        }
+        matches.push({
+          start: token.start,
+          end: token.end,
+          replacement: best.entry.to_text || '',
+          entry: best.entry,
+        });
+        usedRanges.push({ start: token.start, end: token.end });
+        if (trackUsage && best.entry.id) {
+          usageCounts.set(best.entry.id, (usageCounts.get(best.entry.id) || 0) + 1);
+        }
+      });
+    }
+  }
 
   if (!matches.length) {
     return trackUsage ? { text: sourceText, usage: [] } : sourceText;

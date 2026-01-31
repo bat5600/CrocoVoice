@@ -10,6 +10,12 @@ const os = require('os');
 const { OpenAI } = require('openai');
 const Store = require('./store');
 const SyncService = require('./sync');
+let WebSocketClient = null;
+try {
+  WebSocketClient = require('ws');
+} catch (error) {
+  console.warn('[streaming] ws dependency not available:', error?.message || error);
+}
 const {
   countWords,
   isProSubscription,
@@ -129,6 +135,18 @@ const WIDGET_DISPLAY_POLL_MS = 500;
 const UPLOAD_AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.ogg', '.oga'];
 const UPLOAD_AUDIO_EXTENSIONS_NO_DOT = UPLOAD_AUDIO_EXTENSIONS.map((ext) => ext.replace('.', ''));
 const UPLOAD_AUDIO_EXTENSIONS_LABEL = UPLOAD_AUDIO_EXTENSIONS.join(', ');
+const DICTIONARY_FUZZY = {
+  enabled: true,
+  minLength: 6,
+  prefixLength: 4,
+  maxDistanceRatio: 0.4,
+};
+const SNIPPET_FUZZY = {
+  enabled: true,
+  minLength: 6,
+  prefixLength: 3,
+  maxDistanceRatio: 0.25,
+};
 
 const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
 
@@ -179,6 +197,9 @@ const defaultSettings = {
   streamChunkMs: 900,
   streamSampleRate: 16000,
   streamPartialIntervalMs: 7000,
+  streamingTransport: 'local',
+  streamingEndpoint: '',
+  streamingAuthToken: '',
   featureFlags: {
     streaming: false,
     worklet: false,
@@ -350,6 +371,34 @@ function isFeatureEnabled(flag) {
   return Boolean(flags[flag]);
 }
 
+function getStreamingTransport() {
+  const value = typeof settings.streamingTransport === 'string'
+    ? settings.streamingTransport.trim().toLowerCase()
+    : '';
+  return value || 'local';
+}
+
+function getStreamingEndpoint() {
+  return typeof settings.streamingEndpoint === 'string'
+    ? settings.streamingEndpoint.trim()
+    : '';
+}
+
+function getStreamingAuthToken() {
+  return typeof settings.streamingAuthToken === 'string'
+    ? settings.streamingAuthToken.trim()
+    : '';
+}
+
+function shouldUseRemoteStreaming() {
+  if (!isFeatureEnabled('streaming')) {
+    return false;
+  }
+  const transport = getStreamingTransport();
+  const endpoint = getStreamingEndpoint();
+  return transport === 'ws' && Boolean(endpoint);
+}
+
 async function refreshRemoteFeatureFlags({ force = false } = {}) {
   const remoteUrl = typeof settings.featureFlagsRemoteUrl === 'string'
     ? settings.featureFlagsRemoteUrl.trim()
@@ -432,6 +481,201 @@ function recordStreamEvent(code, details) {
     }
   }
   recordDiagnosticEvent(code, '');
+}
+
+function encodeBase64FromFloat32(samples) {
+  if (!samples || !samples.buffer) {
+    return '';
+  }
+  return Buffer.from(samples.buffer, samples.byteOffset || 0, samples.byteLength || 0).toString('base64');
+}
+
+function encodeBase64FromBuffer(buffer) {
+  if (!buffer) {
+    return '';
+  }
+  return Buffer.from(buffer).toString('base64');
+}
+
+function openRemoteStreamSession(session, payload = {}) {
+  if (!WebSocketClient) {
+    recordStreamEvent('stream_ws_missing', { id: session.id });
+    return false;
+  }
+  const endpoint = getStreamingEndpoint();
+  if (!endpoint) {
+    recordStreamEvent('stream_ws_missing_endpoint', { id: session.id });
+    return false;
+  }
+  if (!/^wss?:\/\//i.test(endpoint)) {
+    recordStreamEvent('stream_ws_invalid_endpoint', { id: session.id, endpoint });
+    return false;
+  }
+  const headers = {};
+  const authToken = getStreamingAuthToken();
+  if (authToken) {
+    headers.Authorization = authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`;
+  }
+  const ws = new WebSocketClient(endpoint, { headers });
+  session.remote = {
+    ws,
+    ready: false,
+    queue: [],
+    closed: false,
+    lastMessageAt: null,
+  };
+  session.remoteEnabled = true;
+
+  ws.on('open', () => {
+    session.remote.ready = true;
+    recordStreamEvent('stream_ws_open', { id: session.id });
+    const startPayload = {
+      type: 'start',
+      session_id: session.id,
+      codec: session.codec || 'pcm',
+      sample_rate: session.sampleRate || settings.streamSampleRate || 16000,
+      chunk_ms: session.chunkMs || settings.streamChunkMs || 900,
+      client: {
+        app_version: app.getVersion(),
+        platform: process.platform,
+      },
+    };
+    if (session.codec === 'opus' && payload.mimeType) {
+      startPayload.mime = payload.mimeType;
+    }
+    ws.send(JSON.stringify(startPayload));
+    while (session.remote.queue.length) {
+      const queued = session.remote.queue.shift();
+      ws.send(queued);
+    }
+  });
+
+  ws.on('message', (data) => {
+    session.remote.lastMessageAt = Date.now();
+    let text = '';
+    if (Buffer.isBuffer(data)) {
+      text = data.toString('utf8');
+    } else if (typeof data === 'string') {
+      text = data;
+    } else if (data && typeof data.toString === 'function') {
+      text = data.toString();
+    }
+    if (!text) {
+      return;
+    }
+    let message = null;
+    try {
+      message = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (!message || typeof message !== 'object') {
+      return;
+    }
+    const type = message.type;
+    if (type === 'partial' && typeof message.text === 'string') {
+      session.remotePartialText = message.text;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('transcription-partial', message.text);
+      }
+      return;
+    }
+    if (type === 'final' && typeof message.text === 'string') {
+      session.remoteFinalText = message.text;
+      recordStreamEvent('stream_ws_final', { id: session.id });
+      return;
+    }
+    if (type === 'error') {
+      recordStreamEvent('stream_ws_error', {
+        id: session.id,
+        code: message.code || 'remote_error',
+        message: message.message || '',
+      });
+      return;
+    }
+    if (type === 'ack') {
+      recordStreamEvent('stream_ws_ack', { id: session.id });
+      return;
+    }
+    if (type === 'pong') {
+      recordStreamEvent('stream_ws_pong', { id: session.id });
+    }
+  });
+
+  ws.on('close', () => {
+    session.remote.closed = true;
+    recordStreamEvent('stream_ws_close', { id: session.id });
+  });
+
+  ws.on('error', (error) => {
+    recordStreamEvent('stream_ws_error', {
+      id: session.id,
+      message: error?.message || String(error),
+    });
+  });
+
+  return true;
+}
+
+function sendRemoteMessage(session, message) {
+  if (!session.remote || !session.remote.ws) {
+    return false;
+  }
+  const payload = JSON.stringify(message);
+  if (session.remote.ready) {
+    session.remote.ws.send(payload);
+  } else {
+    session.remote.queue.push(payload);
+  }
+  return true;
+}
+
+function sendRemoteChunk(session, payload = {}) {
+  if (!session.remote || !session.remote.ws) {
+    return false;
+  }
+  const base = {
+    type: 'chunk',
+    session_id: session.id,
+    seq: payload.seq,
+    codec: session.codec || 'pcm',
+  };
+  if (session.codec === 'opus') {
+    const chunk = payload.chunk;
+    const encoded = encodeBase64FromBuffer(chunk);
+    const message = {
+      ...base,
+      mime: payload.mimeType || session.mimeType || 'audio/webm;codecs=opus',
+      payload: encoded,
+      encoding: 'base64',
+    };
+    return sendRemoteMessage(session, message);
+  }
+  const samples = payload.samples;
+  const encodedSamples = encodeBase64FromFloat32(samples);
+  const message = {
+    ...base,
+    sample_rate: session.sampleRate || settings.streamSampleRate || 16000,
+    samples: encodedSamples,
+    encoding: 'base64',
+  };
+  return sendRemoteMessage(session, message);
+}
+
+function closeRemoteStreamSession(session) {
+  if (!session?.remote?.ws) {
+    return;
+  }
+  try {
+    sendRemoteMessage(session, { type: 'stop', session_id: session.id });
+  } catch {
+    // ignore
+  }
+  try {
+    session.remote.ws.close();
+  } catch {
+    // ignore
+  }
 }
 
 async function recordTelemetryEvent(event, payload) {
@@ -977,6 +1221,106 @@ function normalizeSnippetCue(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[\s\p{P}]+$/gu, '');
+}
+
+function normalizeFuzzyText(value) {
+  if (!value) {
+    return '';
+  }
+  return value
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildWordTokens(text) {
+  if (!text) {
+    return [];
+  }
+  const tokens = [];
+  const regex = /[\p{L}\p{N}_]+/gu;
+  let match = null;
+  while ((match = regex.exec(text))) {
+    tokens.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      raw: match[0],
+      norm: normalizeFuzzyText(match[0]),
+    });
+  }
+  return tokens;
+}
+
+function getLeadingTokenSpan(tokens, tokenCount) {
+  if (!tokens.length || tokenCount <= 0 || tokens.length < tokenCount) {
+    return null;
+  }
+  const start = tokens[0].start;
+  const end = tokens[tokenCount - 1].end;
+  return {
+    start,
+    end,
+    tokens: tokens.slice(0, tokenCount),
+  };
+}
+
+function stripLeadingSpan(text, endIndex) {
+  if (!text || !Number.isFinite(endIndex)) {
+    return text || '';
+  }
+  return text.slice(endIndex).replace(/^[\s\p{P}]+/u, '');
+}
+
+function findFuzzySnippetMatch(text, entries) {
+  if (!SNIPPET_FUZZY.enabled) {
+    return null;
+  }
+  const tokens = buildWordTokens(text || '');
+  if (!tokens.length) {
+    return null;
+  }
+  let best = null;
+  (entries || []).forEach((entry) => {
+    const cueNorm = entry.cue_norm || normalizeSnippetCue(entry.cue);
+    if (!cueNorm) {
+      return;
+    }
+    const cueTokens = cueNorm.split(' ').filter(Boolean);
+    if (!cueTokens.length) {
+      return;
+    }
+    const span = getLeadingTokenSpan(tokens, cueTokens.length);
+    if (!span) {
+      return;
+    }
+    const cueFirst = normalizeFuzzyText(cueTokens[0]);
+    const textFirst = span.tokens[0]?.norm || '';
+    const prefixLen = Math.min(SNIPPET_FUZZY.prefixLength, cueFirst.length, textFirst.length);
+    if (prefixLen > 0 && cueFirst.slice(0, prefixLen) !== textFirst.slice(0, prefixLen)) {
+      return;
+    }
+    const cueJoined = normalizeFuzzyText(cueTokens.join(' '));
+    const textJoined = normalizeFuzzyText(span.tokens.map((token) => token.raw).join(' '));
+    if (cueJoined.length < SNIPPET_FUZZY.minLength || textJoined.length < SNIPPET_FUZZY.minLength) {
+      return;
+    }
+    const ratio = computeDivergenceScore(cueJoined, textJoined);
+    if (ratio === null || ratio > SNIPPET_FUZZY.maxDistanceRatio) {
+      return;
+    }
+    if (!best || ratio < best.ratio || (ratio === best.ratio && cueJoined.length > best.length)) {
+      best = {
+        entry,
+        spanEnd: span.end,
+        ratio,
+        length: cueJoined.length,
+      };
+    }
+  });
+  return best;
 }
 
 function escapeRegExp(value) {
@@ -1810,6 +2154,10 @@ async function applyDictionary(text) {
     trackUsage: true,
     allowAutoLearned: false,
     allowNonManual: false,
+    fuzzy: DICTIONARY_FUZZY.enabled,
+    fuzzyMinLength: DICTIONARY_FUZZY.minLength,
+    fuzzyPrefixLength: DICTIONARY_FUZZY.prefixLength,
+    fuzzyMaxDistanceRatio: DICTIONARY_FUZZY.maxDistanceRatio,
   });
   if (result && result.usage && result.usage.length) {
     await store.updateDictionaryUsage(result.usage);
@@ -1834,7 +2182,22 @@ async function applySnippets(text) {
   });
 
   if (!matches.length) {
-    return text;
+    const fuzzyMatch = findFuzzySnippetMatch(text, entries);
+    if (!fuzzyMatch || !fuzzyMatch.entry) {
+      return text;
+    }
+    const remaining = stripLeadingSpan(text || '', fuzzyMatch.spanEnd).trim();
+    const template = (fuzzyMatch.entry.template || '').trim();
+    if (!template) {
+      return text;
+    }
+    if (template.includes('{{content}}')) {
+      return template.replace(/{{\s*content\s*}}/g, remaining);
+    }
+    if (!remaining) {
+      return template;
+    }
+    return `${template} ${remaining}`.trim();
   }
 
   const longest = matches.reduce((max, entry) => {
@@ -2881,6 +3244,53 @@ async function runLocalAsr(buffer, mimeType) {
   }
 }
 
+async function runTextPipeline(transcribedText) {
+  if (!transcribedText || isNoAudioTranscription(transcribedText)) {
+    return { skip: true, transcribedText: '' };
+  }
+
+  const contextState = await getContextStateCached();
+  const contextSettings = getContextSettings();
+  const useContextForPostProcess = Boolean(
+    contextSettings.postProcessEnabled && contextState?.enabled && contextState?.payload,
+  );
+  const contextHint = useContextForPostProcess
+    ? buildPostProcessContextHints(contextState.payload)
+    : '';
+  const stylePrompt = await getActiveStylePrompt();
+  let editedText = transcribedText;
+  let warningMessage = '';
+  try {
+    editedText = await postProcessText(transcribedText, stylePrompt, contextHint);
+  } catch (error) {
+    if (error?.code === 'missing_api_key') {
+      warningMessage = 'Post-traitement ignore: OPENAI_API_KEY manquante.';
+    } else {
+      warningMessage = getOpenAIUserMessage(error);
+    }
+    console.warn('Post-processing failed, using raw transcript.');
+  }
+
+  let formattedText = editedText;
+  if (contextState.enabled && contextState.profile) {
+    formattedText = applyAdaptiveFormatting(editedText, contextState.profile);
+  }
+  formattedText = applyDictatedListFormatting(formattedText);
+  const snippetText = await applySnippets(formattedText);
+  const finalText = await applyDictionary(snippetText);
+  const title = await generateEntryTitle(finalText);
+  return {
+    skip: false,
+    transcribedText,
+    formattedText,
+    finalText,
+    title,
+    divergenceScore: computeDivergenceScore(transcribedText, formattedText),
+    contextState,
+    warningMessage,
+  };
+}
+
 function resolveRecordingTarget() {
   const target = recordingDestination || 'clipboard';
   recordingDestination = 'clipboard';
@@ -3561,6 +3971,9 @@ ipcMain.on('stream:start', (event, payload = {}) => {
     lastPartialAt: 0,
     lastSampleIndex: 0,
     partialText: '',
+    remoteEnabled: false,
+    remoteFinalText: '',
+    remotePartialText: '',
     active: true,
     lastChunkAt: null,
     stallTimer: null,
@@ -3573,6 +3986,9 @@ ipcMain.on('stream:start', (event, payload = {}) => {
     mimeType: payload.mimeType || null,
   });
   const session = streamSessions.get(sessionId);
+  if (shouldUseRemoteStreaming()) {
+    session.remoteEnabled = openRemoteStreamSession(session, payload);
+  }
   session.stallTimer = setInterval(() => {
     if (!session.active) {
       clearInterval(session.stallTimer);
@@ -3699,6 +4115,14 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
       session.samples.push(samples[i]);
     }
   }
+  if (session.remoteEnabled) {
+    sendRemoteChunk(session, {
+      seq: payload.seq,
+      samples,
+      chunk: payload.chunk,
+      mimeType: payload.mimeType,
+    });
+  }
   if (Date.now() - session.startedAt > STREAM_MAX_DURATION_MS) {
     session.active = false;
     streamSessions.delete(session.id);
@@ -3714,6 +4138,9 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
   }
 
   const interval = Number.isFinite(settings.streamPartialIntervalMs) ? settings.streamPartialIntervalMs : 7000;
+  if (session.remoteEnabled) {
+    return;
+  }
   if (Date.now() - session.lastPartialAt < interval) {
     return;
   }
@@ -3755,6 +4182,9 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
   }
   session.active = false;
   streamSessions.delete(session.id);
+  if (session.remoteEnabled) {
+    closeRemoteStreamSession(session);
+  }
   recordStreamEvent('stream_stop', {
     id: session.id,
     codec: session.codec,
@@ -3765,6 +4195,58 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
   const target = resolveRecordingTarget();
   const shouldSkipPaste = target === 'notes' || target === 'notes-editor' || target === 'onboarding';
   try {
+    if (session.remoteFinalText && typeof session.remoteFinalText === 'string') {
+      lastTranscriptionPath = 'remote';
+      const pipelineResult = await runTextPipeline(session.remoteFinalText.trim());
+      if (pipelineResult.skip) {
+        setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+        scheduleReturnToIdle(3000);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('transcription-success', '');
+        }
+        return;
+      }
+      const {
+        transcribedText,
+        formattedText,
+        finalText,
+        title,
+        divergenceScore,
+        contextState,
+      } = pipelineResult;
+      const latencyMs = recordingStartTime ? Date.now() - recordingStartTime : null;
+      await persistTranscription({
+        transcribedText,
+        formattedText,
+        finalText,
+        title,
+        latencyMs,
+        divergenceScore,
+        micDevice: settings.microphoneId || null,
+        fallbackPath: 'stream',
+        fallbackReason: lastFallbackReason,
+        networkLatencyMs: lastNetworkLatencyMs,
+        transcriptionPath: lastTranscriptionPath,
+        audioDiagnostics: payload.audioDiagnostics || null,
+        audioQualityClass: payload.audioQualityClass || null,
+        contextPayload: contextState?.payload || null,
+      });
+      lastPolishDiff = {
+        before: transcribedText || '',
+        after: formattedText || finalText || '',
+      };
+      if (!shouldSkipPaste) {
+        await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('transcription-success', finalText);
+      }
+      if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+        sendDashboardEvent('dashboard:transcription-success', finalText, target);
+      }
+      setRecordingState(RecordingState.IDLE);
+      return;
+    }
     const buffer = session.codec === 'opus'
       ? Buffer.concat(session.encodedChunks)
       : encodeWavFromFloat32(session.samples, session.sampleRate);
@@ -3828,6 +4310,11 @@ ipcMain.on('stream:ping', (event, payload = {}) => {
   const session = streamSessions.get(payload.sessionId);
   if (!session || !session.active) {
     return;
+  }
+  if (session.remoteEnabled && session.remote?.ws && WebSocketClient) {
+    if (session.remote.ws.readyState === WebSocketClient.OPEN) {
+      sendRemoteMessage(session, { type: 'ping', at: payload.at || Date.now() });
+    }
   }
   event.sender.send('stream:pong', { sessionId: session.id, at: Date.now() });
 });

@@ -25,7 +25,8 @@
     "@nut-tree-fork/nut-js": "^4.1.0",
     "dotenv": "^16.3.1",
     "openai": "^4.20.1",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "ws": "^8.13.0"
   },
   "devDependencies": {
     "electron": "^35.7.5"
