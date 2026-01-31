@@ -4,21 +4,22 @@ Use this template to turn “DONE*” into verified DONE for Epics 1–3.
 
 ## Metadata
 
-- Date:
-- Reviewer:
-- App version / git SHA:
-- OS + version:
-- Microphone device:
-- Network: (online/offline)
-- `.env` profile used: (minimal / with Supabase / with Stripe)
+- Date: 2026-01-31
+- Reviewer: Baptiste
+- App version / git SHA: 01a511b
+- OS + version: Windows 11
+- Microphone device: Integrated
+- Network: online
+- `.env` profile used: with Supabase /  Stripe
+- Status: Done
 
 ## Evidence Pack (attach links/screenshots/log snippets)
 
-- Screen recording of a successful dictation end-to-end
-- Screenshot: dashboard quota panel
-- Screenshot: subscription panel + buttons
-- Screenshot: paywall (quota blocked)
-- Logs: error case + recovery (timeout/network) without stuck states
+- Screen recording of a successful dictation end-to-end: Captured offline (not attached)
+- Screenshot: dashboard quota panel: Captured offline (not attached)
+- Screenshot: subscription panel + buttons: Captured offline (not attached)
+- Screenshot: paywall (quota blocked): Captured offline (not attached)
+- Logs: error case + recovery (timeout/network) without stuck states: Captured offline (not attached)
 
 ## Regression Checklist (tick when verified)
 
@@ -60,11 +61,11 @@ NOTES : the email are not yet personnalised
 
 ## Accepted Risks (explicit sign-off)
 
-- Client-side quota/entitlement bypass risk accepted for M0: Yes/No
+- Client-side quota/entitlement bypass risk accepted for M0: Yes
 - Known issues list:
-  - ...
+  - Reset password emails are not personalized yet.
 
 ## Decision
 
-- [ ] VERIFIED DONE (Epics 1–3)
+- [x] VERIFIED DONE (Epics 1–3)
 - [ ] NOT DONE (must fix items listed above)

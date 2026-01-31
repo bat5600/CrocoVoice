@@ -5,11 +5,15 @@
 [ ] Remplacer le "your year in review" par un autre texte/CTA
 [x] Probleme : le nombre de mots restants sur le dashboard est réinitialisé a chauqe fois qu'on ferme et réouvre l'app (ce qui tue le "freemium" et le paywall)
 [x] Cliquer sur notre profil dans le dashboard devrait ouvrir la page paramètre avec les infos de facturation. D'ailleurs, les datas et boutons liés à l'abonnement ne devrait être QUE dans cette page (page à part)
-[ ] Ajouter le style Croco avec les exemples ROry
+[x] Ajouter le style Croco avec les exemples ROry
 [x] Mettre un saferail pour éviter l'oubli du micro activé pendant 5h...
+
 [ ] Snippet library Create voice shortcuts for the things your team says over and over. From scheduling links to FAQs, just speak a cue and get the full formatted text.
+
 [ ] Spells names right. CrocoVoice uses surrounding context to spell uncommon names right, so you don’t have to fix it later.
+
 [ ] Améliorer le context-aware post-process (actuel ≈ nul si app/URL inconnues). Idées: hints plus riches, extraction de noms propres depuis titre/URL, opt-in pour selection/URL complète.
+
 - [ ] **Smart Corrections (changement d’avis en temps réel)**  
       CrocoVoice comprend quand tu te corriges.  
       Exemple : “On se voit à 14h… non, plutôt à 15h.”  
@@ -31,6 +35,7 @@
       CrocoVoice apprend ton vocabulaire au fil de l’usage.  
       Les corrections sont mémorisées automatiquement.  
       Ajout manuel possible de termes métiers, noms propres et jargons.
+      Actuellement, Crocovoice ne reconnait pas suffisament les termes. Si par exemple j'entre le terme "CrocoClick" dans le dictionnaire et que le transcript entends "CrocoTic" ca devrait me corriger et mettre CrocoClick car c'est proche...
 
 - [ ] **Snippets vocaux (raccourcis parlés)**  
       Crée des raccourcis vocaux pour insérer instantanément :  
@@ -49,19 +54,21 @@
 
 [x] Quand je clique sur passer pro ou gérer l'abonnement c'est lent à ouvrir la page web et je n'ai pas d'indication de chargement
 
-[ ] Je veux que si je change de fenêtre cible mais que ca reste un champs de texte, on tente le "coller"
+[x] Je veux que si je change de fenêtre cible mais que ca reste un champs de texte, on tente le "coller"
 
-[ ] Quand je fais un clic droit sur le widget et que ca ouvre le menu, je veux qu'un clic gauche en dehors du menu ferme le menu
+[ ] Quand je fais un clic droit sur le widget et que ca ouvre le menu, je veux qu'un clic gauche en dehors du menu ferme le menu - L'objectif est donc de faire comme FakeWispr avec une fenetre invisible qui prend tout l'écran, pour enregistrer le clic
 
-[ ] Je veux que mon widget "pill" puisse changer d'écran si ma souris change d'écran dans le cas d'un setup multi ecrans
+[x] Je veux que mon widget "pill" puisse changer d'écran si ma souris change d'écran dans le cas d'un setup multi ecrans
 
-[ ] Je veux pouvoir changement de micro ou de langue directement depuis le menu du widget "pill" grâce à un sous menu, sans avoir besoin d'aller dans les settings
+[x] Je veux pouvoir changement de micro ou de langue directement depuis le menu du widget "pill" grâce à un sous menu, sans avoir besoin d'aller dans les settings
 
 [ ] Je veux que le changement de langue se fasse par un dropdown menu avec search 
 
 [ ] Je veux que le widget pill soit légérement plus bas qu'actuellement
 
-[ ] Je veux voir 'lavancement de la transcription de mon fichier audio avec une barre d'avancement.
+[ ] Je veux voir l'avancement de la transcription de mon fichier audio avec une barre d'avancement.
+
+[ ] Je veux être sûr que la transcription d'un fichier audio uploadé ce fait en local (et non cloud)
 
 [ ] Je veux une erreur claire si l'upload d'audio échoue
 
