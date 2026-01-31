@@ -2,7 +2,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 import { createServiceClient } from '../_shared/supabase.ts';
 import { requireAuthenticatedUser } from '../_shared/auth.ts';
 
-const WEEKLY_QUOTA_WORDS = Number(Deno.env.get('WEEKLY_QUOTA_WORDS') || '2000');
+const WEEKLY_QUOTA_WORDS = Number(Deno.env.get('WEEKLY_QUOTA_WORDS') || '1000');
 
 function getWeekStartUTC(date = new Date()) {
   const utcDay = date.getUTCDay();

@@ -50,7 +50,7 @@ Default global hotkey. If unset, defaults to:
 ## Quotas
 
 ### `CROCOVOICE_WEEKLY_QUOTA_WORDS`
-Weekly FREE word quota (default: `2000`).
+Weekly FREE word quota (default: `1000`).
 
 ### `CROCOVOICE_QUOTA_MODE`
 Controls quota authority (default: `local`):

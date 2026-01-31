@@ -35,7 +35,7 @@ Use this template to turn “DONE*” into verified DONE for Epics 1–3.
 
 ### Quota
 - [x] Weekly quota remaining decreases based on final text word count
-- [x] Restart app → quota is still correct (no fake 2000 on boot)
+- [x] Restart app → quota is still correct (no fake 1000 on boot)
 - [x] Reset label is correct (UTC boundary) and matches the implemented policy
 
 ### Paywall

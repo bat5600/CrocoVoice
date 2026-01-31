@@ -21,7 +21,7 @@ Variables d’environnement côté Supabase Functions:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `WEEKLY_QUOTA_WORDS` (ex: `2000`)
+- `WEEKLY_QUOTA_WORDS` (ex: `1000`)
 
 ## 3) App Electron (modes quota)
 
