@@ -19,8 +19,7 @@ const insightsAvgWpm = document.getElementById('insightsAvgWpm');
 const insightsStreak = document.getElementById('insightsStreak');
 const insightsTopApps = document.getElementById('insightsTopApps');
 const insightsRange = document.getElementById('insightsRange');
-const crocOmniSearchInput = document.getElementById('crocOmniSearchInput');
-const crocOmniSearchButton = document.getElementById('crocOmniSearchButton');
+const crocOmniSearchInput = document.getElementById('dashboardSearchInput');
 const crocOmniSearchSource = document.getElementById('crocOmniSearchSource');
 const crocOmniSearchRange = document.getElementById('crocOmniSearchRange');
 const crocOmniSearchStatus = document.getElementById('crocOmniSearchStatus');
@@ -89,7 +88,6 @@ const noteFocusTimestamp = document.getElementById('noteFocusTimestamp');
 const noteFocusSource = document.getElementById('noteFocusSource');
 const noteFocusStatus = document.getElementById('noteFocusStatus');
 const toastContainer = document.getElementById('toastContainer');
-const searchInput = document.getElementById('dashboardSearchInput');
 const breadcrumbPrimary = document.getElementById('breadcrumbPrimary');
 const breadcrumbSecondary = document.getElementById('breadcrumbSecondary');
 const authOverlay = document.getElementById('authOverlay');
@@ -185,6 +183,7 @@ let crocOmniSearchQuery = '';
 let crocOmniSearchPending = false;
 let crocOmniAnswerPending = false;
 let crocOmniSearchDebounceId = null;
+let crocOmniAutoReturnView = null;
 let insightsRangeDays = 30;
 let modalResolver = null;
 let platform = 'win32';
@@ -192,7 +191,6 @@ let shortcutCaptureActive = false;
 let shortcutBeforeCapture = '';
 let shortcutInvalidShown = false;
 let historyLoadError = false;
-let searchDebounceId = null;
 let quotaSnapshot = null;
 let currentSubscription = null;
 let currentAuth = null;
@@ -748,6 +746,9 @@ function setActiveView(viewName) {
   });
 
   currentView = nextView;
+  if (nextView !== 'crocomni') {
+    crocOmniAutoReturnView = null;
+  }
   updateBreadcrumb(nextView);
   refreshActiveList();
 }
@@ -4118,19 +4119,6 @@ function updateCrocOmniSettings(nextSettings) {
     });
   }
 
-  if (searchInput) {
-    searchInput.addEventListener('input', (event) => {
-      const nextValue = event.target.value;
-      if (searchDebounceId) {
-        clearTimeout(searchDebounceId);
-      }
-      searchDebounceId = setTimeout(() => {
-        searchTerm = nextValue.trim();
-        refreshActiveList();
-      }, 200);
-    });
-  }
-
   if (noteFocusBack) {
     noteFocusBack.addEventListener('click', () => {
       closeFocusedNote();
@@ -4302,19 +4290,31 @@ function updateCrocOmniSettings(nextSettings) {
     });
   }
 
-  if (crocOmniSearchButton) {
-    crocOmniSearchButton.addEventListener('click', () => runCrocOmniSearch());
-  }
-
   if (crocOmniSearchInput) {
     crocOmniSearchInput.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') {
         return;
       }
       event.preventDefault();
+      const query = crocOmniSearchInput.value?.trim() || '';
+      if (query && currentView !== 'crocomni' && !document.body.classList.contains('note-focus-active')) {
+        crocOmniAutoReturnView = crocOmniAutoReturnView || currentView;
+        setActiveView('crocomni');
+      }
       runCrocOmniSearch();
     });
     crocOmniSearchInput.addEventListener('input', () => {
+      const query = crocOmniSearchInput.value?.trim() || '';
+      if (query) {
+        if (currentView !== 'crocomni' && !document.body.classList.contains('note-focus-active')) {
+          crocOmniAutoReturnView = crocOmniAutoReturnView || currentView;
+          setActiveView('crocomni');
+        }
+      } else if (currentView === 'crocomni' && crocOmniAutoReturnView) {
+        const returnView = crocOmniAutoReturnView;
+        crocOmniAutoReturnView = null;
+        setActiveView(returnView);
+      }
       if (crocOmniSearchDebounceId) {
         clearTimeout(crocOmniSearchDebounceId);
       }
