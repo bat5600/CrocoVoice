@@ -3633,6 +3633,14 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
   }
   session.seqExpected += 1;
   session.lastChunkAt = Date.now();
+  if (!session.firstChunkAt) {
+    session.firstChunkAt = session.lastChunkAt;
+    recordStreamEvent('stream_first_chunk_main', {
+      id: session.id,
+      codec: session.codec,
+      seq: payload.seq,
+    });
+  }
   let samples = null;
   if (session.codec === 'opus') {
     const chunk = payload.chunk;
@@ -3657,7 +3665,20 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
     session.encodedChunks.push(Buffer.from(chunk));
   } else {
     samples = payload.samples;
+    if (samples instanceof ArrayBuffer) {
+      samples = new Float32Array(samples);
+    } else if (ArrayBuffer.isView(samples) && !(samples instanceof Float32Array)) {
+      const byteLength = samples.byteLength || 0;
+      const length = Math.floor(byteLength / Float32Array.BYTES_PER_ELEMENT);
+      samples = new Float32Array(samples.buffer, samples.byteOffset || 0, length);
+    } else if (Array.isArray(samples)) {
+      samples = Float32Array.from(samples);
+    }
     if (!samples || !samples.length) {
+      recordStreamEvent('stream_chunk_empty', {
+        id: session.id,
+        typeof: typeof payload.samples,
+      });
       return;
     }
     if (samples.length > STREAM_MAX_CHUNK_SAMPLES) {

@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const IPC_SAFE_MODE = process.platform === 'win32'
+  || ['1', 'true', 'yes'].includes(String(process.env.CROCOVOICE_IPC_SAFE_MODE || '').trim().toLowerCase());
+
 const listenerRegistry = new Map();
 
 function registerListener(channel, handler) {
@@ -205,7 +208,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendStreamStop: (payload) => ipcRenderer.send('stream:stop', payload),
   sendStreamDiag: (payload) => ipcRenderer.send('stream:diag', payload),
   sendStreamChunk: (payload, transferList = []) => {
-    if (ipcRenderer.postMessage) {
+    if (!IPC_SAFE_MODE && ipcRenderer.postMessage) {
       ipcRenderer.postMessage('stream:chunk', payload, transferList);
       return;
     }

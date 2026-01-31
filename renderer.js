@@ -24,6 +24,7 @@ let streamSource = null;
 let streamSessionId = null;
 let streamSequence = 0;
 let streamingUsesWorklet = false;
+let streamFirstChunkSent = false;
 let streamPingTimeoutId = null;
 let streamPingBackoffMs = 1000;
 let lastStreamPongAt = 0;
@@ -996,6 +997,7 @@ function handleStreamingDisconnect(message) {
   streamSequence = 0;
   streamingActive = false;
   streamingUsesWorklet = false;
+  streamFirstChunkSent = false;
 }
 
 function scheduleStreamPing() {
@@ -1065,6 +1067,7 @@ async function initializeMediaRecorder(streamingMode = false) {
       streamSequence = 0;
       streamingActive = true;
       streamingUsesWorklet = false;
+      streamFirstChunkSent = false;
       if (window.electronAPI?.sendStreamStart) {
         window.electronAPI.sendStreamStart({
           sessionId: streamSessionId,
@@ -1077,6 +1080,17 @@ async function initializeMediaRecorder(streamingMode = false) {
         if (event.data && event.data.size > 0) {
           const ab = await event.data.arrayBuffer();
           if (window.electronAPI?.sendStreamChunk) {
+            if (!streamFirstChunkSent && window.electronAPI?.sendStreamDiag) {
+              streamFirstChunkSent = true;
+              window.electronAPI.sendStreamDiag({
+                code: 'stream_first_chunk',
+                details: {
+                  mode: 'mediarecorder',
+                  sessionId: streamSessionId,
+                  size: event.data.size,
+                },
+              });
+            }
             window.electronAPI.sendStreamChunk(
               {
                 sessionId: streamSessionId,
@@ -1109,6 +1123,7 @@ async function initializeMediaRecorder(streamingMode = false) {
         streamSequence = 0;
         streamingActive = false;
         streamingUsesWorklet = false;
+        streamFirstChunkSent = false;
         stopStreamHeartbeat();
         clearSafetyMonitor();
         if (audioStream) {
@@ -1234,6 +1249,17 @@ async function initializeStreamingRecorder() {
       if (!window.electronAPI?.sendStreamChunk || !streamSessionId) {
         return;
       }
+      if (!streamFirstChunkSent && window.electronAPI?.sendStreamDiag) {
+        streamFirstChunkSent = true;
+        window.electronAPI.sendStreamDiag({
+          code: 'stream_first_chunk',
+          details: {
+            mode: 'worklet',
+            sessionId: streamSessionId,
+            length: samples?.length || 0,
+          },
+        });
+      }
       window.electronAPI.sendStreamChunk(
         {
           sessionId: streamSessionId,
@@ -1255,6 +1281,7 @@ async function initializeStreamingRecorder() {
     streamSequence = 0;
     streamingActive = true;
     streamingUsesWorklet = true;
+    streamFirstChunkSent = false;
     if (window.electronAPI?.sendStreamStart) {
       window.electronAPI.sendStreamStart({
         sessionId: streamSessionId,
@@ -1284,6 +1311,7 @@ function stopStreamingRecording() {
   }
   streamingActive = false;
   streamingUsesWorklet = false;
+  streamFirstChunkSent = false;
   stopStreamHeartbeat();
   if (window.electronAPI?.sendStreamStop && streamSessionId) {
     window.electronAPI.sendStreamStop({ sessionId: streamSessionId });

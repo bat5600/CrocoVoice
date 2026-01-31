@@ -4104,6 +4104,7 @@ function updateCrocOmniSettings(nextSettings) {
 
   if (diagnosticsCopy) {
     diagnosticsCopy.addEventListener('click', async () => {
+      await fetchDiagnostics();
       const text = diagnosticsOutput?.textContent || '';
       if (!text) {
         showToast('Aucun diagnostic à copier.', 'error');
