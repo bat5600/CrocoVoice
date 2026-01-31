@@ -6,6 +6,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
+    "supabase:link": "npx supabase@latest link --project-ref wkoqeffrwrlfvfcvqhee",
+    "supabase:schema": "npx supabase@latest db dump --linked --schema-only > schema.sql",
     "bmad:refresh": "bmad-method install -f -i codex",
     "bmad:list": "bmad-method list:agents",
     "bmad:validate": "bmad-method validate"

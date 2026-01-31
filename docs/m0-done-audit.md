@@ -23,39 +23,40 @@ Use this template to turn “DONE*” into verified DONE for Epics 1–3.
 ## Regression Checklist (tick when verified)
 
 ### Dictation pipeline
-- [ ] Hotkey start/stop works and cannot be double-triggered
-- [ ] Recording → processing → delivered states are consistent
-- [ ] No UI freeze during OpenAI calls
+- [x] Hotkey start/stop works and cannot be double-triggered
+- [x] Recording → processing → delivered states are consistent
+- [x] No UI freeze during OpenAI calls
 
 ### Delivery robustness
-- [ ] Typing works when permissions are granted
-- [ ] If typing fails, paste fallback is attempted (where supported)
-- [ ] If paste fails, clipboard fallback happens and user is notified
-- [ ] “Typing guard” blocks writing to the wrong window if focus changes during processing
+- [x] Typing works when permissions are granted
+- [x] If typing fails, paste fallback is attempted (where supported)
+- [x] If paste fails, clipboard fallback happens and user is notified
+- [x] “Typing guard” blocks writing to the wrong window if focus changes during processing (warninr-only, not real enforcment for now)
 
 ### Quota
-- [ ] Weekly quota remaining decreases based on final text word count
-- [ ] Restart app → quota is still correct (no fake 2000 on boot)
-- [ ] Reset label is correct (UTC boundary) and matches the implemented policy
+- [x] Weekly quota remaining decreases based on final text word count
+- [x] Restart app → quota is still correct (no fake 2000 on boot)
+- [x] Reset label is correct (UTC boundary) and matches the implemented policy
 
 ### Paywall
-- [ ] At 0 words, paywall shows only when the user attempts dictation (just-in-time)
-- [ ] Dismiss behavior is acceptable (user can still browse non-dictation areas)
-- [ ] “Go to dashboard” works from paywall UI
+- [x] At 0 words, paywall shows only when the user attempts dictation (just-in-time)
+- [x] Dismiss behavior is acceptable (user can still browse non-dictation areas)
+- [x] “Go to dashboard” works from paywall UI
 
 ### Billing
-- [ ] “Upgrade” opens checkout and shows loading state
-- [ ] “Manage subscription” opens portal and shows loading state
-- [ ] Subscription refresh/activation flow is understandable to the user
+- [x] “Upgrade” opens checkout and shows loading state
+- [x] “Manage subscription” opens portal and shows loading state
+- [x] Subscription refresh/activation flow is understandable to the user
 
 ### Auth
-- [ ] Login works (online, Supabase configured)
-- [ ] Logout works (if supported)
-- [ ] Forgot password flow works via `docs/signup.html` (reset email → set password)
+- [x] Login works (online, Supabase configured)
+- [x] Logout works (if supported)
+- [x] Forgot password flow works via `docs/signup.html` (reset email → set password)
+NOTES : the email are not yet personnalised
 
 ### Offline behavior (declare expected behavior first)
-- [ ] With network disabled, the app behavior matches the chosen quota mode (`local/hybrid/server`)
-- [ ] Errors are clear and recoverable; app returns to stable idle state
+- [x] With network disabled, the app behavior matches the chosen quota mode (`local/hybrid/server`)
+- [x] Errors are clear and recoverable; app returns to stable idle state
 
 ## Accepted Risks (explicit sign-off)
 

@@ -37,6 +37,9 @@ Ship a market-ready desktop release that validates MVP behavior, locks operation
    - Create a repeatable smoke checklist derived from the M0 audit.
 3) **Rollback Runbook** (Owner: architect + dev)
    - Document rollback steps per integration (quota, billing, auth, permissions).
+4) **Vercel Auth Pages Deployment** (Owner: pm + dev)
+   - Host `web/` static pages (sales + signup) via Vercel Root Directory.
+   - Review/confirm external links (signup URL, legal links) before go-live.
 
 ### Phase 2: Product & UX Validation
 **Goal:** Ensure UX and product surface areas are ready for external users.
