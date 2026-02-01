@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -75,14 +75,15 @@
   <body>
     <div class="tray-shell">
       <div id="trayMenu" class="tray-menu" role="menu" aria-hidden="false">
-        <button type="button" id="trayToggleButton" data-action="toggle-recording">
-          Démarrer la dictée
+        <button type="button" id="trayToggleButton" data-action="toggle-recording" data-i18n="tray.toggle.start">
+          Start dictation
         </button>
-        <button type="button" data-action="open-settings">Paramètres</button>
+        <button type="button" data-action="open-settings" data-i18n="tray.settings">Settings</button>
         <div class="separator" role="separator"></div>
-        <button type="button" data-action="quit" class="muted">Quitter CrocoVoice</button>
+        <button type="button" data-action="quit" class="muted" data-i18n="tray.quit">Quit CrocoVoice</button>
       </div>
     </div>
+    <script src="./i18n.js"></script>
     <script src="./tray-menu.js"></script>
   </body>
 </html>

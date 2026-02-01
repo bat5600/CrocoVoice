@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -917,71 +917,71 @@
   <div class="widget-shell">
     <div class="widget-container idle" id="widgetContainer">
       <div class="pill-button">
-        <button class="cancel-button" type="button" id="cancelRecordingButton" aria-label="Annuler l'enregistrement">x</button>
+        <button class="cancel-button" type="button" id="cancelRecordingButton" aria-label="Cancel recording" data-i18n="widget.cancel.aria" data-i18n-attr="aria-label">x</button>
         <div class="waveform" aria-hidden="true">
           <canvas class="waveform-canvas" id="waveformCanvas" width="58" height="18"></canvas>
         </div>
-        <button class="stop-button" type="button" id="stopRecordingButton" aria-label="Arrêter">
+        <button class="stop-button" type="button" id="stopRecordingButton" aria-label="Stop" data-i18n="widget.stop.aria" data-i18n-attr="aria-label">
           <span class="stop-icon" aria-hidden="true"></span>
-          Arrêter
+          <span data-i18n="widget.stop.label">Stop</span>
         </button>
         <div class="spinner" aria-hidden="true"></div>
       </div>
 
       <div class="tooltip" role="tooltip" id="recordingTooltip">
-        Cliquez ou maintenez <kbd id="shortcutLabel">[Raccourci]</kbd> pour dicter
+        <span data-i18n="widget.tooltip.prefix">Click or hold</span> <kbd id="shortcutLabel">[Shortcut]</kbd> <span data-i18n="widget.tooltip.suffix">to dictate</span>
       </div>
 
-      <div class="status-text" id="statusText" aria-live="polite">Prêt</div>
+      <div class="status-text" id="statusText" aria-live="polite">Ready</div>
       <div class="widget-error" id="widgetError" aria-live="polite">
         <span class="widget-error-icon">i</span>
-        <span class="widget-error-text" id="widgetErrorText">Erreur</span>
-        <button class="widget-error-action" type="button" id="widgetErrorUpgradeButton">Passer Pro</button>
+        <span class="widget-error-text" id="widgetErrorText" data-i18n="widget.error.label">Error</span>
+        <button class="widget-error-action" type="button" id="widgetErrorUpgradeButton" data-i18n="widget.error.upgrade">Go Pro</button>
       </div>
       <div class="cancel-undo" id="cancelUndo" aria-live="polite">
         <span class="cancel-undo-icon">i</span>
-        <span class="cancel-undo-text">Transcript cancelled</span>
+        <span class="cancel-undo-text" data-i18n="widget.cancelled">Transcript cancelled</span>
         <div class="cancel-undo-bar">
           <div class="cancel-undo-progress" id="cancelUndoProgress"></div>
         </div>
-        <button type="button" id="undoCancelButton">Undo</button>
+        <button type="button" id="undoCancelButton" data-i18n="widget.undo">Undo</button>
       </div>
 
       <div class="context-menu" role="menu" aria-hidden="true">
-        <button type="button" role="menuitem" data-action="hide-1h">Masquer pendant 1 heure</button>
-        <button type="button" role="menuitem" data-action="open-settings">Paramètres</button>
-        <button type="button" role="menuitem" data-action="open-polish">Voir le polish</button>
+        <button type="button" role="menuitem" data-action="hide-1h" data-i18n="widget.menu.hide1h">Hide for 1 hour</button>
+        <button type="button" role="menuitem" data-action="open-settings" data-i18n="widget.menu.settings">Settings</button>
+        <button type="button" role="menuitem" data-action="open-polish" data-i18n="widget.menu.polish">View polish</button>
         <div class="menu-separator" role="separator"></div>
         <div class="menu-item" data-submenu="microphone">
           <button type="button" role="menuitem" data-action="toggle-microphone">
-            <span id="widgetMicrophoneLabel">Changer le micro</span>
+            <span id="widgetMicrophoneLabel" data-i18n="widget.menu.microphone">Change mic</span>
             <span class="menu-muted">&gt;</span>
           </button>
           <div class="submenu-panel" data-submenu-panel="microphone">
-            <div class="submenu-header">Microphone</div>
+            <div class="submenu-header" data-i18n="widget.menu.microphone.header">Microphone</div>
             <div class="submenu-list" id="widgetMicrophoneList"></div>
             <div class="submenu-footer">
-              <div class="submenu-footer-label">Micro en cours :</div>
+              <div class="submenu-footer-label" data-i18n="widget.menu.microphone.current">Current mic:</div>
               <div class="submenu-footer-value" id="widgetMicrophoneCurrent">—</div>
             </div>
           </div>
         </div>
         <div class="menu-item" data-submenu="language">
           <button type="button" role="menuitem" data-action="toggle-language">
-            <span id="widgetLanguageLabel">Langue</span>
+            <span id="widgetLanguageLabel" data-i18n="widget.menu.language">Language</span>
             <span class="menu-muted">&gt;</span>
           </button>
           <div class="submenu-panel" data-submenu-panel="language">
-            <div class="submenu-header">Langue</div>
-            <input type="text" class="submenu-search" id="widgetLanguageSearch" placeholder="Rechercher une langue...">
+            <div class="submenu-header" data-i18n="widget.menu.language.header">Language</div>
+            <input type="text" class="submenu-search" id="widgetLanguageSearch" placeholder="Search a language..." data-i18n="widget.menu.language.search" data-i18n-attr="placeholder">
             <div class="submenu-list" id="widgetLanguageList"></div>
           </div>
         </div>
         <div class="menu-separator" role="separator"></div>
-        <button type="button" role="menuitem" data-action="open-history">Voir l'historique</button>
+        <button type="button" role="menuitem" data-action="open-history" data-i18n="widget.menu.history">View history</button>
         <button type="button" role="menuitem" data-action="paste-latest">
-          <span>Coller la dernière transcription</span>
-          <span class="menu-muted">(Raccourci)</span>
+          <span data-i18n="widget.menu.pasteLatest">Paste latest transcription</span>
+          <span class="menu-muted" data-i18n="widget.menu.shortcutHint">(Shortcut)</span>
         </button>
       </div>
     </div>
@@ -989,40 +989,41 @@
 
   <div class="auth-gate" id="authGate" aria-hidden="true">
     <div class="auth-card">
-      <div class="auth-title">Connexion requise</div>
-      <p class="auth-subtitle">Connectez-vous pour accéder à CrocoVoice et synchroniser vos données.</p>
+      <div class="auth-title" data-i18n="auth.title">Login required</div>
+      <p class="auth-subtitle" data-i18n="auth.subtitle">Sign in to access CrocoVoice and sync your data.</p>
       <div class="auth-status" id="authStatusText" aria-live="polite"></div>
       <form class="auth-form" id="authLoginForm">
-        <label class="auth-label" for="authEmail">Adresse email</label>
-        <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="vous@exemple.com" required>
-        <label class="auth-label" for="authPassword">Mot de passe</label>
-        <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" required>
-        <button class="auth-primary" type="submit" id="authLoginButton">Se connecter</button>
+        <label class="auth-label" for="authEmail" data-i18n="auth.email.label">Email address</label>
+        <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" data-i18n="auth.email.placeholder" data-i18n-attr="placeholder" required>
+        <label class="auth-label" for="authPassword" data-i18n="auth.password.label">Password</label>
+        <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Your password" data-i18n="auth.password.placeholder" data-i18n-attr="placeholder" required>
+        <button class="auth-primary" type="submit" id="authLoginButton" data-i18n="auth.login">Sign in</button>
       </form>
       <div class="auth-actions">
-        <button class="secondary" type="button" id="authSignupButton">S'inscrire</button>
-        <button class="secondary" type="button" id="authRetryButton">Réessayer</button>
+        <button class="secondary" type="button" id="authSignupButton" data-i18n="auth.signup">Create account</button>
+        <button class="secondary" type="button" id="authRetryButton" data-i18n="auth.retry">Retry</button>
       </div>
     </div>
   </div>
 
   <div class="quota-gate" id="quotaGate" aria-hidden="true">
     <div class="quota-card">
-      <div class="quota-title">Quota atteint</div>
-      <p class="quota-subtitle">Votre quota hebdomadaire de mots est épuisé.</p>
+      <div class="quota-title" data-i18n="quota.title">Quota reached</div>
+      <p class="quota-subtitle" data-i18n="quota.subtitle">Your weekly word quota is exhausted.</p>
       <div class="quota-metrics">
-        <div><strong id="quotaGateRemaining">0</strong> mots restants</div>
-        <div><span id="quotaGateReset">Reset lundi 00:00 UTC</span></div>
+        <div><strong id="quotaGateRemaining">0</strong> <span data-i18n="quota.remaining">words remaining</span></div>
+        <div><span id="quotaGateReset" data-i18n="quota.reset">Reset Monday 00:00 UTC</span></div>
       </div>
       <div class="quota-actions">
-        <button class="primary" type="button" id="quotaUpgradeButton">Passer Pro</button>
-        <button class="secondary" type="button" id="quotaDashboardButton">Ouvrir le dashboard</button>
-        <button class="secondary" type="button" id="quotaDismissButton">Fermer</button>
+        <button class="primary" type="button" id="quotaUpgradeButton" data-i18n="quota.upgrade">Go Pro</button>
+        <button class="secondary" type="button" id="quotaDashboardButton" data-i18n="quota.dashboard">Open dashboard</button>
+        <button class="secondary" type="button" id="quotaDismissButton" data-i18n="quota.dismiss">Close</button>
       </div>
       <div class="quota-status" id="quotaGateStatus" aria-live="polite"></div>
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

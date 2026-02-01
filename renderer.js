@@ -204,6 +204,13 @@ function resolveMicrophoneDevice() {
       return direct;
     }
   }
+  const groupId = (currentSettings.microphoneGroupId || '').trim();
+  if (groupId) {
+    const match = availableMicrophones.find((mic) => (mic.groupId || '').trim() === groupId);
+    if (match) {
+      return match;
+    }
+  }
   const label = (currentSettings.microphoneLabel || '').trim().toLowerCase();
   if (!label) {
     return null;
@@ -245,6 +252,7 @@ function renderMicrophoneList() {
     button.className = 'submenu-item';
     button.dataset.micId = mic.deviceId;
     button.dataset.micLabel = mic.label || '';
+    button.dataset.micGroup = mic.groupId || '';
     const label = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
     const isSelected = resolvedId === mic.deviceId;
     const labelSpan = document.createElement('span');
@@ -353,13 +361,16 @@ function setAvailableMicrophones(candidates) {
     .map((device) => ({
       deviceId: device.deviceId || '',
       label: device.label || '',
+      groupId: device.groupId || '',
     }));
   const storedId = currentSettings.microphoneId || '';
   const storedLabel = (currentSettings.microphoneLabel || '').trim();
+  const storedGroupId = (currentSettings.microphoneGroupId || '').trim();
   if (storedId && !normalized.some((device) => device.deviceId === storedId)) {
     normalized.unshift({
       deviceId: storedId,
       label: storedLabel || `Micro ${storedId.slice(0, 4)}...`,
+      groupId: storedGroupId,
       __stored: true,
     });
   }
@@ -415,11 +426,12 @@ function saveWidgetSetting(key, value) {
   updateMenuLabels();
 }
 
-function saveWidgetMicrophone(deviceId, label) {
+function saveWidgetMicrophone(deviceId, label, groupId = '') {
   currentSettings = {
     ...currentSettings,
     microphoneId: deviceId || '',
     microphoneLabel: deviceId ? (label || '') : '',
+    microphoneGroupId: deviceId ? (groupId || '') : '',
   };
   if (window.electronAPI?.saveSettings) {
     const payload = { ...currentSettings };

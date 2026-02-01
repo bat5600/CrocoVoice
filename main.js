@@ -2124,6 +2124,79 @@ function normalizeSnippetCue(value) {
     .replace(/[\s\p{P}]+$/gu, '');
 }
 
+function buildSnippetTokenPattern(token) {
+  if (!token) {
+    return '';
+  }
+  const optionalPunct = /[-–—'’\.]/;
+  const chars = token.toString().split('');
+  if (!chars.length) {
+    return '';
+  }
+  const parts = [];
+  let hasLiteral = false;
+  chars.forEach((char) => {
+    if (/\s/.test(char)) {
+      return;
+    }
+    if (optionalPunct.test(char)) {
+      parts.push('[\\s\\p{P}]*');
+      return;
+    }
+    hasLiteral = true;
+    parts.push(escapeRegExp(char));
+    parts.push('[\\s\\p{P}]*');
+  });
+  if (!parts.length || !hasLiteral) {
+    return '';
+  }
+  return parts.join('');
+}
+
+function buildSnippetCuePattern(cueNorm) {
+  if (!cueNorm) {
+    return '';
+  }
+  const tokens = cueNorm.split(' ').filter(Boolean);
+  if (!tokens.length) {
+    return '';
+  }
+  const tokenPatterns = tokens.map(buildSnippetTokenPattern).filter(Boolean);
+  if (!tokenPatterns.length) {
+    return '';
+  }
+  return tokenPatterns.join('[\\s\\p{P}]+');
+}
+
+function findSnippetCueMatch(text, cueNorm) {
+  if (!text || !cueNorm) {
+    return null;
+  }
+  const pattern = buildSnippetCuePattern(cueNorm);
+  if (!pattern) {
+    return null;
+  }
+  const regex = new RegExp(`(?:^|[\\s\\p{P}])(${pattern})(?=[\\s\\p{P}]|$)`, 'iu');
+  const match = regex.exec(text);
+  if (!match || !match[1]) {
+    return null;
+  }
+  const cueStart = match.index + (match[0].length - match[1].length);
+  const cueEnd = cueStart + match[1].length;
+  return { cueStart, cueEnd };
+}
+
+function skipSnippetSeparators(text, startIndex) {
+  if (!text || !Number.isFinite(startIndex)) {
+    return startIndex || 0;
+  }
+  let index = startIndex;
+  while (index < text.length && /[\s\p{P}]/u.test(text[index])) {
+    index += 1;
+  }
+  return index;
+}
+
 function normalizeFuzzyText(value) {
   if (!value) {
     return '';
@@ -2232,30 +2305,19 @@ function stripCueFromText(text, cueNorm) {
   if (!text || !cueNorm) {
     return text || '';
   }
-  const tokens = cueNorm.split(' ').filter(Boolean).map(escapeRegExp);
-  if (!tokens.length) {
-    return text || '';
-  }
-  const pattern = tokens.join('\\s+');
-  const regex = new RegExp(`^\\s*${pattern}[\\s\\p{P}]*`, 'iu');
-  const match = text.match(regex);
+  const match = findSnippetCueMatch(text, cueNorm);
   if (!match) {
     return text;
   }
-  return text.slice(match[0].length);
+  const removeEnd = skipSnippetSeparators(text, match.cueEnd);
+  return text.slice(removeEnd);
 }
 
 function matchesSnippetCue(text, cueNorm) {
   if (!text || !cueNorm) {
     return false;
   }
-  const tokens = cueNorm.split(' ').filter(Boolean).map(escapeRegExp);
-  if (!tokens.length) {
-    return false;
-  }
-  const pattern = tokens.join('\\s+');
-  const regex = new RegExp(`^\\s*${pattern}(?:[\\s\\p{P}]+|$)`, 'iu');
-  return regex.test(text);
+  return Boolean(findSnippetCueMatch(text, cueNorm));
 }
 
 function shouldTreatDiagnosticsAsNoSpeech(diagnostics) {
@@ -3238,13 +3300,24 @@ async function applySnippets(text) {
   if (!entries.length) {
     return text;
   }
-  const matches = entries.filter((entry) => {
-    const cueNorm = entry.cue_norm || normalizeSnippetCue(entry.cue);
+  const matches = entries.map((entry) => {
+    const cueNorm = normalizeSnippetCue(entry.cue || entry.cue_norm || '');
     if (!cueNorm) {
-      return false;
+      return null;
     }
-    return matchesSnippetCue(text, cueNorm);
-  });
+    const match = findSnippetCueMatch(text, cueNorm);
+    if (!match) {
+      return null;
+    }
+    return {
+      entry,
+      cueNorm,
+      cueStart: match.cueStart,
+      cueEnd: match.cueEnd,
+      removeEnd: skipSnippetSeparators(text, match.cueEnd),
+      length: cueNorm.length,
+    };
+  }).filter(Boolean);
 
   if (!matches.length) {
     const fuzzyMatch = findFuzzySnippetMatch(text, entries);
@@ -3265,30 +3338,29 @@ async function applySnippets(text) {
     return `${template} ${remaining}`.trim();
   }
 
-  const longest = matches.reduce((max, entry) => {
-    const length = (entry.cue_norm || normalizeSnippetCue(entry.cue)).length;
-    return length > max ? length : max;
+  const longest = matches.reduce((max, match) => {
+    return match.length > max ? match.length : max;
   }, 0);
-  const bestMatches = matches.filter((entry) => {
-    const length = (entry.cue_norm || normalizeSnippetCue(entry.cue)).length;
-    return length === longest;
-  });
+  const bestMatches = matches.filter((match) => match.length === longest);
   if (bestMatches.length !== 1) {
     return text;
   }
   const chosen = bestMatches[0];
-  const remaining = stripCueFromText(text || '', chosen.cue_norm || normalizeSnippetCue(chosen.cue || '')).trim();
-  const template = (chosen.template || '').trim();
+  const prefix = text.slice(0, chosen.cueStart);
+  const remaining = text.slice(chosen.removeEnd).trim();
+  const template = (chosen.entry.template || '').trim();
   if (!template) {
     return text;
   }
   if (template.includes('{{content}}')) {
-    return template.replace(/{{\s*content\s*}}/g, remaining);
+    const replaced = template.replace(/{{\s*content\s*}}/g, remaining);
+    return `${prefix}${replaced}`;
   }
   if (!remaining) {
-    return template;
+    return `${prefix}${template}`;
   }
-  return `${template} ${remaining}`.trim();
+  const stitched = `${template} ${remaining}`.trim();
+  return `${prefix}${stitched}`;
 }
 
 function computeDivergenceScore(rawText, formattedText) {

@@ -45,6 +45,7 @@ const snippetTemplateInput = document.getElementById('snippetTemplateInput');
 const snippetDescriptionInput = document.getElementById('snippetDescriptionInput');
 const snippetCancelButton = document.getElementById('snippetCancelButton');
 const snippetAddButton = document.getElementById('snippetAddButton');
+const snippetInsertContentButton = document.getElementById('snippetInsertContentButton');
 const styleList = document.getElementById('styleList');
 const styleEmpty = document.getElementById('styleEmpty');
 const contextEnabledToggle = document.getElementById('contextEnabledToggle');
@@ -217,6 +218,30 @@ let localAsrCommandRescanPending = false;
 let crocOmniStreaming = false;
 let crocOmniStreamState = new Map();
 let insightsRangeDays = 30;
+
+const i18n = window.CrocoI18n || null;
+const t = i18n
+  ? i18n.t
+  : (key, vars, fallback) => (fallback !== undefined ? fallback : key);
+
+function applyDashboardLanguage(settings) {
+  if (!i18n) {
+    return;
+  }
+  const nextLanguage = i18n.normalizeLanguage(settings?.uiLanguage);
+  i18n.setLanguage(nextLanguage);
+  updateBreadcrumb(currentView);
+  if (dashboardData?.stats) {
+    renderStats(dashboardData.stats);
+  }
+  if (dashboardData?.quota) {
+    renderQuota(dashboardData.quota);
+  }
+  if (dashboardData?.subscription || dashboardData?.auth) {
+    renderSubscription(dashboardData.subscription, dashboardData.auth);
+  }
+  renderDiagnostics();
+}
 let modalResolver = null;
 let platform = 'win32';
 let shortcutCaptureActive = false;
@@ -691,6 +716,20 @@ async function triggerCheckout(button) {
   }
 }
 
+function insertTextAtCursor(input, text) {
+  if (!input) {
+    return;
+  }
+  const value = input.value || '';
+  const start = Number.isInteger(input.selectionStart) ? input.selectionStart : value.length;
+  const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : value.length;
+  input.value = value.slice(0, start) + text + value.slice(end);
+  const nextPos = start + text.length;
+  input.selectionStart = nextPos;
+  input.selectionEnd = nextPos;
+  input.focus();
+}
+
 function openModal({ title, fields, confirmText }) {
   if (!modalBackdrop || !modalBody || !modalTitle || !modalCancel || !modalConfirm) {
     return Promise.resolve(null);
@@ -733,6 +772,37 @@ function openModal({ title, fields, confirmText }) {
 
     wrapper.appendChild(label);
     wrapper.appendChild(input);
+
+    if (field.helperText || field.helperAction) {
+      const helper = document.createElement('div');
+      helper.className = 'input-helper';
+
+      if (field.helperText) {
+        const helperText = document.createElement('span');
+        helperText.className = 'input-helper-text';
+        helperText.textContent = field.helperText;
+        helper.appendChild(helperText);
+      }
+
+      if (field.helperAction) {
+        const helperButton = document.createElement('button');
+        helperButton.type = 'button';
+        helperButton.className = 'snippet-insert-button';
+        const token = document.createElement('span');
+        token.className = 'snippet-token';
+        token.textContent = field.helperAction.token || '{{content}}';
+        const label = document.createElement('span');
+        label.textContent = field.helperAction.label || 'Insérer le contenu';
+        helperButton.appendChild(token);
+        helperButton.appendChild(label);
+        helperButton.addEventListener('click', () => {
+          insertTextAtCursor(input, field.helperAction.value || '{{content}}');
+        });
+        helper.appendChild(helperButton);
+      }
+
+      wrapper.appendChild(helper);
+    }
     modalBody.appendChild(wrapper);
     inputs[field.key] = input;
 
@@ -864,20 +934,20 @@ function updateBreadcrumb(viewName) {
   }
 
   const map = {
-    home: { primary: 'Dashboard', secondary: 'Historique' },
-    notes: { primary: 'Notes', secondary: 'Bibliothèque' },
-    'note-focus': { primary: 'Notes', secondary: 'Focus' },
-    dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
-    snippets: { primary: 'Snippets', secondary: 'Templates' },
-    crocomni: { primary: 'CrocOmni', secondary: 'Assistant' },
-    inbox: { primary: 'Notifications', secondary: 'Inbox' },
-    insights: { primary: 'Insights', secondary: 'Wrapped' },
-    context: { primary: 'Context', secondary: 'Privacy' },
-    style: { primary: 'Styles', secondary: 'Persona' },
-    settings: { primary: 'Réglages', secondary: 'Général' },
-    diagnostics: { primary: 'Diagnostics', secondary: 'Etat' },
-    diff: { primary: 'Polish', secondary: 'Avant / Après' },
-    account: { primary: 'Profil', secondary: 'Facturation' },
+    home: { primary: t('breadcrumb.home.primary'), secondary: t('breadcrumb.home.secondary') },
+    notes: { primary: t('breadcrumb.notes.primary'), secondary: t('breadcrumb.notes.secondary') },
+    'note-focus': { primary: t('breadcrumb.notes.primary'), secondary: t('breadcrumb.notes.focus') },
+    dictionary: { primary: t('breadcrumb.dictionary.primary'), secondary: t('breadcrumb.dictionary.secondary') },
+    snippets: { primary: t('breadcrumb.snippets.primary'), secondary: t('breadcrumb.snippets.secondary') },
+    crocomni: { primary: t('breadcrumb.crocomni.primary'), secondary: t('breadcrumb.crocomni.secondary') },
+    inbox: { primary: t('breadcrumb.inbox.primary'), secondary: t('breadcrumb.inbox.secondary') },
+    insights: { primary: t('breadcrumb.insights.primary'), secondary: t('breadcrumb.insights.secondary') },
+    context: { primary: t('breadcrumb.context.primary'), secondary: t('breadcrumb.context.secondary') },
+    style: { primary: t('breadcrumb.styles.primary'), secondary: t('breadcrumb.styles.secondary') },
+    settings: { primary: t('breadcrumb.settings.primary'), secondary: t('breadcrumb.settings.secondary') },
+    diagnostics: { primary: t('breadcrumb.diagnostics.primary'), secondary: t('breadcrumb.diagnostics.secondary') },
+    diff: { primary: t('breadcrumb.diff.primary'), secondary: t('breadcrumb.diff.secondary') },
+    account: { primary: t('breadcrumb.account.primary'), secondary: t('breadcrumb.account.secondary') },
   };
 
   const next = map[viewName] || map.home;
@@ -1073,7 +1143,7 @@ function showToast(message, type = 'success') {
   const content = document.createElement('div');
   const title = document.createElement('div');
   title.className = 'toast-title';
-  title.textContent = type === 'error' ? 'Erreur' : 'Succès';
+  title.textContent = type === 'error' ? t('toast.title.error') : t('toast.title.success');
   const messageEl = document.createElement('div');
   messageEl.className = 'toast-message';
   messageEl.textContent = message || '';
@@ -1107,7 +1177,7 @@ function showUndoToast(message, actionLabel, onUndo) {
   const content = document.createElement('div');
   const title = document.createElement('div');
   title.className = 'toast-title';
-  title.textContent = 'Action';
+  title.textContent = t('toast.title.action');
   const messageEl = document.createElement('div');
   messageEl.className = 'toast-message';
   messageEl.textContent = message || '';
@@ -1141,6 +1211,14 @@ function showUndoToast(message, actionLabel, onUndo) {
       dismiss();
     }
   }, 5200);
+}
+
+function showToastKey(key, type = 'success', vars) {
+  showToast(t(key, vars), type);
+}
+
+function showUndoToastKey(messageKey, actionKey, onUndo, vars) {
+  showUndoToast(t(messageKey, vars), t(actionKey), onUndo);
 }
 
 async function deleteNoteWithUndo(entry) {
@@ -2600,13 +2678,13 @@ function getModelDownloadStatus(model) {
   const percent = Number.isFinite(model.download?.progress) ? model.download.progress : 0;
   let label = '';
   if (status === 'queued') {
-    label = 'En attente...';
+    label = t('localModel.download.queued');
   } else if (status === 'downloading') {
-    label = `Téléchargement... ${percent}%`;
+    label = t('localModel.download.progress', { percent });
   } else if (status === 'verifying') {
-    label = 'Vérification...';
+    label = t('localModel.download.verifying');
   } else if (status === 'paused') {
-    label = 'Téléchargement en pause.';
+    label = t('localModel.download.paused');
   }
   return { status, percent, label };
 }
@@ -2628,18 +2706,18 @@ function formatDownloadDetail(model) {
 function getDownloadErrorMessage(model) {
   const error = model.download?.error || '';
   if (error === 'checksum_mismatch') {
-    return 'Vérification échouée. Réessayez.';
+    return t('localModel.download.checksumMismatch');
   }
   if (error === 'download_failed' || error === 'http_error') {
-    return 'Téléchargement indisponible. Réessayez.';
+    return t('localModel.download.unavailable');
   }
   if (error === 'write_failed') {
-    return 'Erreur d\'écriture disque. Vérifiez l\'espace.';
+    return t('localModel.download.writeFailed');
   }
   if (error) {
-    return `Téléchargement échoué: ${error}.`;
+    return t('localModel.download.failedWithReason', { reason: error });
   }
-  return 'Téléchargement échoué. Réessayez.';
+  return t('localModel.download.failed');
 }
 
 function updateModelDownloadToasts(snapshot) {
@@ -2667,7 +2745,9 @@ function updateModelDownloadToasts(snapshot) {
         removeModelDownloadToast(model.id);
       }
       if (previous !== 'completed') {
-        showToast(`Modèle téléchargé: ${getPresetLabel(model.preset, snapshot.presets)}.`);
+        showToastKey('localModel.download.completed', 'success', {
+          label: getPresetLabel(model.preset, snapshot.presets),
+        });
       }
       nextStatusCache.set(model.id, status);
     } else if (status === 'failed') {
@@ -2716,7 +2796,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
     badges.forEach((label) => {
       const badge = document.createElement('span');
       badge.className = label === 'erreur' ? 'model-badge is-error' : 'model-badge';
-      badge.textContent = label;
+      badge.textContent = t(`localModel.badge.${label}`);
       badgeRow.appendChild(badge);
     });
     meta.appendChild(badgeRow);
@@ -2748,14 +2828,14 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       const cancel = document.createElement('button');
       cancel.type = 'button';
       cancel.className = 'btn-secondary';
-      cancel.textContent = 'Annuler';
+      cancel.textContent = t('localModel.download.cancel');
       cancel.addEventListener('click', async () => {
         if (window.electronAPI?.cancelLocalModelDownload) {
           const result = await window.electronAPI.cancelLocalModelDownload(model.id);
           if (result?.ok) {
-            showToast('Téléchargement annulé.');
+            showToastKey('localModel.download.cancelled');
           } else {
-            showToast('Annulation impossible.', 'error');
+            showToastKey('localModel.download.cancelFailed', 'error');
           }
           await refreshLocalModelsOnly();
           await refreshDashboard();
@@ -2766,7 +2846,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       const resume = document.createElement('button');
       resume.type = 'button';
       resume.className = 'btn-secondary';
-      resume.textContent = 'Reprendre';
+      resume.textContent = t('localModel.download.resume');
       resume.addEventListener('click', async () => {
         if (window.electronAPI?.installLocalModel) {
           await window.electronAPI.installLocalModel(model.id);
@@ -2780,7 +2860,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
         const activate = document.createElement('button');
         activate.type = 'button';
         activate.className = 'btn-secondary';
-        activate.textContent = 'Activer';
+        activate.textContent = t('localModel.action.activate');
         activate.addEventListener('click', async () => {
           if (window.electronAPI?.setLocalModelPreset) {
             await window.electronAPI.setLocalModelPreset(model.preset);
@@ -2794,7 +2874,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
         const upgrade = document.createElement('button');
         upgrade.type = 'button';
         upgrade.className = 'btn-secondary';
-        upgrade.textContent = 'Mettre à jour';
+        upgrade.textContent = t('localModel.action.update');
         upgrade.addEventListener('click', async () => {
           if (window.electronAPI?.installLocalModel) {
             await window.electronAPI.installLocalModel(model.id);
@@ -2807,7 +2887,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn-secondary';
-      remove.textContent = 'Supprimer';
+      remove.textContent = t('localModel.action.remove');
       remove.addEventListener('click', async () => {
         if (window.electronAPI?.removeLocalModel) {
           await window.electronAPI.removeLocalModel(model.id);
@@ -2820,7 +2900,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       const install = document.createElement('button');
       install.type = 'button';
       install.className = 'btn-primary';
-      install.textContent = 'Installer';
+      install.textContent = t('localModel.action.install');
       install.addEventListener('click', async () => {
         if (window.electronAPI?.installLocalModel) {
           await window.electronAPI.installLocalModel(model.id);
@@ -2832,30 +2912,30 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
     } else {
       const note = document.createElement('div');
       note.className = 'model-subtitle';
-      note.textContent = 'Source manquante.';
+      note.textContent = t('localModel.sourceMissing');
       actions.appendChild(note);
     }
   } else if (context === 'onboarding') {
     if (model.download && ['queued', 'downloading', 'verifying'].includes(model.download.status)) {
       const wait = document.createElement('div');
       wait.className = 'model-subtitle';
-      wait.textContent = 'Téléchargement en cours...';
+      wait.textContent = t('localModel.onboarding.downloading');
       actions.appendChild(wait);
     } else if (model.status === 'installed') {
       const done = document.createElement('div');
       done.className = 'model-subtitle';
-      done.textContent = 'Installé.';
+      done.textContent = t('localModel.onboarding.installed');
       actions.appendChild(done);
     } else if (model.urlAvailable) {
       const install = document.createElement('button');
       install.type = 'button';
       install.className = 'btn-primary';
-      install.textContent = 'Installer';
+      install.textContent = t('localModel.action.install');
       install.addEventListener('click', async () => {
         if (window.electronAPI?.installLocalModel) {
           const result = await window.electronAPI.installLocalModel(model.id);
           if (!result?.ok) {
-            showToast('Téléchargement indisponible.', 'error');
+            showToastKey('localModel.download.unavailable', 'error');
           }
           await refreshLocalModelsOnly();
           await refreshDashboard();
@@ -2889,7 +2969,7 @@ function renderLocalModels() {
   if (!modelsToRender.length) {
     const empty = document.createElement('div');
     empty.className = 'model-subtitle';
-    empty.textContent = 'Aucun modèle disponible.';
+    empty.textContent = t('localModel.empty');
     localModelList.appendChild(empty);
   } else {
     modelsToRender.forEach((model) => {
@@ -2898,14 +2978,21 @@ function renderLocalModels() {
   }
   if (localModelSummary) {
     if (!snapshot) {
-      localModelSummary.textContent = 'Chargement...';
+      localModelSummary.textContent = t('localModel.loading');
     } else {
       const recommended = getPresetLabel(snapshot.recommendedPreset, snapshot.presets);
       const activePreset = snapshot.activePreset === 'auto'
-        ? `Auto (${recommended})`
+        ? t('localModel.auto', { preset: recommended })
         : getPresetLabel(snapshot.activePreset, snapshot.presets);
-      const memLabel = snapshot.hardware?.totalMemGb ? `${snapshot.hardware.totalMemGb} GB RAM` : '';
-      localModelSummary.textContent = `Recommandé: ${recommended} · Actif: ${activePreset}${memLabel ? ` · ${memLabel}` : ''}`;
+      const memLabel = snapshot.hardware?.totalMemGb
+        ? t('localModel.memory', { value: snapshot.hardware.totalMemGb })
+        : '';
+      const memory = memLabel ? ` · ${memLabel}` : '';
+      localModelSummary.textContent = t('localModel.summary', {
+        recommended,
+        active: activePreset,
+        memory,
+      });
     }
   }
 }
@@ -2930,7 +3017,9 @@ function renderLocalModelDownloads() {
 
   const heading = document.createElement('div');
   heading.className = 'model-download-heading';
-  heading.textContent = active.length > 1 ? 'Téléchargements en cours' : 'Téléchargement en cours';
+  heading.textContent = active.length > 1
+    ? t('localModel.download.headingPlural')
+    : t('localModel.download.heading');
   localModelDownloads.appendChild(heading);
 
   active.forEach((model) => {
@@ -2966,14 +3055,14 @@ function renderLocalModelDownloads() {
       const cancel = document.createElement('button');
       cancel.type = 'button';
       cancel.className = 'btn-secondary';
-      cancel.textContent = 'Annuler';
+      cancel.textContent = t('localModel.download.cancel');
       cancel.addEventListener('click', async () => {
         if (window.electronAPI?.cancelLocalModelDownload) {
           const result = await window.electronAPI.cancelLocalModelDownload(model.id);
           if (result?.ok) {
-            showToast('Téléchargement annulé.');
+            showToastKey('localModel.download.cancelled');
           } else {
-            showToast('Annulation impossible.', 'error');
+            showToastKey('localModel.download.cancelFailed', 'error');
           }
           await refreshDashboard();
         }
@@ -2983,7 +3072,7 @@ function renderLocalModelDownloads() {
       const resume = document.createElement('button');
       resume.type = 'button';
       resume.className = 'btn-secondary';
-      resume.textContent = 'Reprendre';
+      resume.textContent = t('localModel.download.resume');
       resume.addEventListener('click', async () => {
         if (window.electronAPI?.installLocalModel) {
           await window.electronAPI.installLocalModel(model.id);
@@ -3011,7 +3100,7 @@ function renderOnboardingLocalModels() {
   if (!models.length) {
     const empty = document.createElement('div');
     empty.className = 'model-subtitle';
-    empty.textContent = 'Modèles indisponibles pour le moment.';
+    empty.textContent = t('onboarding.localModel.empty');
     onboardingLocalModelList.appendChild(empty);
     return;
   }
@@ -3032,7 +3121,7 @@ function renderOnboardingLocalModels() {
   });
   if (onboardingLocalModelStatus && snapshot?.recommendedPreset) {
     const recommended = getPresetLabel(snapshot.recommendedPreset, snapshot.presets);
-    onboardingLocalModelStatus.textContent = `Recommandé pour cette machine: ${recommended}.`;
+    onboardingLocalModelStatus.textContent = t('onboarding.localModel.recommended', { preset: recommended });
   }
 }
 
@@ -3044,7 +3133,7 @@ async function fetchDiagnostics() {
     diagnosticsSnapshot = await window.electronAPI.getDiagnostics();
     renderDiagnostics();
   } catch (error) {
-    diagnosticsSnapshot = { error: error?.message || 'Diagnostic indisponible.' };
+    diagnosticsSnapshot = { error: error?.message || t('diagnostics.unavailable') };
     renderDiagnostics();
   }
 }
@@ -3092,64 +3181,70 @@ function renderDiagnostics() {
   const checks = diagnosticsChecksState || {};
   const lines = [];
   if (snapshot.error) {
-    lines.push(`Erreur: ${snapshot.error}`);
+    lines.push(t('diagnostics.line.error', { message: snapshot.error }));
   }
   if (snapshot.appVersion) {
-    lines.push(`App: ${snapshot.appVersion}`);
+    lines.push(t('diagnostics.line.app', { value: snapshot.appVersion }));
   }
   if (snapshot.os) {
-    lines.push(`OS: ${snapshot.os}`);
+    lines.push(t('diagnostics.line.os', { value: snapshot.os }));
   }
   if (snapshot.flags) {
-    lines.push(`Flags: ${JSON.stringify(snapshot.flags)}`);
+    lines.push(t('diagnostics.line.flags', { value: JSON.stringify(snapshot.flags) }));
   }
   if (snapshot.lastDelivery) {
-    lines.push(`Delivery: ${snapshot.lastDelivery.mode || 'n/a'} (${snapshot.lastDelivery.status || 'n/a'})`);
+    lines.push(t('diagnostics.line.delivery', {
+      mode: snapshot.lastDelivery.mode || t('diagnostics.na'),
+      status: snapshot.lastDelivery.status || t('diagnostics.na'),
+    }));
   }
   const lastEntry = historyData?.[0];
   if (lastEntry) {
-    lines.push('Dernière dictée:');
+    lines.push(t('diagnostics.line.last'));
     if (Number.isFinite(lastEntry.latency_ms)) {
-      lines.push(`- Latence E2E: ${Math.round(lastEntry.latency_ms)}ms`);
+      lines.push(t('diagnostics.line.latency', { value: Math.round(lastEntry.latency_ms) }));
     }
     if (Number.isFinite(lastEntry.network_latency_ms)) {
-      lines.push(`- Latence réseau: ${Math.round(lastEntry.network_latency_ms)}ms`);
+      lines.push(t('diagnostics.line.networkLatency', { value: Math.round(lastEntry.network_latency_ms) }));
     }
     if (Number.isFinite(lastEntry.divergence_score)) {
-      lines.push(`- Divergence: ${lastEntry.divergence_score.toFixed(2)}`);
+      lines.push(t('diagnostics.line.divergence', { value: lastEntry.divergence_score.toFixed(2) }));
     }
     if (lastEntry.fallback_reason || lastEntry.fallback_path) {
-      lines.push(`- Fallback: ${lastEntry.fallback_reason || lastEntry.fallback_path}`);
+      lines.push(t('diagnostics.line.fallback', { value: lastEntry.fallback_reason || lastEntry.fallback_path }));
     }
     if (lastEntry.transcription_path) {
-      lines.push(`- Chemin ASR: ${lastEntry.transcription_path}`);
+      lines.push(t('diagnostics.line.asrPath', { value: lastEntry.transcription_path }));
     }
     if (lastEntry.audio_quality_class) {
-      lines.push(`- Qualité audio: ${lastEntry.audio_quality_class}`);
+      lines.push(t('diagnostics.line.audioQuality', { value: lastEntry.audio_quality_class }));
     }
   }
   if (snapshot.events && snapshot.events.length) {
-    lines.push('Events:');
+    lines.push(t('diagnostics.line.events'));
     snapshot.events.slice(0, 10).forEach((event) => {
       lines.push(`- ${event.at} ${event.code}: ${event.message}`);
     });
   }
-  diagnosticsOutput.textContent = lines.join('\n') || 'Aucune donnée disponible.';
+  diagnosticsOutput.textContent = lines.join('\n') || t('diagnostics.empty');
 
   const checkLines = [];
   if (checks.mics !== undefined) {
-    checkLines.push(`Microphones: ${checks.mics}`);
+    checkLines.push(t('diagnostics.check.microphones', { value: checks.mics }));
   }
   if (checks.micPermission) {
-    checkLines.push(`Permission micro: ${checks.micPermission}`);
+    checkLines.push(t('diagnostics.check.micPermission', { value: checks.micPermission }));
   }
   if (snapshot.clipboardTest) {
-    checkLines.push(`Clipboard test: ${snapshot.clipboardTest}`);
+    checkLines.push(t('diagnostics.check.clipboard', { value: snapshot.clipboardTest }));
   }
   if (snapshot.shortcut) {
-    checkLines.push(`Raccourci: ${snapshot.shortcut} (${snapshot.shortcutRegistered ? 'OK' : 'KO'})`);
+    checkLines.push(t('diagnostics.check.shortcut', {
+      value: snapshot.shortcut,
+      status: snapshot.shortcutRegistered ? t('diagnostics.check.ok') : t('diagnostics.check.ko'),
+    }));
   }
-  diagnosticsChecks.textContent = checkLines.join(' · ') || 'Checks non lancés.';
+  diagnosticsChecks.textContent = checkLines.join(' · ') || t('diagnostics.checks.empty');
 }
 
 function renderDiff() {
@@ -3299,24 +3394,27 @@ function renderStats(stats) {
   }
   if (streakSubtitle) {
     if (streak <= 0) {
-      streakSubtitle.textContent = "Aucune série en cours. Lancez une dictée pour démarrer !";
+      streakSubtitle.textContent = t('home.streak.none');
     } else if (streak === 1) {
-      streakSubtitle.textContent = 'Vous êtes sur une série de 1 jour. Continuez comme ça !';
+      streakSubtitle.textContent = t('home.streak.one');
     } else {
-      streakSubtitle.textContent = `Vous êtes sur une série de ${streak} jours. Continuez comme ça !`;
+      streakSubtitle.textContent = t('home.streak.many', { count: streak });
     }
   }
 }
 
 function formatResetLabel(iso) {
+  const fallback = t('home.quota.reset.default');
   if (!iso) {
-    return 'Reset lundi 00:00 UTC';
+    return fallback;
   }
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
-    return 'Reset lundi 00:00 UTC';
+    return fallback;
   }
-  return `Reset ${date.toLocaleDateString([], { weekday: 'long', hour: '2-digit', minute: '2-digit' })} UTC`;
+  const locale = i18n?.getLanguage() === 'fr' ? 'fr-FR' : 'en-US';
+  const formatted = date.toLocaleDateString(locale ? [locale] : [], { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+  return t('home.quota.reset.withDate', { date: formatted });
 }
 
 function renderQuota(quota) {
@@ -3326,25 +3424,25 @@ function renderQuota(quota) {
   }
   if (!quota) {
     quotaRemaining.textContent = '—';
-    quotaReset.textContent = 'Quota indisponible';
+    quotaReset.textContent = t('home.quota.unavailable');
     renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
   if (quota.checkFailed || quota.unavailable) {
     quotaRemaining.textContent = '—';
-    quotaReset.textContent = quota.message || 'Quota indisponible';
+    quotaReset.textContent = quota.message || t('home.quota.unavailable');
     renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
   if (quota.requiresAuth) {
     quotaRemaining.textContent = '—';
-    quotaReset.textContent = 'Connectez-vous pour voir le quota';
+    quotaReset.textContent = t('home.quota.authRequired');
     renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
   if (quota.unlimited) {
-    quotaRemaining.textContent = 'Illimité';
-    quotaReset.textContent = 'Plan Pro actif';
+    quotaRemaining.textContent = t('home.quota.unlimited');
+    quotaReset.textContent = t('home.quota.proActive');
     renderUpgradeNudge(quotaSnapshot, currentSubscription, currentAuth);
     return;
   }
@@ -3393,22 +3491,22 @@ function renderUpgradeNudge(quota, subscription, auth) {
 function getSubscriptionLabel(subscription) {
   const status = subscription?.status || 'inactive';
   if (status === 'pending') {
-    return 'Activation en cours';
+    return t('subscription.status.pending');
   }
   if (status === 'trialing') {
-    return 'Essai Pro actif';
+    return t('subscription.status.trial');
   }
   if (subscription?.isPro) {
-    return 'Plan Pro';
+    return t('subscription.status.pro');
   }
-  return 'Plan Free';
+  return t('subscription.status.free');
 }
 
 function renderSubscription(subscription, auth) {
   currentSubscription = subscription || null;
   currentAuth = auth || null;
   if (profileName) {
-    const displayName = auth?.email ? auth.email.split('@')[0] : 'Invité';
+    const displayName = auth?.email ? auth.email.split('@')[0] : t('subscription.guest');
     profileName.textContent = displayName;
   }
   if (profileAvatar) {
@@ -3421,24 +3519,26 @@ function renderSubscription(subscription, auth) {
   if (subscriptionStatus) {
     const statusLabel = getSubscriptionLabel(subscription);
     const periodEnd = subscription?.currentPeriodEnd ? formatDateLabel(subscription.currentPeriodEnd) : '';
-    subscriptionStatus.textContent = periodEnd ? `${statusLabel} • Renouvelle le ${periodEnd}` : statusLabel;
+    subscriptionStatus.textContent = periodEnd
+      ? t('subscription.renewal', { status: statusLabel, date: periodEnd })
+      : statusLabel;
   }
   if (subscriptionBadge) {
     subscriptionBadge.classList.remove('pro', 'free', 'pending');
     const status = subscription?.status || 'inactive';
     if (status === 'pending') {
       subscriptionBadge.classList.add('pending');
-      subscriptionBadge.textContent = 'En cours';
+      subscriptionBadge.textContent = t('subscription.badge.pending');
     } else if (subscription?.isPro) {
       subscriptionBadge.classList.add('pro');
-      subscriptionBadge.textContent = 'Pro';
+      subscriptionBadge.textContent = t('subscription.badge.pro');
     } else {
       subscriptionBadge.classList.add('free');
-      subscriptionBadge.textContent = 'Free';
+      subscriptionBadge.textContent = t('subscription.badge.free');
     }
   }
   if (upgradePlanButton) {
-    upgradePlanButton.textContent = subscription?.isPro ? 'Pro actif' : 'Passer Pro';
+    upgradePlanButton.textContent = subscription?.isPro ? t('subscription.cta.proActive') : t('subscription.cta.upgrade');
     upgradePlanButton.disabled = !auth || Boolean(subscription?.isPro);
   }
   if (manageSubscriptionButton) {
@@ -3449,13 +3549,13 @@ function renderSubscription(subscription, auth) {
   }
   if (subscriptionNote) {
     if (!auth) {
-      subscriptionNote.textContent = 'Connectez-vous pour gérer votre abonnement.';
+      subscriptionNote.textContent = t('subscription.note.authRequired');
     } else if (subscription?.status === 'pending') {
-      subscriptionNote.textContent = 'Activation en cours. Cela peut prendre quelques instants.';
+      subscriptionNote.textContent = t('subscription.note.pending');
     } else if (subscription?.isPro) {
-      subscriptionNote.textContent = 'Merci pour votre abonnement PRO.';
+      subscriptionNote.textContent = t('subscription.note.proThanks');
     } else {
-      subscriptionNote.textContent = 'Passez Pro pour débloquer la dictée illimitée.';
+      subscriptionNote.textContent = t('subscription.note.upgrade');
     }
   }
   renderUpgradeNudge(quotaSnapshot, subscription, auth);
@@ -3620,7 +3720,14 @@ function renderSnippets(snippets) {
         confirmText: 'Mettre à jour',
         fields: [
           { key: 'cue', label: 'Cue (ce que vous dites)', value: entry.cue },
-          { key: 'template', label: 'Template', value: entry.template, multiline: true },
+          {
+            key: 'template',
+            label: 'Template',
+            value: entry.template,
+            multiline: true,
+            helperText: 'Utilisez {{content}} pour insérer le reste de la dictée.',
+            helperAction: { label: 'Insérer le contenu', value: '{{content}}', token: '{{content}}' },
+          },
           { key: 'description', label: 'Description (optionnel)', value: entry.description || '' },
         ],
       });
@@ -5007,9 +5114,10 @@ async function submitAuthLogin() {
   }
 }
 
-function applyMicrophoneSelection(value, label) {
+function applyMicrophoneSelection(value, label, groupId = '') {
   const id = typeof value === 'string' ? value : '';
   const rawLabel = typeof label === 'string' ? label.trim() : '';
+  const rawGroup = typeof groupId === 'string' ? groupId.trim() : '';
   const normalizedLabel = rawLabel.toLowerCase();
   const isDefaultLabel = normalizedLabel === 'défaut système'
     || normalizedLabel === 'defaut systeme'
@@ -5018,7 +5126,12 @@ function applyMicrophoneSelection(value, label) {
     || normalizedLabel === 'detection auto'
     || normalizedLabel === 'détection auto';
   const nextLabel = id ? rawLabel : (isDefaultLabel ? '' : rawLabel);
-  currentSettings = { ...currentSettings, microphoneId: id, microphoneLabel: nextLabel };
+  currentSettings = {
+    ...currentSettings,
+    microphoneId: id,
+    microphoneLabel: nextLabel,
+    microphoneGroupId: id ? rawGroup : '',
+  };
   if (window.electronAPI?.saveSettings) {
     return window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
   }
@@ -5062,6 +5175,7 @@ async function populateMicrophones(micsOverride) {
   const defaultLabel = listKnown && mics.length === 0 ? 'Aucun micro détecté' : 'Défaut système';
   const storedId = currentSettings.microphoneId || '';
   const storedLabel = (currentSettings.microphoneLabel || '').trim();
+  const storedGroupId = (currentSettings.microphoneGroupId || '').trim();
   const storedInList = storedId && mics.some((mic) => mic?.deviceId === storedId);
   const shouldAddFallback = storedId && !storedInList && mics.length === 0;
   const storedFallbackLabel = storedId
@@ -5078,6 +5192,9 @@ async function populateMicrophones(micsOverride) {
       const option = document.createElement('option');
       option.value = mic.deviceId;
       option.textContent = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
+      if (mic.groupId) {
+        option.dataset.groupId = mic.groupId;
+      }
       select.appendChild(option);
     });
     if (shouldAddFallback) {
@@ -5088,11 +5205,16 @@ async function populateMicrophones(micsOverride) {
     }
     const options = Array.from(select.options);
     const idMatch = storedId ? options.find((option) => option.value === storedId) : null;
+    const groupMatch = storedGroupId
+      ? options.find((option) => (option.dataset.groupId || '').trim() === storedGroupId)
+      : null;
     const labelMatch = normalizedStoredLabel
       ? options.find((option) => option.textContent?.trim().toLowerCase() === normalizedStoredLabel)
       : null;
     if (idMatch) {
       select.value = storedId;
+    } else if (groupMatch) {
+      select.value = groupMatch.value;
     } else if (labelMatch) {
       select.value = labelMatch.value;
     } else {
@@ -5177,7 +5299,8 @@ function handleSettingChange(event) {
   } else {
     if (setting === 'microphoneId') {
       const selectedLabel = event.target?.selectedOptions?.[0]?.textContent || '';
-      applyMicrophoneSelection(value, selectedLabel);
+      const selectedGroup = event.target?.selectedOptions?.[0]?.dataset?.groupId || '';
+      applyMicrophoneSelection(value, selectedLabel, selectedGroup);
       populateMicrophones();
       return;
     } else {
@@ -5494,11 +5617,13 @@ function updateCrocOmniSettings(nextSettings) {
         return;
       }
       const value = onboardingMicrophoneSelect.value;
-      const selectedLabel = onboardingMicrophoneSelect.selectedOptions?.[0]?.textContent || '';
+      const selectedOption = onboardingMicrophoneSelect.selectedOptions?.[0];
+      const selectedLabel = selectedOption?.textContent || '';
+      const selectedGroup = selectedOption?.dataset?.groupId || '';
       if (window.electronAPI?.stopOnboardingMic) {
         window.electronAPI.stopOnboardingMic();
       }
-      await applyMicrophoneSelection(value, selectedLabel);
+      await applyMicrophoneSelection(value, selectedLabel, selectedGroup);
       populateMicrophones();
       onboardingMicReady = false;
       onboardingMicLevel = 0;
@@ -6550,6 +6675,12 @@ function updateCrocOmniSettings(nextSettings) {
       if (contextPreviewOutput) {
         contextPreviewOutput.value = result?.text || '';
       }
+    });
+  }
+
+  if (snippetInsertContentButton) {
+    snippetInsertContentButton.addEventListener('click', () => {
+      insertTextAtCursor(snippetTemplateInput, '{{content}}');
     });
   }
 

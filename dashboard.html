@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2227,6 +2227,103 @@
       grid-column: span 2;
     }
 
+    .snippet-helper {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      flex-wrap: wrap;
+    }
+
+    .snippet-helper-text {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .snippet-helper-title {
+      font-weight: 700;
+      color: var(--text-main);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .snippet-helper-subtitle {
+      line-height: 1.5;
+    }
+
+    .snippet-token {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #E2E8F0;
+      color: #0F172A;
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .snippet-insert-button {
+      border: 1px solid #CBD5E1;
+      background: #FFFFFF;
+      color: #0F172A;
+      font-weight: 600;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .snippet-insert-button:hover {
+      border-color: var(--emerald-500);
+      color: var(--emerald-700);
+      box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
+    }
+
+    .snippet-example {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .input-helper {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .input-helper-text {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
     .snippet-actions {
       display: flex;
       justify-content: flex-end;
@@ -3383,19 +3480,19 @@
       <div class="auth-icon">
         <svg class="no-drag" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zm10-10V7a4 4 0 0 0-8 0v4h8z"></path></svg>
       </div>
-      <h3>Connexion requise</h3>
-      <p>Synchronisez vos notes et accédez aux fonctions premium.</p>
+      <h3 data-i18n="dashboard.auth.title">Login required</h3>
+      <p data-i18n="dashboard.auth.subtitle">Sync your notes and access premium features.</p>
       <div id="authOverlayStatus" class="note-status"></div>
       <form id="authOverlayForm" class="auth-form">
-        <label for="authOverlayEmail">Adresse email</label>
-        <input id="authOverlayEmail" name="email" type="email" autocomplete="email" placeholder="vous@exemple.com" required>
-        <label for="authOverlayPassword">Mot de passe</label>
-        <input id="authOverlayPassword" name="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" required>
-        <button id="authOverlayLogin" class="btn-primary" type="submit">Se connecter</button>
+        <label for="authOverlayEmail" data-i18n="dashboard.auth.email.label">Email address</label>
+        <input id="authOverlayEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" data-i18n="dashboard.auth.email.placeholder" data-i18n-attr="placeholder" required>
+        <label for="authOverlayPassword" data-i18n="dashboard.auth.password.label">Password</label>
+        <input id="authOverlayPassword" name="password" type="password" autocomplete="current-password" placeholder="Your password" data-i18n="dashboard.auth.password.placeholder" data-i18n-attr="placeholder" required>
+        <button id="authOverlayLogin" class="btn-primary" type="submit" data-i18n="dashboard.auth.login">Sign in</button>
       </form>
       <div class="auth-actions">
-        <button id="authOverlaySignup" type="button">Créer un compte</button>
-        <button id="authOverlayRetry" type="button">Réessayer</button>
+        <button id="authOverlaySignup" type="button" data-i18n="dashboard.auth.signup">Create account</button>
+        <button id="authOverlayRetry" type="button" data-i18n="dashboard.auth.retry">Retry</button>
       </div>
     </div>
   </div>
@@ -3404,126 +3501,126 @@
     <div class="onboarding-card">
       <div class="onboarding-header">
         <div>
-          <div class="onboarding-kicker">First Run</div>
-          <div class="onboarding-title">Prêt à dicter en 30 secondes</div>
+          <div class="onboarding-kicker" data-i18n="onboarding.kicker">First run</div>
+          <div class="onboarding-title" data-i18n="onboarding.title">Ready to dictate in 30 seconds</div>
         </div>
-        <button id="onboardingSkip" class="ghost-btn" type="button">Passer / Configurer plus tard</button>
+        <button id="onboardingSkip" class="ghost-btn" type="button" data-i18n="onboarding.skip">Skip / Set up later</button>
       </div>
 
       <div id="onboardingStepper" class="onboarding-stepper">
-        <div class="onboarding-step" data-step="welcome"><span class="step-index">1</span>Accueil</div>
-        <div class="onboarding-step" data-step="permissions"><span class="step-index">2</span>Permission</div>
-        <div class="onboarding-step" data-step="mic_check"><span class="step-index">3</span>Micro</div>
-        <div class="onboarding-step" data-step="hotkey"><span class="step-index">4</span>Raccourci</div>
-        <div class="onboarding-step" data-step="local_model"><span class="step-index">5</span>Modèle local</div>
-        <div class="onboarding-step" data-step="first_dictation"><span class="step-index">6</span>Dictée</div>
-        <div class="onboarding-step" data-step="delivery_check"><span class="step-index">7</span>Livraison</div>
-        <div class="onboarding-step" data-step="done"><span class="step-index">8</span>Fini</div>
+        <div class="onboarding-step" data-step="welcome"><span class="step-index">1</span><span data-i18n="onboarding.step.welcome">Welcome</span></div>
+        <div class="onboarding-step" data-step="permissions"><span class="step-index">2</span><span data-i18n="onboarding.step.permissions">Permissions</span></div>
+        <div class="onboarding-step" data-step="mic_check"><span class="step-index">3</span><span data-i18n="onboarding.step.mic">Microphone</span></div>
+        <div class="onboarding-step" data-step="hotkey"><span class="step-index">4</span><span data-i18n="onboarding.step.hotkey">Shortcut</span></div>
+        <div class="onboarding-step" data-step="local_model"><span class="step-index">5</span><span data-i18n="onboarding.step.localModel">Local model</span></div>
+        <div class="onboarding-step" data-step="first_dictation"><span class="step-index">6</span><span data-i18n="onboarding.step.dictation">Dictation</span></div>
+        <div class="onboarding-step" data-step="delivery_check"><span class="step-index">7</span><span data-i18n="onboarding.step.delivery">Delivery</span></div>
+        <div class="onboarding-step" data-step="done"><span class="step-index">8</span><span data-i18n="onboarding.step.done">Done</span></div>
       </div>
 
       <div class="onboarding-body">
         <div>
           <section class="onboarding-panel" data-step="welcome">
-            <h3>Bienvenue, on va le prouver en 1 minute.</h3>
-            <p>Vous allez autoriser le micro, vérifier le signal, puis voir un texte s'écrire tout seul pour la première fois.</p>
+            <h3 data-i18n="onboarding.welcome.title">Welcome, we'll prove it in 1 minute.</h3>
+            <p data-i18n="onboarding.welcome.body">You'll allow the mic, check the signal, then see text appear on its own for the first time.</p>
             <div class="onboarding-actions">
-              <button id="onboardingStart" class="btn-primary" type="button">Commencer la configuration</button>
+              <button id="onboardingStart" class="btn-primary" type="button" data-i18n="onboarding.welcome.cta">Start setup</button>
             </div>
           </section>
 
           <section class="onboarding-panel" data-step="permissions">
-            <h3>Autoriser le microphone</h3>
-            <p>Windows va afficher une autorisation. Acceptez pour lancer la jauge audio en temps réel.</p>
+            <h3 data-i18n="onboarding.permissions.title">Allow microphone</h3>
+            <p data-i18n="onboarding.permissions.body">Windows will show a permission prompt. Accept to start the live audio meter.</p>
             <div class="onboarding-actions">
-              <button id="onboardingPermissionButton" class="btn-primary" type="button">Autoriser le micro</button>
-              <button id="onboardingPrivacyLink" class="btn-secondary" type="button">Ouvrir les paramètres Windows</button>
+              <button id="onboardingPermissionButton" class="btn-primary" type="button" data-i18n="onboarding.permissions.cta">Allow mic</button>
+              <button id="onboardingPrivacyLink" class="btn-secondary" type="button" data-i18n="onboarding.permissions.settings">Open Windows settings</button>
             </div>
-            <div id="onboardingPermissionStatus" class="onboarding-status">Cliquez pour déclencher la demande d'accès.</div>
+            <div id="onboardingPermissionStatus" class="onboarding-status" data-i18n="onboarding.permissions.status">Click to trigger the access prompt.</div>
           </section>
 
           <section class="onboarding-panel" data-step="mic_check">
-            <h3>Test micro</h3>
-            <p>Parlez à voix normale. La jauge doit réagir pour valider que le signal passe.</p>
+            <h3 data-i18n="onboarding.mic.title">Mic test</h3>
+            <p data-i18n="onboarding.mic.body">Speak at normal volume. The meter should move to confirm the signal.</p>
             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
               <select id="onboardingMicrophoneSelect" class="input-select" style="min-width: 220px;"></select>
-              <button id="onboardingMicrophoneApply" class="btn-secondary" type="button">Changer de micro</button>
+              <button id="onboardingMicrophoneApply" class="btn-secondary" type="button" data-i18n="onboarding.mic.change">Change mic</button>
             </div>
             <div class="vu-meter">
               <div id="onboardingVuBar" class="vu-bar"></div>
             </div>
-            <div id="onboardingMicStatus" class="onboarding-status">En attente de signal audio...</div>
+            <div id="onboardingMicStatus" class="onboarding-status" data-i18n="onboarding.mic.status">Waiting for audio signal...</div>
             <div class="onboarding-actions">
-              <button id="onboardingMicContinue" class="btn-primary" type="button" disabled>Continuer</button>
+              <button id="onboardingMicContinue" class="btn-primary" type="button" disabled data-i18n="onboarding.common.continue">Continue</button>
             </div>
           </section>
 
           <section class="onboarding-panel" data-step="hotkey">
-            <h3>Raccourci de dictée</h3>
-            <p>Appuyez sur votre combinaison pour lancer CrocoVoice rapidement.</p>
+            <h3 data-i18n="onboarding.hotkey.title">Dictation shortcut</h3>
+            <p data-i18n="onboarding.hotkey.body">Press your combination to launch CrocoVoice quickly.</p>
             <div class="shortcut-row" style="margin-top: 12px;">
               <input id="onboardingHotkeyInput" class="input-field shortcut-input" type="text" placeholder="Ctrl+Shift+R" autocomplete="off">
             </div>
             <div id="onboardingHotkeyStatus" class="onboarding-status" style="margin-top: 12px;"></div>
             <div class="onboarding-actions">
-              <button id="onboardingHotkeyNext" class="btn-primary" type="button" disabled>Continuer</button>
+              <button id="onboardingHotkeyNext" class="btn-primary" type="button" disabled data-i18n="onboarding.common.continue">Continue</button>
             </div>
           </section>
 
           <section class="onboarding-panel" data-step="local_model">
-            <h3>Installer un modèle local (optionnel)</h3>
-            <p>Sur Windows, vous pouvez télécharger un modèle Whisper pour dicter hors-ligne. C’est optionnel et peut se faire plus tard.</p>
+            <h3 data-i18n="onboarding.localModel.title">Install a local model (optional)</h3>
+            <p data-i18n="onboarding.localModel.body">On Windows, you can download a Whisper model to dictate offline. It’s optional and can be done later.</p>
             <div id="onboardingLocalModelList" class="model-list"></div>
             <div id="onboardingLocalModelStatus" class="onboarding-status" style="margin-top: 8px;"></div>
             <div class="onboarding-actions">
-              <button id="onboardingLocalModelSkip" class="btn-secondary" type="button">Ignorer</button>
-              <button id="onboardingLocalModelNext" class="btn-primary" type="button">Continuer</button>
+              <button id="onboardingLocalModelSkip" class="btn-secondary" type="button" data-i18n="onboarding.common.skip">Skip</button>
+              <button id="onboardingLocalModelNext" class="btn-primary" type="button" data-i18n="onboarding.common.continue">Continue</button>
             </div>
           </section>
 
           <section class="onboarding-panel" data-step="first_dictation">
-            <h3>Le First Run</h3>
-            <p>Maintenez le raccourci (ou cliquez) et dites une phrase simple, par exemple "Bonjour monde".</p>
-            <textarea id="onboardingSandbox" class="onboarding-sandbox" placeholder="Votre texte transcrit apparaîtra ici..."></textarea>
+            <h3 data-i18n="onboarding.dictation.title">First run</h3>
+            <p data-i18n="onboarding.dictation.body">Hold the shortcut (or click) and say a simple sentence, e.g. "Hello world".</p>
+            <textarea id="onboardingSandbox" class="onboarding-sandbox" placeholder="Your transcribed text will appear here..." data-i18n="onboarding.dictation.placeholder" data-i18n-attr="placeholder"></textarea>
             <div class="onboarding-actions">
-              <button id="onboardingDictateButton" class="btn-primary" type="button">Dicter maintenant</button>
-              <button id="onboardingFirstRunNext" class="btn-secondary" type="button" disabled>Continuer</button>
+              <button id="onboardingDictateButton" class="btn-primary" type="button" data-i18n="onboarding.dictation.cta">Dictate now</button>
+              <button id="onboardingFirstRunNext" class="btn-secondary" type="button" disabled data-i18n="onboarding.common.continue">Continue</button>
             </div>
             <div id="onboardingDictationStatus" class="onboarding-status"></div>
             <div id="onboardingSuccessBadge" class="onboarding-success">
               <span class="onboarding-check">✓</span>
-              Succès, la dictée est bien arrivée !
+              <span data-i18n="onboarding.dictation.success">Success, the dictation came through!</span>
             </div>
           </section>
 
           <section class="onboarding-panel" data-step="delivery_check">
-            <h3>Vérification d'injection</h3>
-            <p>Testons si Windows autorise l'injection de touches. Sinon, on bascule en mode presse-papier.</p>
-            <input id="onboardingDeliveryInput" class="delivery-probe" type="text" placeholder="Zone de test (gardez le focus ici)">
+            <h3 data-i18n="onboarding.delivery.title">Injection check</h3>
+            <p data-i18n="onboarding.delivery.body">Let's test whether Windows allows key injection. Otherwise, we fall back to clipboard mode.</p>
+            <input id="onboardingDeliveryInput" class="delivery-probe" type="text" placeholder="Test area (keep focus here)" data-i18n="onboarding.delivery.placeholder" data-i18n-attr="placeholder">
             <div class="onboarding-actions">
-              <button id="onboardingDeliveryTestButton" class="btn-primary" type="button">Tester l'injection</button>
-              <button id="onboardingDeliveryNext" class="btn-secondary" type="button" disabled>Terminer</button>
+              <button id="onboardingDeliveryTestButton" class="btn-primary" type="button" data-i18n="onboarding.delivery.cta">Test injection</button>
+              <button id="onboardingDeliveryNext" class="btn-secondary" type="button" disabled data-i18n="onboarding.common.finish">Finish</button>
             </div>
             <div id="onboardingDeliveryStatus" class="onboarding-status"></div>
           </section>
 
           <section class="onboarding-panel" data-step="done">
-            <h3>Tout est prêt.</h3>
-            <p>Votre première dictée est validée. Vous pouvez maintenant utiliser CrocoVoice au quotidien.</p>
+            <h3 data-i18n="onboarding.done.title">All set.</h3>
+            <p data-i18n="onboarding.done.body">Your first dictation is validated. You can now use CrocoVoice daily.</p>
             <div class="onboarding-actions">
-              <button id="onboardingFinishButton" class="btn-primary" type="button">Aller au dashboard</button>
+              <button id="onboardingFinishButton" class="btn-primary" type="button" data-i18n="onboarding.done.cta">Go to dashboard</button>
             </div>
           </section>
         </div>
 
         <div class="onboarding-panel onboarding-summary">
-          <h3>Checklist du first run</h3>
-          <p>On coche au fur et à mesure pour un premier succès clair.</p>
+          <h3 data-i18n="onboarding.summary.title">First run checklist</h3>
+          <p data-i18n="onboarding.summary.body">We check things off as you go for a clear first success.</p>
           <ul class="onboarding-checklist">
-            <li id="onboardingCheckPermission"><span class="check-dot">✓</span>Permission micro accordée</li>
-            <li id="onboardingCheckSignal"><span class="check-dot">✓</span>Signal audio détecté</li>
-            <li id="onboardingCheckHotkey"><span class="check-dot">✓</span>Raccourci configuré</li>
-            <li id="onboardingCheckDictation"><span class="check-dot">✓</span>Texte transcrit en sandbox</li>
-            <li id="onboardingCheckDelivery"><span class="check-dot">✓</span>Livraison OK ou presse-papier activé</li>
+            <li id="onboardingCheckPermission"><span class="check-dot">✓</span><span data-i18n="onboarding.summary.permission">Microphone permission granted</span></li>
+            <li id="onboardingCheckSignal"><span class="check-dot">✓</span><span data-i18n="onboarding.summary.signal">Audio signal detected</span></li>
+            <li id="onboardingCheckHotkey"><span class="check-dot">✓</span><span data-i18n="onboarding.summary.hotkey">Shortcut set</span></li>
+            <li id="onboardingCheckDictation"><span class="check-dot">✓</span><span data-i18n="onboarding.summary.dictation">Text transcribed in sandbox</span></li>
+            <li id="onboardingCheckDelivery"><span class="check-dot">✓</span><span data-i18n="onboarding.summary.delivery">Delivery OK or clipboard enabled</span></li>
           </ul>
         </div>
       </div>
@@ -3533,14 +3630,14 @@
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 id="modalTitle">Éditer</h3>
-        <button id="modalCancel" class="win-control" type="button" aria-label="Fermer">
+        <h3 id="modalTitle" data-i18n="modal.title.edit">Edit</h3>
+        <button id="modalCancel" class="win-control" type="button" aria-label="Close" data-i18n="modal.close.aria" data-i18n-attr="aria-label">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
       <div id="modalBody" class="modal-body"></div>
       <div class="modal-footer">
-        <button id="modalConfirm" class="btn-primary" type="button">Sauvegarder</button>
+        <button id="modalConfirm" class="btn-primary" type="button" data-i18n="modal.confirm">Save</button>
       </div>
     </div>
   </div>
@@ -3561,58 +3658,58 @@
         <nav class="sidebar-nav custom-scroll no-drag">
           <button class="nav-item active" data-view="home" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-            <span>Dashboard</span>
+            <span data-i18n="nav.dashboard">Dashboard</span>
           </button>
           <button class="nav-item" data-view="notes" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-            <span>Notes</span>
+            <span data-i18n="nav.notes">Notes</span>
           </button>
           <button class="nav-item" data-view="dictionary" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 1-4 4v14a3 3 0 0 0 3-3h7z"></path></svg>
-            <span>Dictionnaire</span>
+            <span data-i18n="nav.dictionary">Dictionary</span>
           </button>
           <button class="nav-item" data-view="snippets" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H7a2 2 0 0 0-2 2v12"></path><path d="M3 5a2 2 0 0 1 2-2h12"></path><path d="M9 11h6"></path><path d="M9 15h6"></path></svg>
-            <span>Snippets</span>
+            <span data-i18n="nav.snippets">Snippets</span>
           </button>
           <button class="nav-item" data-view="crocomni" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>
-            <span>CrocOmni</span>
+            <span data-i18n="nav.crocomni">CrocOmni</span>
           </button>
           <button class="nav-item" data-view="inbox" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8"></path><path d="M3 12l4 4h10l4-4"></path><path d="M3 8h18"></path></svg>
-            <span>Inbox</span>
+            <span data-i18n="nav.inbox">Inbox</span>
           </button>
           <button class="nav-item" data-view="insights" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 14l4-4 4 4 5-6"></path></svg>
-            <span>Insights</span>
+            <span data-i18n="nav.insights">Insights</span>
           </button>
           <button class="nav-item" data-view="context" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M3 12h18"></path></svg>
-            <span>Context</span>
+            <span data-i18n="nav.context">Context</span>
           </button>
           <button class="nav-item" data-view="style" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="14.31" y1="8" x2="20.05" y2="17.94"></line><line x1="9.69" y1="8" x2="21.17" y2="8"></line><line x1="7.38" y1="12" x2="13.12" y2="2.06"></line><line x1="9.69" y1="16" x2="3.95" y2="6.06"></line><line x1="14.31" y1="16" x2="2.83" y2="16"></line><line x1="16.62" y1="12" x2="10.88" y2="21.94"></line></svg>
-            <span>Styles</span>
+            <span data-i18n="nav.styles">Styles</span>
           </button>
 
           <div class="nav-section">
             <button class="nav-item" data-view="settings" type="button">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
-              <span>Réglages</span>
+              <span data-i18n="nav.settings">Settings</span>
             </button>
             <button class="nav-item" data-view="diagnostics" type="button">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l3 3"></path></svg>
-              <span>Diagnostics</span>
+              <span data-i18n="nav.diagnostics">Diagnostics</span>
             </button>
           </div>
         </nav>
 
-	        <div id="profileCard" class="profile-card no-drag" role="button" tabindex="0" aria-label="Ouvrir le profil et la facturation">
+	        <div id="profileCard" class="profile-card no-drag" role="button" tabindex="0" aria-label="Open profile and billing" data-i18n="profile.card.aria" data-i18n-attr="aria-label">
 	          <div class="profile-avatar" id="profileAvatar">B</div>
 	          <div>
 	            <div class="profile-name" id="profileName">Baptiste</div>
-	            <div class="profile-plan" id="profilePlan">Plan Pro</div>
+	            <div class="profile-plan" id="profilePlan" data-i18n="profile.plan.pro">Pro plan</div>
 	          </div>
 	        </div>
       </div>
@@ -3630,7 +3727,7 @@
           <span class="search-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </span>
-          <input id="dashboardSearchInput" class="search-input" type="text" placeholder="Rechercher dans vos notes et dictées…">
+          <input id="dashboardSearchInput" class="search-input" type="text" placeholder="Search your notes and dictations..." data-i18n="dashboard.search.placeholder" data-i18n-attr="placeholder">
         </div>
 
         <div class="window-controls no-drag">
@@ -3649,15 +3746,15 @@
       <div class="content-scroll custom-scroll">
         <section id="view-home" class="view active" style="max-width: 960px; margin: 0 auto;">
 	          <div>
-	            <h1 class="section-title">Bonjour, Baptiste 👋</h1>
-	            <p id="streakSubtitle" class="section-subtitle">Chargement des statistiques...</p>
+	            <h1 class="section-title" data-i18n="home.greeting">Hello, Baptiste 👋</h1>
+	            <p id="streakSubtitle" class="section-subtitle" data-i18n="home.loading">Loading stats...</p>
 	          </div>
 
           <div class="stats-grid">
             <div class="stat-card">
               <div>
                 <h3 id="statStreak">0</h3>
-                <div class="stat-label">Série en cours</div>
+                <div class="stat-label" data-i18n="home.stats.streak">Current streak</div>
               </div>
               <div class="stat-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
@@ -3666,16 +3763,16 @@
             <div class="stat-card">
               <div>
                 <h3 id="statWords">496</h3>
-                <div class="stat-label">Mots transcrits</div>
+                <div class="stat-label" data-i18n="home.stats.words">Words transcribed</div>
               </div>
               <div class="stat-icon" style="background: #DBEAFE; color: #2563EB;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path></svg>
               </div>
             </div>
-            <button class="stat-card stat-card-link" id="statNotesCard" type="button" aria-label="Ouvrir les notes">
+            <button class="stat-card stat-card-link" id="statNotesCard" type="button" aria-label="Open notes" data-i18n="home.stats.notes.aria" data-i18n-attr="aria-label">
               <div>
                 <h3 id="statTotal">24</h3>
-                <div class="stat-label">Notes totales</div>
+                <div class="stat-label" data-i18n="home.stats.notes">Total notes</div>
               </div>
               <div class="stat-icon" style="background: #F3E8FF; color: #7C3AED;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -3685,8 +3782,8 @@
             <div class="stat-card">
               <div>
                 <h3 id="quotaRemaining">—</h3>
-                <div class="stat-label">Mots restants</div>
-                <div class="stat-meta" id="quotaReset">Reset lundi 00:00 UTC</div>
+                <div class="stat-label" data-i18n="home.stats.remaining">Words remaining</div>
+                <div class="stat-meta" id="quotaReset" data-i18n="home.stats.reset">Reset Monday 00:00 UTC</div>
               </div>
               <div class="stat-icon" style="background: #ECFEFF; color: #0E7490;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
@@ -3697,14 +3794,14 @@
           <div class="mesh-banner upgrade-nudge" id="upgradeNudge" aria-hidden="true">
             <div class="mesh-content">
               <div>
-                <div class="mesh-title">Plus que <strong id="upgradeNudgeRemaining">500</strong> mots avant le blocage</div>
-                <div class="mesh-text">Passez Pro pour dicter sans limite, garder l’historique complet et continuer sans interruption.</div>
+                <div class="mesh-title"><span data-i18n="home.upgrade.remaining.prefix">Only</span> <strong id="upgradeNudgeRemaining">500</strong> <span data-i18n="home.upgrade.remaining.suffix">words before lockout</span></div>
+                <div class="mesh-text" data-i18n="home.upgrade.body">Go Pro to dictate without limits, keep full history, and continue without interruption.</div>
                 <div class="quota-bar">
                   <div class="quota-bar-fill" id="upgradeNudgeFill"></div>
                 </div>
-                <div class="quota-caption" id="upgradeNudgeCaption">Reset lundi 00:00 UTC</div>
+                <div class="quota-caption" id="upgradeNudgeCaption" data-i18n="home.upgrade.reset">Reset Monday 00:00 UTC</div>
               </div>
-              <button class="outline-btn upgrade-cta" type="button" id="upgradeNudgeButton">Passer Pro</button>
+              <button class="outline-btn upgrade-cta" type="button" id="upgradeNudgeButton" data-i18n="home.upgrade.cta">Go Pro</button>
             </div>
           </div>
 
@@ -3843,13 +3940,29 @@
           <div class="snippet-card" style="margin-top: 24px;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
               <span style="font-weight: 700;">Nouveau snippet</span>
-              <span style="font-size: 12px; color: var(--text-muted);">Astuce: utilisez {{content}}</span>
             </div>
 
             <div class="snippet-grid" style="margin-top: 16px;">
               <input id="snippetCueInput" class="input-field" type="text" placeholder="Cue (ex: email client)">
               <input id="snippetDescriptionInput" class="input-field" type="text" placeholder="Description (optionnel)">
-              <textarea id="snippetTemplateInput" class="input-field snippet-template-input" rows="3" placeholder="Template (ex: Bonjour {{content}}, ...)"></textarea>
+              <textarea id="snippetTemplateInput" class="input-field snippet-template-input" rows="3" placeholder="Template (ex: Bonjour, ...)"></textarea>
+            </div>
+
+            <div class="snippet-helper">
+              <div class="snippet-helper-text">
+                <div class="snippet-helper-title">Contenu dynamique</div>
+                <div class="snippet-helper-subtitle">
+                  Le tag <span class="snippet-token">{{content}}</span> est remplacé par le reste de votre dictée.
+                </div>
+              </div>
+              <button id="snippetInsertContentButton" class="snippet-insert-button" type="button">
+                <span class="snippet-token">{{content}}</span>
+                Insérer le contenu
+              </button>
+            </div>
+
+            <div class="snippet-example">
+              Exemple : cue "email client", template "Bonjour <span class="snippet-token">{{content}}</span>," -> "Bonjour Marie,"
             </div>
 
             <div class="snippet-actions">
@@ -4194,36 +4307,43 @@
 
 	        <section id="view-settings" class="view" style="max-width: 640px; margin: 0 auto;">
 	          <div>
-	            <h1 class="section-title">Réglages</h1>
-	            <p class="section-subtitle">Personnalisez votre expérience d'enregistrement.</p>
+	            <h1 class="section-title" data-i18n="settings.title">Settings</h1>
+	            <p class="section-subtitle" data-i18n="settings.subtitle">Customize your recording experience.</p>
 	          </div>
 
           <div class="settings-stack" style="margin-top: 24px;">
             <div class="settings-card">
-              <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">Général</h3>
-              <label class="form-label">Langue de transcription</label>
+              <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px;" data-i18n="settings.general.title">General</h3>
+              <label class="form-label" data-i18n="settings.language.label">Transcription language</label>
               <input id="languageInput" class="input-field" type="text" data-setting="language" placeholder="fr / en / es">
+              <div style="margin-top: 16px;">
+                <label class="form-label" data-i18n="settings.uiLanguage.label">App UI language</label>
+                <select id="uiLanguageSelect" class="input-select" data-setting="uiLanguage">
+                  <option value="en" data-i18n="settings.uiLanguage.option.en">English</option>
+                  <option value="fr" data-i18n="settings.uiLanguage.option.fr">French</option>
+                </select>
+              </div>
               <p id="apiKeyStatus" style="margin-top: 12px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--emerald-600);">
                 <span style="width: 8px; height: 8px; border-radius: 999px; background: var(--emerald-500);"></span>
-                API OpenAI connectée
+                <span data-i18n="settings.apiKey.connected">OpenAI API connected</span>
               </p>
               <div style="margin-top: 16px;">
-                <label class="form-label">Microphone</label>
+                <label class="form-label" data-i18n="settings.microphone.label">Microphone</label>
                 <select id="microphoneSelect" class="input-select" data-setting="microphoneId"></select>
               </div>
 
               <div style="margin-top: 16px;">
-                <label class="form-label" for="shortcutInput">Raccourci de dictée</label>
+                <label class="form-label" for="shortcutInput" data-i18n="settings.shortcut.label">Dictation shortcut</label>
                 <div class="shortcut-row">
                   <input id="shortcutInput" class="input-field shortcut-input" type="text" data-setting="shortcut" autocomplete="off" spellcheck="false" readonly>
-                  <button id="shortcutResetButton" class="btn-secondary shortcut-reset" type="button">Reset</button>
+                  <button id="shortcutResetButton" class="btn-secondary shortcut-reset" type="button" data-i18n="settings.shortcut.reset">Reset</button>
                 </div>
-                <div class="shortcut-help" id="shortcutHelp">Cliquez dans le champ puis appuyez sur votre combinaison.</div>
+                <div class="shortcut-help" id="shortcutHelp" data-i18n="settings.shortcut.help">Click the field then press your combination.</div>
               </div>
 
               <div style="margin-top: 16px;">
-                <label class="form-label">Onboarding</label>
-                <button id="onboardingResetButton" class="btn-secondary" type="button">Recommencer l'onboarding</button>
+                <label class="form-label" data-i18n="settings.onboarding.label">Onboarding</label>
+                <button id="onboardingResetButton" class="btn-secondary" type="button" data-i18n="settings.onboarding.reset">Restart onboarding</button>
               </div>
             </div>
 
@@ -4486,18 +4606,18 @@
 
 	        <section id="view-diagnostics" class="view" style="max-width: 720px; margin: 0 auto;">
 	          <div>
-	            <h1 class="section-title">Diagnostics</h1>
-	            <p class="section-subtitle">Etat des permissions, livraisons et flags.</p>
+	            <h1 class="section-title" data-i18n="diagnostics.title">Diagnostics</h1>
+	            <p class="section-subtitle" data-i18n="diagnostics.subtitle">Status of permissions, delivery, and flags.</p>
 	          </div>
 
             <div class="settings-stack" style="margin-top: 24px;">
               <div class="settings-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                   <div>
-                    <div style="font-weight: 700;">Auto-checks</div>
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Micro, raccourci, presse-papier.</div>
+                    <div style="font-weight: 700;" data-i18n="diagnostics.autoChecks.title">Auto-checks</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" data-i18n="diagnostics.autoChecks.subtitle">Mic, shortcut, clipboard.</div>
                   </div>
-                  <button id="diagnosticsRunChecks" class="btn-secondary" type="button">Lancer les checks</button>
+                  <button id="diagnosticsRunChecks" class="btn-secondary" type="button" data-i18n="diagnostics.run">Run checks</button>
                 </div>
                 <div id="diagnosticsChecks" style="margin-top: 12px; font-size: 12px; color: var(--text-muted);"></div>
               </div>
@@ -4505,10 +4625,10 @@
               <div class="settings-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                   <div>
-                    <div style="font-weight: 700;">Résumé</div>
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Versions, flags et derniers événements.</div>
+                    <div style="font-weight: 700;" data-i18n="diagnostics.summary.title">Summary</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" data-i18n="diagnostics.summary.subtitle">Versions, flags, and recent events.</div>
                   </div>
-                  <button id="diagnosticsCopy" class="btn-secondary" type="button">Copier</button>
+                  <button id="diagnosticsCopy" class="btn-secondary" type="button" data-i18n="diagnostics.copy">Copy</button>
                 </div>
                 <pre id="diagnosticsOutput" class="input-textarea diagnostics-output" style="margin-top: 12px;"></pre>
               </div>
@@ -4516,10 +4636,10 @@
               <div class="settings-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                   <div>
-                    <div style="font-weight: 700;">Export télémétrie</div>
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Export opt-in avec contenu redigé.</div>
+                    <div style="font-weight: 700;" data-i18n="diagnostics.telemetry.title">Telemetry export</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" data-i18n="diagnostics.telemetry.subtitle">Opt-in export with redacted content.</div>
                   </div>
-                  <button id="telemetryExport" class="btn-secondary" type="button">Générer</button>
+                  <button id="telemetryExport" class="btn-secondary" type="button" data-i18n="diagnostics.telemetry.generate">Generate</button>
                 </div>
                 <pre id="telemetryOutput" class="input-textarea diagnostics-output" style="margin-top: 12px;"></pre>
               </div>
@@ -4548,6 +4668,7 @@
     </main>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>
