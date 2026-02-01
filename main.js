@@ -5,6 +5,8 @@ const { execFile } = require('child_process');
 app.disableHardwareAcceleration();
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const os = require('os');
 const { OpenAI } = require('openai');
@@ -261,6 +263,7 @@ const defaultSettings = {
   localAsrCommand: '',
   localAsrEndpoint: '',
   localAsrMaxDurationMs: 60000,
+  localAsrPreset: 'auto',
   localEnhancementEnabled: false,
   localEnhancementCommand: '',
   localEnhancementMaxDurationMs: 20000,
@@ -304,6 +307,663 @@ const DEFAULT_CONTEXT_SETTINGS = {
   },
   overrides: {},
 };
+
+const LOCAL_MODEL_PRESETS = [
+  {
+    id: 'lite',
+    label: 'Lite',
+    description: 'Rapide, faible usage CPU/RAM.',
+    minRamGb: 8,
+    diskTarget: '0.1-0.6 GB',
+  },
+  {
+    id: 'quality',
+    label: 'Quality',
+    description: 'Équilibre vitesse / qualité.',
+    minRamGb: 16,
+    diskTarget: '0.4-1.5 GB',
+  },
+  {
+    id: 'ultra',
+    label: 'Ultra',
+    description: 'Qualité max, plus lourd.',
+    minRamGb: 32,
+    diskTarget: '1.5-6 GB',
+  },
+];
+
+const DEFAULT_LOCAL_MODEL_MANIFEST = {
+  version: 1,
+  models: [
+    {
+      id: 'whisper-tiny-multi',
+      preset: 'lite',
+      name: 'Whisper Tiny (multilingual)',
+      fileName: 'whisper-tiny.bin',
+      sizeBytes: 160 * 1024 * 1024,
+      sha256: '',
+      url: '',
+      languages: ['fr', 'en'],
+      engine: 'whisper',
+    },
+    {
+      id: 'whisper-small-multi',
+      preset: 'quality',
+      name: 'Whisper Small (multilingual)',
+      fileName: 'whisper-small.bin',
+      sizeBytes: 950 * 1024 * 1024,
+      sha256: '',
+      url: '',
+      languages: ['fr', 'en'],
+      engine: 'whisper',
+    },
+    {
+      id: 'whisper-medium-multi',
+      preset: 'ultra',
+      name: 'Whisper Medium (multilingual)',
+      fileName: 'whisper-medium.bin',
+      sizeBytes: 3 * 1024 * 1024 * 1024,
+      sha256: '',
+      url: '',
+      languages: ['fr', 'en'],
+      engine: 'whisper',
+    },
+  ],
+};
+
+const LOCAL_MODEL_STATE_FILE = 'local-models.json';
+const LOCAL_MODEL_STORAGE_DIR = 'models';
+const LOCAL_MODEL_ENGINE = 'whisper';
+const LOCAL_MODEL_PROGRESS_THROTTLE_MS = 750;
+let localModelState = { installed: {}, downloads: {}, updatedAt: null };
+let localModelManifest = null;
+let localModelDownloadJobs = new Map();
+let localModelUpdateTimer = null;
+let localModelLastProgressAt = 0;
+
+function getLocalModelStorageRoot() {
+  const basePath = (store && store.userDataPath) ? store.userDataPath : app.getPath('userData');
+  return path.join(basePath, LOCAL_MODEL_STORAGE_DIR, LOCAL_MODEL_ENGINE);
+}
+
+function getLocalModelStatePath() {
+  const basePath = (store && store.userDataPath) ? store.userDataPath : app.getPath('userData');
+  return path.join(basePath, LOCAL_MODEL_STATE_FILE);
+}
+
+function ensureLocalModelDir() {
+  const dir = getLocalModelStorageRoot();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+function getLocalModelPaths(model) {
+  const dir = getLocalModelStorageRoot();
+  const fileName = model?.fileName ? model.fileName : `${model?.id || 'model'}.bin`;
+  const finalPath = path.join(dir, fileName);
+  return {
+    finalPath,
+    partialPath: `${finalPath}.partial`,
+  };
+}
+
+function loadLocalModelManifestFromFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn('[local-models] failed to read manifest, using defaults:', error?.message || error);
+    return null;
+  }
+}
+
+function normalizeLocalModelManifest(raw) {
+  const base = DEFAULT_LOCAL_MODEL_MANIFEST;
+  const models = Array.isArray(raw?.models) ? raw.models : [];
+  const cleaned = models.map((model) => {
+    const id = typeof model.id === 'string' ? model.id.trim() : '';
+    const preset = typeof model.preset === 'string' ? model.preset.trim().toLowerCase() : '';
+    if (!id || !preset) {
+      return null;
+    }
+    return {
+      id,
+      preset,
+      name: typeof model.name === 'string' ? model.name : id,
+      fileName: typeof model.fileName === 'string' && model.fileName.trim()
+        ? model.fileName.trim()
+        : `${id}.bin`,
+      sizeBytes: Number.isFinite(model.sizeBytes) ? model.sizeBytes : null,
+      sha256: typeof model.sha256 === 'string' ? model.sha256.trim().toLowerCase() : '',
+      url: typeof model.url === 'string' ? model.url.trim() : '',
+      languages: Array.isArray(model.languages) ? model.languages.filter(Boolean) : ['fr', 'en'],
+      engine: typeof model.engine === 'string' ? model.engine : 'whisper',
+      version: typeof model.version === 'string' ? model.version : null,
+    };
+  }).filter(Boolean);
+  if (!cleaned.length) {
+    return base;
+  }
+  return {
+    version: raw?.version || base.version,
+    models: cleaned,
+  };
+}
+
+function loadLocalModelManifest() {
+  const envPath = process.env.CROCOVOICE_LOCAL_MODEL_MANIFEST;
+  const configPath = path.join(__dirname, 'config', 'local-models.json');
+  const fromEnv = envPath ? loadLocalModelManifestFromFile(envPath) : null;
+  const fromFile = fromEnv || loadLocalModelManifestFromFile(configPath);
+  localModelManifest = normalizeLocalModelManifest(fromFile || DEFAULT_LOCAL_MODEL_MANIFEST);
+  return localModelManifest;
+}
+
+function getLocalModelManifest() {
+  if (!localModelManifest) {
+    return loadLocalModelManifest();
+  }
+  return localModelManifest;
+}
+
+function loadLocalModelState() {
+  const statePath = getLocalModelStatePath();
+  if (!fs.existsSync(statePath)) {
+    localModelState = { installed: {}, downloads: {}, updatedAt: null };
+    return localModelState;
+  }
+  try {
+    const raw = fs.readFileSync(statePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    localModelState = {
+      installed: parsed?.installed && typeof parsed.installed === 'object' ? parsed.installed : {},
+      downloads: parsed?.downloads && typeof parsed.downloads === 'object' ? parsed.downloads : {},
+      updatedAt: parsed?.updatedAt || null,
+    };
+  } catch (error) {
+    console.warn('[local-models] failed to load state, resetting:', error?.message || error);
+    localModelState = { installed: {}, downloads: {}, updatedAt: null };
+  }
+  return localModelState;
+}
+
+function saveLocalModelState() {
+  try {
+    const statePath = getLocalModelStatePath();
+    const payload = {
+      installed: localModelState.installed || {},
+      downloads: localModelState.downloads || {},
+      updatedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(statePath, JSON.stringify(payload, null, 2));
+    localModelState = payload;
+  } catch (error) {
+    console.warn('[local-models] failed to save state:', error?.message || error);
+  }
+}
+
+function getHardwareProfile() {
+  const cpus = os.cpus ? os.cpus() : [];
+  const totalMemGb = Math.round(os.totalmem() / (1024 ** 3));
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    cpuCount: Array.isArray(cpus) ? cpus.length : 0,
+    cpuModel: Array.isArray(cpus) && cpus[0] ? cpus[0].model : '',
+    totalMemGb,
+  };
+}
+
+function getPresetMeta(presetId) {
+  return LOCAL_MODEL_PRESETS.find((preset) => preset.id === presetId) || null;
+}
+
+function recommendLocalPreset(profile = getHardwareProfile()) {
+  if (profile.totalMemGb >= 32) {
+    return 'ultra';
+  }
+  if (profile.totalMemGb >= 16) {
+    return 'quality';
+  }
+  return 'lite';
+}
+
+function normalizeLocalPresetChoice(value) {
+  const preset = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!preset || preset === 'auto') {
+    return 'auto';
+  }
+  if (LOCAL_MODEL_PRESETS.some((entry) => entry.id === preset)) {
+    return preset;
+  }
+  return 'auto';
+}
+
+function getActiveLocalPreset() {
+  const choice = normalizeLocalPresetChoice(settings.localAsrPreset);
+  if (choice === 'auto') {
+    return recommendLocalPreset();
+  }
+  return choice;
+}
+
+function pruneMissingLocalModels() {
+  const installed = localModelState.installed || {};
+  let changed = false;
+  Object.entries(installed).forEach(([id, entry]) => {
+    if (!entry || !entry.path || !fs.existsSync(entry.path)) {
+      delete installed[id];
+      changed = true;
+    }
+  });
+  if (changed) {
+    localModelState.installed = installed;
+    saveLocalModelState();
+  }
+}
+
+function resolveModelForPreset(presetId) {
+  const manifest = getLocalModelManifest();
+  return manifest.models.find((model) => model.preset === presetId) || null;
+}
+
+function resolveModelByIdOrPreset(idOrPreset) {
+  const manifest = getLocalModelManifest();
+  const value = typeof idOrPreset === 'string' ? idOrPreset.trim() : '';
+  if (!value) {
+    return null;
+  }
+  const byId = manifest.models.find((model) => model.id === value);
+  if (byId) {
+    return byId;
+  }
+  const preset = value.toLowerCase();
+  return resolveModelForPreset(preset);
+}
+
+function resolveActiveLocalModel() {
+  pruneMissingLocalModels();
+  const manifest = getLocalModelManifest();
+  const activePreset = getActiveLocalPreset();
+  const primary = resolveModelForPreset(activePreset);
+  const installedMap = localModelState.installed || {};
+  const pickInstalled = (candidate) => {
+    if (!candidate) {
+      return null;
+    }
+    const installed = installedMap[candidate.id];
+    if (!installed || !installed.path || !fs.existsSync(installed.path)) {
+      return null;
+    }
+    return { ...candidate, ...installed };
+  };
+  const primaryInstalled = pickInstalled(primary);
+  if (primaryInstalled) {
+    return primaryInstalled;
+  }
+  const fallbackOrder = ['ultra', 'quality', 'lite'];
+  for (const preset of fallbackOrder) {
+    const model = manifest.models.find((entry) => entry.preset === preset && installedMap[entry.id]);
+    const installed = pickInstalled(model);
+    if (installed) {
+      return installed;
+    }
+  }
+  return null;
+}
+
+function buildLocalModelsSnapshot() {
+  pruneMissingLocalModels();
+  const manifest = getLocalModelManifest();
+  const hardware = getHardwareProfile();
+  const recommendedPreset = recommendLocalPreset(hardware);
+  const activePreset = normalizeLocalPresetChoice(settings.localAsrPreset);
+  const installed = localModelState.installed || {};
+  const downloads = localModelState.downloads || {};
+  const models = manifest.models.map((model) => {
+    const presetMeta = getPresetMeta(model.preset);
+    const installedEntry = installed[model.id] || null;
+    let downloadEntry = downloads[model.id] || null;
+    if (!installedEntry) {
+      const paths = getLocalModelPaths(model);
+      if (fs.existsSync(paths.partialPath)) {
+        try {
+          const stat = fs.statSync(paths.partialPath);
+          const totalBytes = model.sizeBytes || downloadEntry?.totalBytes || 0;
+          const progress = totalBytes ? Math.round((stat.size / totalBytes) * 100) : 0;
+          downloadEntry = {
+            ...(downloadEntry || {}),
+            status: 'paused',
+            receivedBytes: stat.size,
+            totalBytes,
+            progress,
+          };
+        } catch {}
+      }
+    }
+    const downloadable = Boolean(model.url && model.sha256);
+    const status = installedEntry
+      ? 'installed'
+      : (downloadEntry?.status || (downloadable ? 'available' : 'unavailable'));
+    const updateAvailable = Boolean(installedEntry && model.sha256 && installedEntry.checksum && model.sha256 !== installedEntry.checksum);
+    return {
+      id: model.id,
+      preset: model.preset,
+      name: model.name,
+      languages: model.languages,
+      fileName: model.fileName,
+      sizeBytes: model.sizeBytes,
+      sha256: model.sha256,
+      urlAvailable: downloadable,
+      version: model.version,
+      presetMeta,
+      recommended: model.preset === recommendedPreset,
+      status,
+      updateAvailable,
+      installed: installedEntry,
+      download: downloadEntry,
+    };
+  });
+  const activeModel = resolveActiveLocalModel();
+  return {
+    presets: LOCAL_MODEL_PRESETS,
+    models,
+    recommendedPreset,
+    activePreset,
+    activeModelId: activeModel ? activeModel.id : null,
+    hardware,
+  };
+}
+
+function scheduleLocalModelUpdate() {
+  if (localModelUpdateTimer) {
+    return;
+  }
+  localModelUpdateTimer = setTimeout(() => {
+    localModelUpdateTimer = null;
+    sendDashboardEvent('dashboard:data-updated');
+  }, 400);
+}
+
+function updateLocalModelDownloadState(id, patch, { persist = false, force = false } = {}) {
+  const current = localModelState.downloads?.[id] || { id };
+  const next = {
+    ...current,
+    ...patch,
+    id,
+    updatedAt: new Date().toISOString(),
+  };
+  localModelState.downloads = { ...(localModelState.downloads || {}), [id]: next };
+  if (persist) {
+    saveLocalModelState();
+  }
+  if (force || (Date.now() - localModelLastProgressAt) >= LOCAL_MODEL_PROGRESS_THROTTLE_MS) {
+    localModelLastProgressAt = Date.now();
+    scheduleLocalModelUpdate();
+  }
+}
+
+function setLocalModelInstalled(model, details) {
+  if (!model || !model.id) {
+    return;
+  }
+  const installed = localModelState.installed || {};
+  installed[model.id] = {
+    id: model.id,
+    preset: model.preset,
+    name: model.name,
+    path: details.path,
+    sizeBytes: details.sizeBytes,
+    checksum: details.checksum,
+    installedAt: new Date().toISOString(),
+    version: model.version || null,
+  };
+  localModelState.installed = installed;
+  saveLocalModelState();
+}
+
+function removeLocalModelInstalled(id) {
+  if (!id || !localModelState.installed?.[id]) {
+    return;
+  }
+  delete localModelState.installed[id];
+  saveLocalModelState();
+}
+
+async function computeFileSha256(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+async function startLocalModelDownload(model) {
+  if (!model || !model.id || !model.url || !model.sha256) {
+    return { ok: false, reason: 'missing_source' };
+  }
+  if (localModelDownloadJobs.has(model.id)) {
+    return { ok: false, reason: 'already_downloading' };
+  }
+  ensureLocalModelDir();
+  const { finalPath, partialPath } = getLocalModelPaths(model);
+  const downloadState = {
+    status: 'queued',
+    progress: 0,
+    receivedBytes: 0,
+    totalBytes: model.sizeBytes || 0,
+    error: null,
+  };
+  updateLocalModelDownloadState(model.id, downloadState, { persist: true, force: true });
+
+  const job = {
+    id: model.id,
+    cancel: null,
+  };
+  localModelDownloadJobs.set(model.id, job);
+
+  return new Promise((resolve) => {
+    let receivedBytes = 0;
+    let totalBytes = 0;
+    let aborted = false;
+    let startOffset = 0;
+
+    if (fs.existsSync(partialPath)) {
+      try {
+        const stat = fs.statSync(partialPath);
+        startOffset = stat.size;
+        receivedBytes = stat.size;
+      } catch {
+        startOffset = 0;
+      }
+    }
+
+    const headers = {};
+    if (startOffset > 0) {
+      headers.Range = `bytes=${startOffset}-`;
+    }
+
+    const client = model.url.startsWith('https') ? https : http;
+    const request = client.get(model.url, { headers }, (response) => {
+      if (!response || !response.statusCode || response.statusCode >= 400) {
+        updateLocalModelDownloadState(model.id, { status: 'failed', error: `HTTP ${response?.statusCode || 'error'}` }, { persist: true, force: true });
+        localModelDownloadJobs.delete(model.id);
+        resolve({ ok: false, reason: 'http_error' });
+        return;
+      }
+      if (startOffset > 0 && response.statusCode === 200) {
+        try {
+          fs.unlinkSync(partialPath);
+        } catch {}
+        startOffset = 0;
+        receivedBytes = 0;
+      }
+      const contentLength = Number.parseInt(response.headers['content-length'] || '0', 10) || 0;
+      totalBytes = response.statusCode === 206 ? (contentLength + startOffset) : contentLength;
+      updateLocalModelDownloadState(model.id, {
+        status: 'downloading',
+        totalBytes,
+        receivedBytes,
+        progress: totalBytes ? Math.round((receivedBytes / totalBytes) * 100) : 0,
+        error: null,
+      }, { force: true });
+
+      const fileStream = fs.createWriteStream(partialPath, { flags: startOffset > 0 ? 'a' : 'w' });
+      response.on('data', (chunk) => {
+        if (aborted) {
+          return;
+        }
+        receivedBytes += chunk.length;
+        const progress = totalBytes ? Math.round((receivedBytes / totalBytes) * 100) : 0;
+        updateLocalModelDownloadState(model.id, {
+          status: 'downloading',
+          receivedBytes,
+          totalBytes,
+          progress: Math.min(100, Math.max(0, progress)),
+        });
+      });
+      response.pipe(fileStream);
+
+      fileStream.on('finish', async () => {
+        if (aborted) {
+          return;
+        }
+        updateLocalModelDownloadState(model.id, { status: 'verifying', progress: 99 }, { force: true });
+        try {
+          const checksum = await computeFileSha256(partialPath);
+          if (checksum.toLowerCase() !== model.sha256.toLowerCase()) {
+            updateLocalModelDownloadState(model.id, { status: 'failed', error: 'checksum_mismatch' }, { persist: true, force: true });
+            localModelDownloadJobs.delete(model.id);
+            resolve({ ok: false, reason: 'checksum_mismatch' });
+            return;
+          }
+          if (fs.existsSync(finalPath)) {
+            fs.unlinkSync(finalPath);
+          }
+          fs.renameSync(partialPath, finalPath);
+          setLocalModelInstalled(model, { path: finalPath, sizeBytes: totalBytes || model.sizeBytes || 0, checksum });
+          updateLocalModelDownloadState(model.id, { status: 'completed', progress: 100, error: null }, { persist: true, force: true });
+          localModelDownloadJobs.delete(model.id);
+          resolve({ ok: true });
+        } catch (error) {
+          updateLocalModelDownloadState(model.id, { status: 'failed', error: error?.message || 'verify_failed' }, { persist: true, force: true });
+          localModelDownloadJobs.delete(model.id);
+          resolve({ ok: false, reason: 'verify_failed' });
+        }
+      });
+
+      fileStream.on('error', (error) => {
+        if (aborted) {
+          return;
+        }
+        updateLocalModelDownloadState(model.id, { status: 'failed', error: error?.message || 'write_failed' }, { persist: true, force: true });
+        localModelDownloadJobs.delete(model.id);
+        resolve({ ok: false, reason: 'write_failed' });
+      });
+    });
+
+    request.on('error', (error) => {
+      if (aborted) {
+        return;
+      }
+      updateLocalModelDownloadState(model.id, { status: 'failed', error: error?.message || 'download_failed' }, { persist: true, force: true });
+      localModelDownloadJobs.delete(model.id);
+      resolve({ ok: false, reason: 'download_failed' });
+    });
+
+    job.cancel = () => {
+      aborted = true;
+      try {
+        request.destroy();
+      } catch {}
+      updateLocalModelDownloadState(model.id, { status: 'paused', error: null }, { persist: true, force: true });
+      localModelDownloadJobs.delete(model.id);
+      resolve({ ok: false, reason: 'cancelled' });
+    };
+  });
+}
+
+async function installLocalModel(idOrPreset) {
+  const model = resolveModelByIdOrPreset(idOrPreset);
+  if (!model) {
+    return { ok: false, reason: 'model_not_found' };
+  }
+  const installed = localModelState.installed?.[model.id];
+  if (installed && installed.path && fs.existsSync(installed.path) && installed.checksum === model.sha256) {
+    return { ok: true, status: 'already_installed' };
+  }
+  if (!model.url || !model.sha256) {
+    return { ok: false, reason: 'missing_source' };
+  }
+  if (localModelDownloadJobs.has(model.id)) {
+    return { ok: false, reason: 'already_downloading' };
+  }
+  startLocalModelDownload(model).catch(() => {});
+  return { ok: true, status: 'started' };
+}
+
+function cancelLocalModelDownload(id) {
+  const job = localModelDownloadJobs.get(id);
+  if (!job || typeof job.cancel !== 'function') {
+    return { ok: false, reason: 'not_downloading' };
+  }
+  job.cancel();
+  return { ok: true };
+}
+
+async function removeLocalModel(id) {
+  const entry = localModelState.installed?.[id];
+  if (!entry || !entry.path) {
+    return { ok: false, reason: 'not_installed' };
+  }
+  try {
+    const model = resolveModelByIdOrPreset(id);
+    if (model) {
+      const { partialPath } = getLocalModelPaths(model);
+      if (fs.existsSync(partialPath)) {
+        fs.unlinkSync(partialPath);
+      }
+    }
+    if (fs.existsSync(entry.path)) {
+      fs.unlinkSync(entry.path);
+    }
+    removeLocalModelInstalled(id);
+    updateLocalModelDownloadState(id, { status: 'removed', progress: 0, error: null }, { persist: true, force: true });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'remove_failed' };
+  }
+}
+
+async function importLocalModelFile(filePath, presetId) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { ok: false, reason: 'missing_file' };
+  }
+  const preset = typeof presetId === 'string' ? presetId.toLowerCase() : 'quality';
+  const model = resolveModelForPreset(preset) || { id: `local-${preset}`, preset, name: `Local ${preset}` };
+  ensureLocalModelDir();
+  const { finalPath: targetPath } = getLocalModelPaths(model);
+  try {
+    if (fs.existsSync(targetPath)) {
+      fs.unlinkSync(targetPath);
+    }
+    fs.copyFileSync(filePath, targetPath);
+    const checksum = await computeFileSha256(targetPath);
+    const stats = fs.statSync(targetPath);
+    setLocalModelInstalled(model, { path: targetPath, sizeBytes: stats.size, checksum });
+    updateLocalModelDownloadState(model.id, { status: 'completed', progress: 100, error: null }, { persist: true, force: true });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'import_failed' };
+  }
+}
 
 function areSettingValuesEqual(a, b) {
   if (a === b) {
@@ -839,6 +1499,19 @@ async function persistSettings(candidate) {
 function setSettingValue(key, value) {
   const candidate = { ...settings, [key]: value };
   return persistSettings(candidate);
+}
+
+async function applySettingsPatch(patch) {
+  settings = await persistSettings({ ...settings, ...(patch || {}) });
+  scheduleDebouncedSync({ refreshSettings: true });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('settings-updated', settings);
+  }
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.webContents.send('settings-updated', settings);
+  }
+  sendDashboardEvent('dashboard:data-updated');
+  return settings;
 }
 
 function invalidateDictionaryCache() {
@@ -3406,7 +4079,7 @@ async function runLocalEnhancement(buffer, mimeType) {
   }
 }
 
-async function runLocalAsrServer(buffer, mimeType, endpoint, maxDurationMs) {
+async function runLocalAsrServer(buffer, mimeType, endpoint, maxDurationMs, modelMeta) {
   if (!endpoint) {
     return { text: '', used: false, reason: 'local_asr_missing_endpoint' };
   }
@@ -3424,6 +4097,12 @@ async function runLocalAsrServer(buffer, mimeType, endpoint, maxDurationMs) {
     }
     if (settings.language) {
       headers['X-Language'] = settings.language;
+    }
+    if (modelMeta?.id) {
+      headers['X-Local-Model'] = modelMeta.id;
+    }
+    if (modelMeta?.preset) {
+      headers['X-Local-Preset'] = modelMeta.preset;
     }
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -3476,6 +4155,7 @@ async function runLocalAsr(buffer, mimeType, options = {}) {
   if (!enabled || !isFeatureEnabled('localAsr')) {
     return { text: '', used: false, reason: 'local_asr_disabled' };
   }
+  const activeModel = resolveActiveLocalModel();
   const scope = options.scope === 'upload' ? 'upload' : 'dictation';
   if (!isLocalAsrAllowed(scope)) {
     return { text: '', used: false, reason: 'local_asr_scope_blocked' };
@@ -3490,7 +4170,7 @@ async function runLocalAsr(buffer, mimeType, options = {}) {
     ? settings.localAsrEndpoint.trim()
     : '';
   if (mode === 'server' || endpoint) {
-    return runLocalAsrServer(buffer, mimeType, endpoint, maxDurationMs);
+    return runLocalAsrServer(buffer, mimeType, endpoint, maxDurationMs, activeModel);
   }
   const command = typeof settings.localAsrCommand === 'string'
     ? settings.localAsrCommand.trim()
@@ -3503,8 +4183,24 @@ async function runLocalAsr(buffer, mimeType, options = {}) {
   const inputPath = path.join(tempDir, `crocovoice-localasr-${Date.now()}.${extension}`);
   try {
     fs.writeFileSync(inputPath, buffer);
+    const args = [inputPath];
+    if (activeModel?.path) {
+      args.push(activeModel.path);
+    }
     const output = await new Promise((resolve, reject) => {
-      const child = execFile(command, [inputPath], { timeout: maxDurationMs }, (error, stdout) => {
+      const child = execFile(
+        command,
+        args,
+        {
+          timeout: maxDurationMs,
+          env: {
+            ...process.env,
+            CROCOVOICE_LOCAL_MODEL: activeModel?.path || '',
+            CROCOVOICE_LOCAL_MODEL_ID: activeModel?.id || '',
+            CROCOVOICE_LOCAL_PRESET: activeModel?.preset || '',
+          },
+        },
+        (error, stdout) => {
         if (error) {
           reject(error);
           return;
@@ -4833,6 +5529,7 @@ ipcMain.handle('dashboard:data', async () => {
     crocOmniConversations,
     insights,
     uploads: listUploadJobs(),
+    localModels: buildLocalModelsSnapshot(),
     context: {
       base: contextState.base,
       contextId: contextState.contextId,
@@ -4847,6 +5544,66 @@ ipcMain.handle('dashboard:data', async () => {
     auth: authUser ? { email: authUser.email, id: authUser.id } : null,
     syncReady: Boolean(syncService && syncService.isReady()),
   };
+});
+
+ipcMain.handle('local-models:list', () => buildLocalModelsSnapshot());
+
+ipcMain.handle('local-models:install', async (event, idOrPreset) => {
+  const model = resolveModelByIdOrPreset(idOrPreset);
+  const result = await installLocalModel(idOrPreset);
+  if (result.ok && result.status === 'started') {
+    const patch = {};
+    if (model?.preset) {
+      patch.localAsrPreset = model.preset;
+    }
+    if (settings.localAsrEnabled !== true) {
+      patch.localAsrEnabled = true;
+    }
+    if (Object.keys(patch).length) {
+      await applySettingsPatch(patch);
+    }
+  }
+  return result;
+});
+
+ipcMain.handle('local-models:cancel', (event, id) => cancelLocalModelDownload(id));
+
+ipcMain.handle('local-models:remove', async (event, id) => {
+  const result = await removeLocalModel(id);
+  sendDashboardEvent('dashboard:data-updated');
+  return result;
+});
+
+ipcMain.handle('local-models:set-preset', async (event, preset) => {
+  const choice = normalizeLocalPresetChoice(preset);
+  const next = choice === 'auto' ? 'auto' : choice;
+  await applySettingsPatch({ localAsrPreset: next });
+  return { ok: true, preset: next };
+});
+
+ipcMain.handle('local-models:import', async (event, filePath, preset) => {
+  let targetPath = filePath;
+  if (!targetPath) {
+    const selection = await dialog.showOpenDialog({
+      title: 'Importer un modèle Whisper',
+      properties: ['openFile'],
+    });
+    if (selection.canceled || !selection.filePaths?.length) {
+      return { ok: false, reason: 'cancelled' };
+    }
+    targetPath = selection.filePaths[0];
+  }
+  const result = await importLocalModelFile(targetPath, preset);
+  if (result.ok && settings.localAsrEnabled !== true) {
+    await applySettingsPatch({ localAsrEnabled: true });
+  }
+  return result;
+});
+
+ipcMain.handle('local-models:open-folder', async () => {
+  const dir = ensureLocalModelDir();
+  await shell.openPath(dir);
+  return { ok: true };
 });
 
 ipcMain.handle('feature-flags:refresh', async () => {
@@ -5739,6 +6496,9 @@ app.whenReady().then(async () => {
   store = new Store({ userDataPath: app.getPath('userData'), defaults: defaultSettings });
   await store.init();
   settings = await store.getSettings();
+  loadLocalModelManifest();
+  loadLocalModelState();
+  pruneMissingLocalModels();
   if (settings && Object.prototype.hasOwnProperty.call(settings, 'deliveryMode')) {
     delete settings.deliveryMode;
   }

@@ -155,6 +155,10 @@ const onboardingDeliveryTestButton = document.getElementById('onboardingDelivery
 const onboardingDeliveryNext = document.getElementById('onboardingDeliveryNext');
 const onboardingDeliveryStatus = document.getElementById('onboardingDeliveryStatus');
 const onboardingFinishButton = document.getElementById('onboardingFinishButton');
+const onboardingLocalModelList = document.getElementById('onboardingLocalModelList');
+const onboardingLocalModelStatus = document.getElementById('onboardingLocalModelStatus');
+const onboardingLocalModelSkip = document.getElementById('onboardingLocalModelSkip');
+const onboardingLocalModelNext = document.getElementById('onboardingLocalModelNext');
 const onboardingCheckPermission = document.getElementById('onboardingCheckPermission');
 const onboardingCheckSignal = document.getElementById('onboardingCheckSignal');
 const onboardingCheckHotkey = document.getElementById('onboardingCheckHotkey');
@@ -163,6 +167,10 @@ const onboardingCheckDelivery = document.getElementById('onboardingCheckDelivery
 const uploadAudioButton = document.getElementById('uploadAudioButton');
 const uploadDropzone = document.getElementById('uploadDropzone');
 const uploadQueue = document.getElementById('uploadQueue');
+const localModelSummary = document.getElementById('localModelSummary');
+const localModelList = document.getElementById('localModelList');
+const localModelOpenFolder = document.getElementById('localModelOpenFolder');
+const localModelImport = document.getElementById('localModelImport');
 const diagnosticsRunChecks = document.getElementById('diagnosticsRunChecks');
 const diagnosticsOutput = document.getElementById('diagnosticsOutput');
 const diagnosticsChecks = document.getElementById('diagnosticsChecks');
@@ -197,7 +205,16 @@ let quotaSnapshot = null;
 let currentSubscription = null;
 let currentAuth = null;
 let uploadsData = [];
-let onboardingState = { step: 'welcome', completed: false, firstRunSuccess: false, hotkeyReady: false, updatedAt: null };
+let localModelsData = null;
+let onboardingState = {
+  step: 'welcome',
+  completed: false,
+  firstRunSuccess: false,
+  hotkeyReady: false,
+  localModelReady: false,
+  localModelPreset: '',
+  updatedAt: null,
+};
 let onboardingSessionDismissed = false;
 let onboardingMicReady = false;
 let onboardingPermissionGranted = false;
@@ -267,7 +284,7 @@ const SUBSCRIPTION_POLL_COOLDOWN_MS = 60000;
 let subscriptionPollInFlight = false;
 let subscriptionPollToken = 0;
 let lastSubscriptionPollAt = 0;
-const ONBOARDING_STEPS = ['welcome', 'permissions', 'mic_check', 'hotkey', 'first_dictation', 'delivery_check', 'done'];
+const ONBOARDING_STEPS = ['welcome', 'permissions', 'mic_check', 'hotkey', 'local_model', 'first_dictation', 'delivery_check', 'done'];
 const MIC_NOISE_FLOOR = 0.012;
 const MIC_READY_THRESHOLD = 0.018;
 const MIC_READY_HOLD_MS = 500;
@@ -329,6 +346,8 @@ function normalizeOnboardingState(settings) {
     completed: Boolean(onboarding.completed),
     firstRunSuccess: Boolean(onboarding.firstRunSuccess),
     hotkeyReady: Boolean(onboarding.hotkeyReady),
+    localModelReady: Boolean(onboarding.localModelReady),
+    localModelPreset: typeof onboarding.localModelPreset === 'string' ? onboarding.localModelPreset : '',
     updatedAt: onboarding.updatedAt || null,
   };
 }
@@ -441,6 +460,17 @@ function updateOnboardingUI() {
     }
   }
 
+  if (onboardingState.step === 'local_model') {
+    if (platform !== 'win32') {
+      setOnboardingStep('first_dictation');
+      return;
+    }
+    if (onboardingLocalModelNext) {
+      onboardingLocalModelNext.disabled = false;
+    }
+    renderOnboardingLocalModels();
+  }
+
   if (onboardingState.step === 'mic_check' && window.electronAPI?.startOnboardingMic) {
     window.electronAPI.startOnboardingMic();
   }
@@ -460,6 +490,8 @@ function applyOnboardingStateFromSettings(settings) {
     onboardingMicLastActiveAt = 0;
     onboardingDeliveryReady = false;
     onboardingState.hotkeyReady = false;
+    onboardingState.localModelReady = false;
+    onboardingState.localModelPreset = '';
     onboardingMicIgnoreUntil = 0;
   }
   updateOnboardingUI();
@@ -2108,6 +2140,263 @@ function updateUploadNotifications(uploads) {
   });
 
   uploadStatusCache = nextCache;
+}
+
+function applyLocalModelsSnapshot(snapshot) {
+  localModelsData = snapshot || null;
+  renderLocalModels();
+  renderOnboardingLocalModels();
+}
+
+function getPresetLabel(presetId, presets) {
+  const entry = (presets || []).find((preset) => preset.id === presetId);
+  return entry ? entry.label : presetId;
+}
+
+function buildLocalModelBadges(model, snapshot) {
+  const badges = [];
+  if (model.recommended) {
+    badges.push('recommande');
+  }
+  if (snapshot?.activeModelId === model.id) {
+    badges.push('actif');
+  }
+  if (model.status === 'installed') {
+    badges.push('installe');
+  }
+  if (model.updateAvailable) {
+    badges.push('maj');
+  }
+  return badges;
+}
+
+function buildLocalModelRow(model, snapshot, context = 'settings') {
+  const row = document.createElement('div');
+  row.className = 'model-row';
+
+  const meta = document.createElement('div');
+  meta.className = 'model-meta';
+
+  const presetLabel = getPresetLabel(model.preset, snapshot?.presets);
+  const title = document.createElement('div');
+  title.className = 'model-title';
+  title.textContent = `${presetLabel} · ${model.name}`;
+  meta.appendChild(title);
+
+  const subtitle = document.createElement('div');
+  subtitle.className = 'model-subtitle';
+  const sizeLabel = model.sizeBytes ? ` · ${formatBytes(model.sizeBytes)}` : '';
+  subtitle.textContent = `${model.presetMeta?.description || ''}${sizeLabel}`.trim();
+  meta.appendChild(subtitle);
+
+  const badges = buildLocalModelBadges(model, snapshot);
+  if (badges.length) {
+    const badgeRow = document.createElement('div');
+    badgeRow.className = 'model-badges';
+    badges.forEach((label) => {
+      const badge = document.createElement('span');
+      badge.className = 'model-badge';
+      badge.textContent = label;
+      badgeRow.appendChild(badge);
+    });
+    meta.appendChild(badgeRow);
+  }
+
+  if (model.download && ['queued', 'downloading', 'verifying', 'paused'].includes(model.download.status)) {
+    const progress = document.createElement('div');
+    progress.className = 'model-progress';
+    const fill = document.createElement('div');
+    fill.className = 'model-progress-fill';
+    const percent = Number.isFinite(model.download.progress) ? model.download.progress : 0;
+    fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    progress.appendChild(fill);
+    meta.appendChild(progress);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'model-actions';
+
+  if (context === 'settings') {
+    if (model.download && ['queued', 'downloading', 'verifying'].includes(model.download.status)) {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn-secondary';
+      cancel.textContent = 'Annuler';
+      cancel.addEventListener('click', async () => {
+        if (window.electronAPI?.cancelLocalModelDownload) {
+          await window.electronAPI.cancelLocalModelDownload(model.id);
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(cancel);
+    } else if (model.download && model.download.status === 'paused') {
+      const resume = document.createElement('button');
+      resume.type = 'button';
+      resume.className = 'btn-secondary';
+      resume.textContent = 'Reprendre';
+      resume.addEventListener('click', async () => {
+        if (window.electronAPI?.installLocalModel) {
+          await window.electronAPI.installLocalModel(model.id);
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(resume);
+    } else if (model.status === 'installed') {
+      if (snapshot?.activeModelId !== model.id) {
+        const activate = document.createElement('button');
+        activate.type = 'button';
+        activate.className = 'btn-secondary';
+        activate.textContent = 'Activer';
+        activate.addEventListener('click', async () => {
+          if (window.electronAPI?.setLocalModelPreset) {
+            await window.electronAPI.setLocalModelPreset(model.preset);
+            await refreshDashboard();
+          }
+        });
+        actions.appendChild(activate);
+      }
+      if (model.updateAvailable) {
+        const upgrade = document.createElement('button');
+        upgrade.type = 'button';
+        upgrade.className = 'btn-secondary';
+        upgrade.textContent = 'Mettre à jour';
+        upgrade.addEventListener('click', async () => {
+          if (window.electronAPI?.installLocalModel) {
+            await window.electronAPI.installLocalModel(model.id);
+            await refreshDashboard();
+          }
+        });
+        actions.appendChild(upgrade);
+      }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn-secondary';
+      remove.textContent = 'Supprimer';
+      remove.addEventListener('click', async () => {
+        if (window.electronAPI?.removeLocalModel) {
+          await window.electronAPI.removeLocalModel(model.id);
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(remove);
+    } else if (model.urlAvailable) {
+      const install = document.createElement('button');
+      install.type = 'button';
+      install.className = 'btn-primary';
+      install.textContent = 'Installer';
+      install.addEventListener('click', async () => {
+        if (window.electronAPI?.installLocalModel) {
+          await window.electronAPI.installLocalModel(model.id);
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(install);
+    } else {
+      const note = document.createElement('div');
+      note.className = 'model-subtitle';
+      note.textContent = 'Source manquante.';
+      actions.appendChild(note);
+    }
+  } else if (context === 'onboarding') {
+    if (model.download && ['queued', 'downloading', 'verifying'].includes(model.download.status)) {
+      const wait = document.createElement('div');
+      wait.className = 'model-subtitle';
+      wait.textContent = 'Téléchargement en cours...';
+      actions.appendChild(wait);
+    } else if (model.status === 'installed') {
+      const done = document.createElement('div');
+      done.className = 'model-subtitle';
+      done.textContent = 'Installé.';
+      actions.appendChild(done);
+    } else if (model.urlAvailable) {
+      const install = document.createElement('button');
+      install.type = 'button';
+      install.className = 'btn-primary';
+      install.textContent = 'Installer';
+      install.addEventListener('click', async () => {
+        if (window.electronAPI?.installLocalModel) {
+          const result = await window.electronAPI.installLocalModel(model.id);
+          if (!result?.ok) {
+            showToast('Téléchargement indisponible.', 'error');
+          }
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(install);
+    }
+  }
+
+  row.appendChild(meta);
+  if (actions.childNodes.length) {
+    row.appendChild(actions);
+  }
+  return row;
+}
+
+function renderLocalModels() {
+  if (!localModelList) {
+    return;
+  }
+  const snapshot = localModelsData;
+  const models = snapshot?.models || [];
+  localModelList.innerHTML = '';
+  if (!models.length) {
+    const empty = document.createElement('div');
+    empty.className = 'model-subtitle';
+    empty.textContent = 'Aucun modèle disponible.';
+    localModelList.appendChild(empty);
+  } else {
+    models.forEach((model) => {
+      localModelList.appendChild(buildLocalModelRow(model, snapshot, 'settings'));
+    });
+  }
+  if (localModelSummary) {
+    if (!snapshot) {
+      localModelSummary.textContent = 'Chargement...';
+    } else {
+      const recommended = getPresetLabel(snapshot.recommendedPreset, snapshot.presets);
+      const activePreset = snapshot.activePreset === 'auto'
+        ? `Auto (${recommended})`
+        : getPresetLabel(snapshot.activePreset, snapshot.presets);
+      const memLabel = snapshot.hardware?.totalMemGb ? `${snapshot.hardware.totalMemGb} GB RAM` : '';
+      localModelSummary.textContent = `Recommandé: ${recommended} · Actif: ${activePreset}${memLabel ? ` · ${memLabel}` : ''}`;
+    }
+  }
+}
+
+function renderOnboardingLocalModels() {
+  if (!onboardingLocalModelList) {
+    return;
+  }
+  const snapshot = localModelsData;
+  const models = snapshot?.models || [];
+  onboardingLocalModelList.innerHTML = '';
+  if (!models.length) {
+    const empty = document.createElement('div');
+    empty.className = 'model-subtitle';
+    empty.textContent = 'Modèles indisponibles pour le moment.';
+    onboardingLocalModelList.appendChild(empty);
+    return;
+  }
+  const installed = models.find((model) => model.status === 'installed');
+  if (installed && !onboardingState.localModelReady) {
+    onboardingState = {
+      ...onboardingState,
+      localModelReady: true,
+      localModelPreset: installed.preset,
+    };
+    persistOnboardingState({
+      localModelReady: true,
+      localModelPreset: installed.preset,
+    });
+  }
+  models.forEach((model) => {
+    onboardingLocalModelList.appendChild(buildLocalModelRow(model, snapshot, 'onboarding'));
+  });
+  if (onboardingLocalModelStatus && snapshot?.recommendedPreset) {
+    const recommended = getPresetLabel(snapshot.recommendedPreset, snapshot.presets);
+    onboardingLocalModelStatus.textContent = `Recommandé pour cette machine: ${recommended}.`;
+  }
 }
 
 async function fetchDiagnostics() {
@@ -3876,6 +4165,7 @@ async function refreshDashboard() {
   syncCrocOmniAnswerUiState();
   applyUploadsSnapshot(dashboardData.uploads);
   applyOnboardingStateFromSettings(currentSettings);
+  applyLocalModelsSnapshot(dashboardData.localModels);
   renderAuth(dashboardData.auth, dashboardData.syncReady);
   renderSubscription(dashboardData.subscription, dashboardData.auth);
   await populateMicrophones();
@@ -4075,6 +4365,16 @@ function updateCrocOmniSettings(nextSettings) {
 
   if (onboardingHotkeyNext) {
     onboardingHotkeyNext.addEventListener('click', () => {
+      setOnboardingStep('local_model');
+    });
+  }
+  if (onboardingLocalModelSkip) {
+    onboardingLocalModelSkip.addEventListener('click', () => {
+      setOnboardingStep('first_dictation');
+    });
+  }
+  if (onboardingLocalModelNext) {
+    onboardingLocalModelNext.addEventListener('click', () => {
       setOnboardingStep('first_dictation');
     });
   }
@@ -4133,6 +4433,49 @@ function updateCrocOmniSettings(nextSettings) {
       await persistOnboardingState({ completed: true, step: 'done' });
       setOnboardingOverlayVisible(false);
       setActiveView('home');
+    });
+  }
+
+  if (localModelOpenFolder) {
+    localModelOpenFolder.addEventListener('click', async () => {
+      if (window.electronAPI?.openLocalModelFolder) {
+        await window.electronAPI.openLocalModelFolder();
+      }
+    });
+  }
+  if (localModelImport) {
+    localModelImport.addEventListener('click', async () => {
+      if (!window.electronAPI?.importLocalModel) {
+        return;
+      }
+      const presets = localModelsData?.presets || [
+        { id: 'lite', label: 'Lite' },
+        { id: 'quality', label: 'Quality' },
+        { id: 'ultra', label: 'Ultra' },
+      ];
+      const values = await openModal({
+        title: 'Importer un modèle',
+        confirmText: 'Importer',
+        fields: [
+          {
+            key: 'preset',
+            label: 'Preset',
+            type: 'select',
+            options: presets.map((preset) => ({ label: preset.label, value: preset.id })),
+            value: localModelsData?.recommendedPreset || 'quality',
+          },
+        ],
+      });
+      if (!values) {
+        return;
+      }
+      const result = await window.electronAPI.importLocalModel(values.preset);
+      if (!result?.ok) {
+        showToast('Import échoué.', 'error');
+        return;
+      }
+      showToast('Modèle importé.');
+      await refreshDashboard();
     });
   }
 

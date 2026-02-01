@@ -1,0 +1,74 @@
+schema: 1
+story: '6.1'
+story_title: 'Upload Flow and Status (Local File Transcription)'
+gate: FAIL
+status_reason: 'Local file paths from upload notes are synced to remote storage and uploaded transcripts are saved to notes instead of history, violating acceptance criteria and privacy requirements.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T04:05:42Z'
+
+top_issues:
+  - id: 'privacy-file-path-synced'
+    severity: high
+    summary: 'Upload note metadata (file.path) is synced to remote notes, violating local-only requirement.'
+    refs: ['sync.js', 'main.js', 'store.js']
+    suggested_owner: dev
+  - id: 'history-target-mismatch'
+    severity: high
+    summary: 'Uploaded transcripts are persisted as notes rather than history entries (AC5 mismatch).'
+    refs: ['main.js', 'dashboard.js', 'store.js']
+    suggested_owner: dev
+  - id: 'failed-uploads-not-persisted'
+    severity: medium
+    summary: 'Failed uploads only live in memory; file reference/reason is lost after restart (AC6 gap).'
+    refs: ['main.js', 'dashboard.js']
+    suggested_owner: dev
+  - id: 'duration-metadata-nonwav'
+    severity: medium
+    summary: 'Duration metadata is only calculated for WAV; mp3/m4a/ogg duration is missing (AC5 partial).'
+    refs: ['main.js']
+    suggested_owner: dev
+  - id: 'missing-upload-tests'
+    severity: medium
+    summary: 'No automated tests cover upload flow, cancellation, or failure handling.'
+    refs: ['test-core.js', 'docs/stories/6.1-upload-flow-and-status.md']
+    suggested_owner: dev
+
+waiver: { active: false }
+
+quality_score: 30
+expires: '2026-02-15T04:05:45Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 5
+  trace:
+    ac_covered: []
+    ac_gaps: [1, 2, 3, 4, 5, 6, 7, 8]
+
+nfr_validation:
+  security:
+    status: CONCERNS
+    notes: 'Local file paths from uploads are synced to remote notes.'
+  performance:
+    status: PASS
+    notes: 'Async processing in main process; potential memory pressure for large files but within size limit.'
+  reliability:
+    status: CONCERNS
+    notes: 'Cancellation does not abort in-flight transcription; failed uploads not persisted.'
+  maintainability:
+    status: CONCERNS
+    notes: 'No automated tests for upload flow; documentation references missing.'
+
+recommendations:
+  immediate:
+    - action: 'Redact file.path from upload metadata during notes sync to keep file references local-only.'
+      refs: ['sync.js', 'main.js']
+    - action: 'Align persistence with AC5 (history vs notes) or update requirements/UI to match the chosen data store.'
+      refs: ['main.js', 'dashboard.js', 'store.js']
+  future:
+    - action: 'Persist failed upload entries with file reference and error details for user review.'
+      refs: ['main.js', 'dashboard.js']
+    - action: 'Compute duration for non-WAV formats (mp3/m4a/ogg) or clarify metadata expectations.'
+      refs: ['main.js']
+    - action: 'Add automated tests for upload pipeline and cancellation/failure paths.'
+      refs: ['test-core.js']
