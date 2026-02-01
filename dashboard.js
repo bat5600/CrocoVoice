@@ -1221,15 +1221,15 @@ function renderMarkdownLite(text) {
   }
   const lines = text.split(/\r?\n/);
   const html = [];
-  let inList = false;
+  let listType = null;
   let inCode = false;
   let codeLines = [];
   let paragraphLines = [];
 
   const closeList = () => {
-    if (inList) {
-      html.push('</ul>');
-      inList = false;
+     if (listType) {
+      html.push(`</${listType}>`);
+      listType = null;
     }
   };
 
@@ -1288,15 +1288,24 @@ function renderMarkdownLite(text) {
       return;
     }
 
-    const listMatch = trimmed.match(/^[-*]\s+(.*)$/);
-    if (listMatch) {
+     const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+     const unorderedMatch = line.match(/^(\s*)([-*])\s+(.*)$/);
+     if (orderedMatch || unorderedMatch) {
       flushParagraph();
-      if (!inList) {
-        html.push('<ul>');
-        inList = true;
+        const match = orderedMatch || unorderedMatch;
+      const indent = match[1] || '';
+      const type = orderedMatch ? 'ol' : 'ul';
+      const content = orderedMatch ? orderedMatch[3] : unorderedMatch[3];
+      if (listType && listType !== type) {
+        closeList();
       }
-      html.push(`<li>${formatInlineMarkdown(listMatch[1])}</li>`);
-      return;
+      if (!listType) {
+        html.push(`<${type}>`);
+        listType = type;
+      }
+      const indentLevel = Math.floor(indent.length / 2);
+      const indentStyle = indentLevel ? ` style="margin-left:${indentLevel * 16}px"` : '';
+      html.push(`<li${indentStyle}>${formatInlineMarkdown(content)}</li>`);      return;
     }
 
     closeList();
@@ -1812,7 +1821,9 @@ function buildEntryRow(entry, type) {
   if (type === 'notes') {
     preview.textContent = getNotePreview(entry.text || '');
   } else {
-    preview.textContent = entry.text || entry.raw_text || '';
+    preview.classList.add('entry-preview-rich');
+    const previewText = entry.edited_text || entry.formatted_text || entry.text || entry.raw_text || '';
+    preview.innerHTML = renderMarkdownLite(previewText);
   }
 
   main.appendChild(metaDiv);
