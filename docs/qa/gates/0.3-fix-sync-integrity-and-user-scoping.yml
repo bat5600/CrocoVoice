@@ -1,0 +1,55 @@
+schema: 1
+story: '0.3'
+story_title: 'Story 1.3: fix-sync-integrity-and-user-scoping'
+gate: CONCERNS
+status_reason: 'Manual verification only; sync integrity changes lack automated coverage.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-0.3-1'
+    severity: medium
+    summary: 'No automated coverage for pagination/cursor/delete reconciliation; data-loss risk.'
+    suggested_owner: dev
+    refs: ['sync.js']
+  - id: 'qa-0.3-2'
+    severity: medium
+    summary: 'User-scoped purge not regression-tested; potential cross-user deletes.'
+    suggested_owner: dev
+    refs: ['sync.js']
+
+waiver: { active: false }
+
+quality_score: 80
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 2
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4']
+
+nfr_validation:
+  security:
+    status: CONCERNS
+    notes: 'User scoping lacks automated regression coverage.'
+  performance:
+    status: CONCERNS
+    notes: 'No perf measurements for large datasets.'
+  reliability:
+    status: CONCERNS
+    notes: 'Manual-only verification for sync integrity.'
+  maintainability:
+    status: PASS
+    notes: 'Changes are localized to existing sync logic.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add script-based tests for pagination/cursor advancement and delete reconciliation.'
+      refs: ['sync.js']
+    - action: 'Add regression coverage for user_id scoping on purge/delete paths.'
+      refs: ['sync.js']
+    - action: 'Run a large-dataset sync smoke test (multi-page pull + offline delete).'
+      refs: ['sync.js']

@@ -1,0 +1,55 @@
+schema: 1
+story: '13.3'
+story_title: 'Epic 13 — Audio Enhancement Layer (Diagnostics + Adaptive Gate)'
+gate: CONCERNS
+status_reason: 'Enhancement layer reliability and perf not validated by tests.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-13.3-1'
+    severity: medium
+    summary: 'Enhancement gate/diagnostics lack automated tests.'
+    suggested_owner: dev
+    refs: ['renderer.js', 'main.js', 'store.js', 'dashboard.js', 'dashboard.html']
+  - id: 'qa-13.3-2'
+    severity: medium
+    summary: 'Perf impact not benchmarked.'
+    suggested_owner: dev
+    refs: ['renderer.js', 'main.js', 'store.js', 'dashboard.js', 'dashboard.html']
+
+waiver: { active: false }
+
+quality_score: 80
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 2
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4', '5', '6', '7']
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No auth/data changes.'
+  performance:
+    status: CONCERNS
+    notes: 'Latency impact not measured.'
+  reliability:
+    status: CONCERNS
+    notes: 'Diagnostics gating not test-covered.'
+  maintainability:
+    status: PASS
+    notes: 'Changes are localized to enhancement layer.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add tests for diagnostics gating and persistence toggle.'
+      refs: ['renderer.js', 'main.js', 'store.js', 'dashboard.js', 'dashboard.html']
+    - action: 'Add latency/perf checks to ensure no regressions.'
+      refs: ['renderer.js', 'main.js', 'store.js', 'dashboard.js', 'dashboard.html']
+    - action: 'Add regression test for clean-audio bypass path.'
+      refs: ['renderer.js', 'main.js', 'store.js', 'dashboard.js', 'dashboard.html']

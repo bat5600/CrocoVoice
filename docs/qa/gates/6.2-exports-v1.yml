@@ -1,0 +1,50 @@
+schema: 1
+story: '6.2'
+story_title: 'Epic 6 — Exports v1'
+gate: CONCERNS
+status_reason: 'Export flows not covered by automated tests.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-6.2-1'
+    severity: medium
+    summary: 'Export outputs and error paths not covered by automated tests.'
+    suggested_owner: dev
+    refs: ['main.js', 'dashboard.html', 'dashboard.js', 'preload.js', 'store.js']
+
+waiver: { active: false }
+
+quality_score: 90
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 1
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4', '5', '6', '7']
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No auth changes; privacy not test-validated.'
+  performance:
+    status: PASS
+    notes: 'No perf measurements recorded.'
+  reliability:
+    status: CONCERNS
+    notes: 'Manual-only verification for export flows.'
+  maintainability:
+    status: PASS
+    notes: 'Changes are localized.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add tests for export formats, timestamps, and encoding.'
+      refs: ['main.js', 'dashboard.html', 'dashboard.js', 'preload.js', 'store.js']
+    - action: 'Add error-path tests for missing files and permissions.'
+      refs: ['main.js', 'dashboard.html', 'dashboard.js', 'preload.js', 'store.js']
+    - action: 'Verify large exports do not block UI responsiveness.'
+      refs: ['main.js', 'dashboard.html', 'dashboard.js', 'preload.js', 'store.js']

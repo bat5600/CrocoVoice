@@ -1,0 +1,55 @@
+schema: 1
+story: '13.1'
+story_title: 'Epic 13 — Local VAD/ASR Path'
+gate: CONCERNS
+status_reason: 'Local inference reliability and lifecycle not test-covered.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-13.1-1'
+    severity: medium
+    summary: 'Local model lifecycle and fallback not covered by automated tests.'
+    suggested_owner: dev
+    refs: ['main.js', 'preload.js', 'dashboard.html', 'dashboard.js']
+  - id: 'qa-13.1-2'
+    severity: medium
+    summary: 'Offline/local inference path lacks automated validation.'
+    suggested_owner: dev
+    refs: ['main.js', 'preload.js', 'dashboard.html', 'dashboard.js']
+
+waiver: { active: false }
+
+quality_score: 80
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 2
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4', '5', '6', '7']
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No auth changes noted in story.'
+  performance:
+    status: CONCERNS
+    notes: 'Local inference latency unmeasured.'
+  reliability:
+    status: CONCERNS
+    notes: 'Lifecycle and fallback not test-covered.'
+  maintainability:
+    status: PASS
+    notes: 'Changes are localized to local inference modules.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add tests for model install/upgrade/uninstall flows and fallback.'
+      refs: ['main.js', 'preload.js', 'dashboard.html', 'dashboard.js']
+    - action: 'Add offline/local path validation to ensure no cloud calls.'
+      refs: ['main.js', 'preload.js', 'dashboard.html', 'dashboard.js']
+    - action: 'Add performance checks for local inference latency.'
+      refs: ['main.js', 'preload.js', 'dashboard.html', 'dashboard.js']

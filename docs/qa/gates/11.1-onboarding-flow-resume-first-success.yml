@@ -1,0 +1,50 @@
+schema: 1
+story: '11.1'
+story_title: 'Epic 11 — Onboarding Flow (Resume + First Success)'
+gate: CONCERNS
+status_reason: 'Onboarding state machine lacks automated coverage.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-11.1-1'
+    severity: medium
+    summary: 'Onboarding state machine not covered by automated tests.'
+    suggested_owner: dev
+    refs: ['dashboard.js', 'main.js', 'preload.js', 'renderer.js']
+
+waiver: { active: false }
+
+quality_score: 90
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 1
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4', '5', '6', '7']
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No auth/data changes.'
+  performance:
+    status: PASS
+    notes: 'No perf measurements recorded.'
+  reliability:
+    status: CONCERNS
+    notes: 'Onboarding state not test-covered.'
+  maintainability:
+    status: PASS
+    notes: 'Changes are localized to UI/state.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add tests for resume/skip flows and persisted state.'
+      refs: ['dashboard.js', 'main.js', 'preload.js', 'renderer.js']
+    - action: 'Add tests for error handling (mic/accessibility) and recovery.'
+      refs: ['dashboard.js', 'main.js', 'preload.js', 'renderer.js']
+    - action: 'Add regression coverage for settings updates.'
+      refs: ['dashboard.js', 'main.js', 'preload.js', 'renderer.js']

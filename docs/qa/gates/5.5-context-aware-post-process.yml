@@ -1,0 +1,50 @@
+schema: 1
+story: '5.5'
+story_title: 'Epic 5 — Context-Aware Post-Process'
+gate: CONCERNS
+status_reason: 'Context privacy and toggle behavior not test-covered.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-5.5-1'
+    severity: medium
+    summary: 'Privacy/opt-out behaviors not covered by automated tests.'
+    suggested_owner: dev
+    refs: ['main.js', 'dashboard.html', 'dashboard.js']
+
+waiver: { active: false }
+
+quality_score: 90
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 1
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4', '5']
+
+nfr_validation:
+  security:
+    status: CONCERNS
+    notes: 'Context privacy not validated by automated tests.'
+  performance:
+    status: PASS
+    notes: 'No perf measurements recorded.'
+  reliability:
+    status: CONCERNS
+    notes: 'Manual-only verification for context flows.'
+  maintainability:
+    status: PASS
+    notes: 'Changes are localized.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add tests for opt-in/out and context-disabled paths.'
+      refs: ['main.js', 'dashboard.html', 'dashboard.js']
+    - action: 'Add privacy/PII redaction tests for context usage.'
+      refs: ['main.js', 'dashboard.html', 'dashboard.js']
+    - action: 'Add regression coverage for stability when context is missing.'
+      refs: ['main.js', 'dashboard.html', 'dashboard.js']

@@ -1,0 +1,55 @@
+schema: 1
+story: '10.1'
+story_title: 'Epic 10 — Feature Flags and Telemetry'
+gate: CONCERNS
+status_reason: 'Flag/telemetry behavior not covered by automated tests.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-10.1-1'
+    severity: medium
+    summary: 'Privacy/redaction and opt-in flows not covered by automated tests.'
+    suggested_owner: dev
+    refs: ['main.js', 'store.js', 'dashboard.js', 'dashboard.html', 'preload.js']
+  - id: 'qa-10.1-2'
+    severity: medium
+    summary: 'Flag precedence/TTL behavior lacks automated verification.'
+    suggested_owner: dev
+    refs: ['main.js', 'store.js', 'dashboard.js', 'dashboard.html', 'preload.js']
+
+waiver: { active: false }
+
+quality_score: 80
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 2
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4', '5']
+
+nfr_validation:
+  security:
+    status: CONCERNS
+    notes: 'Privacy controls not validated by automated tests.'
+  performance:
+    status: PASS
+    notes: 'No perf measurements recorded.'
+  reliability:
+    status: CONCERNS
+    notes: 'Flag evaluation not test-covered.'
+  maintainability:
+    status: PASS
+    notes: 'Changes are localized to flag/telemetry modules.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Add unit tests for precedence, TTL cache, and fail-closed behavior.'
+      refs: ['main.js', 'store.js', 'dashboard.js', 'dashboard.html', 'preload.js']
+    - action: 'Add tests for opt-in gating and redaction in diagnostics upload.'
+      refs: ['main.js', 'store.js', 'dashboard.js', 'dashboard.html', 'preload.js']
+    - action: 'Add regression test for local override precedence.'
+      refs: ['main.js', 'store.js', 'dashboard.js', 'dashboard.html', 'preload.js']

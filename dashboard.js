@@ -229,6 +229,7 @@ function applyDashboardLanguage(settings) {
   }
   const nextLanguage = i18n.normalizeLanguage(settings?.uiLanguage);
   i18n.setLanguage(nextLanguage);
+  applyEmptyStateTranslations();
   updateBreadcrumb(currentView);
   if (dashboardData?.stats) {
     renderStats(dashboardData.stats);
@@ -240,6 +241,17 @@ function applyDashboardLanguage(settings) {
     renderSubscription(dashboardData.subscription, dashboardData.auth);
   }
   renderDiagnostics();
+}
+
+function applyEmptyStateTranslations() {
+  if (historyEmpty) {
+    historyEmpty.dataset.emptyTitle = t('home.history.emptyTitle');
+    historyEmpty.dataset.emptyBody = t('home.history.emptyBody');
+    historyEmpty.dataset.searchTitle = t('home.history.searchTitle');
+    historyEmpty.dataset.searchBody = t('home.history.searchBody');
+    historyEmpty.dataset.errorTitle = t('home.history.errorTitle');
+    historyEmpty.dataset.errorBody = t('home.history.errorBody');
+  }
 }
 let modalResolver = null;
 let platform = 'win32';
@@ -2389,7 +2401,7 @@ function renderUploads(uploads) {
         if (window.electronAPI?.cancelUploadJob) {
           const result = await window.electronAPI.cancelUploadJob(job.id);
           if (!result?.ok) {
-            showToast('Annulation impossible.', 'error');
+            showToastKey('toast.cancel.failed', 'error');
             return;
           }
           upsertUploadJob({ ...job, status: 'cancelled' });
@@ -3694,7 +3706,7 @@ function renderSnippets(snippets) {
           description: res.description || '',
           created_at: entry.created_at,
         });
-        showToast('Snippet mis à jour.');
+        showToastKey('toast.snippet.updated');
         await refreshDashboard();
       }
     });
@@ -3705,7 +3717,7 @@ function renderSnippets(snippets) {
     deleteBtn.textContent = 'Supprimer';
     deleteBtn.addEventListener('click', async () => {
       await window.electronAPI.deleteSnippet(entry.id);
-      showToast('Snippet supprimé.');
+      showToastKey('toast.snippet.deleted');
       await refreshDashboard();
     });
 
@@ -4063,8 +4075,8 @@ function syncCrocOmniComposerState() {
   }
   if (crocOmniComposerMeta) {
     crocOmniComposerMeta.textContent = crocOmniStreaming
-      ? 'CrocOmni répond...'
-      : 'Entrée pour envoyer · Shift+Entrée pour une nouvelle ligne.';
+      ? t('crocomni.composer.responding')
+      : t('crocomni.composer.hint');
   }
 }
 
@@ -4094,7 +4106,7 @@ async function loadCrocOmniMessages(conversationId) {
     crocOmniMessagesData = Array.isArray(messages) ? messages : [];
     renderCrocOmniMessages(crocOmniMessagesData);
   } catch (error) {
-    showToast(error?.message || 'Impossible de charger la conversation.', 'error');
+    showToast(error?.message || t('toast.crocomni.loadFailed'), 'error');
   } finally {
     syncCrocOmniComposerState();
   }
@@ -4105,7 +4117,7 @@ async function createCrocOmniConversation() {
     return null;
   }
   try {
-    const record = await window.electronAPI.createCrocOmniConversation({ title: 'Nouvelle conversation' });
+    const record = await window.electronAPI.createCrocOmniConversation({ title: t('crocomni.newConversation') });
     if (record?.id) {
       crocOmniConversations = [record, ...crocOmniConversations];
       crocOmniActiveConversationId = record.id;
@@ -4116,7 +4128,7 @@ async function createCrocOmniConversation() {
       return record;
     }
   } catch (error) {
-    showToast(error?.message || 'Impossible de créer la conversation.', 'error');
+    showToast(error?.message || t('toast.crocomni.createFailed'), 'error');
   }
   return null;
 }
@@ -4130,9 +4142,9 @@ async function clearCrocOmniConversation() {
     crocOmniMessagesData = [];
     renderCrocOmniMessages(crocOmniMessagesData);
     syncCrocOmniComposerState();
-    showToast('Conversation effacée.');
+    showToastKey('toast.crocomni.cleared');
   } catch (error) {
-    showToast(error?.message || 'Impossible d’effacer la conversation.', 'error');
+    showToast(error?.message || t('toast.crocomni.clearFailed'), 'error');
   }
 }
 
@@ -4163,9 +4175,9 @@ function handleCrocOmniStream(payload) {
       metaParts.push(formatDateTimeLabel(new Date().toISOString()));
     }
     if (payload.contextUsed === true) {
-      metaParts.push('Contexte utilisé');
+      metaParts.push(t('crocomni.meta.contextUsed'));
     } else if (payload.contextUsed === false) {
-      metaParts.push('Sans contexte');
+      metaParts.push(t('crocomni.meta.contextNone'));
     }
     state.meta.textContent = metaParts.join(' · ');
     crocOmniStreamState.delete(payload.requestId);
@@ -4194,7 +4206,7 @@ async function sendCrocOmniMessage() {
     conversationId = record?.id || crocOmniActiveConversationId;
   }
   if (!conversationId) {
-    showToast('Impossible de démarrer la conversation.', 'error');
+    showToastKey('toast.crocomni.startFailed', 'error');
     return;
   }
   const requestId = typeof crypto?.randomUUID === 'function'
@@ -4298,7 +4310,7 @@ async function openCrocOmniResult(result) {
       note = await window.electronAPI.getNoteById(result.doc_id);
     }
     if (!note) {
-      showToast('Note introuvable.', 'error');
+      showToastKey('toast.note.notFound', 'error');
       return;
     }
     openFocusedNote(note);
@@ -4309,7 +4321,7 @@ async function openCrocOmniResult(result) {
   await delay(60);
   const row = document.querySelector(`[data-entry-type="history"][data-entry-id="${CSS.escape(result.doc_id)}"]`);
   if (!row) {
-    showToast('Dictée introuvable dans la liste.', 'error');
+    showToastKey('toast.dictation.notFound', 'error');
     return;
   }
   row.classList.add('is-highlight');
@@ -4323,7 +4335,7 @@ function renderCrocOmniResults(results) {
   }
   crocOmniResults.innerHTML = '';
   if (!results || results.length === 0) {
-    crocOmniResults.innerHTML = '<div class="empty-state">Aucun résultat.</div>';
+    crocOmniResults.innerHTML = `<div class="empty-state">${t('crocomni.results.empty')}</div>`;
     return;
   }
 
@@ -4346,14 +4358,14 @@ function renderCrocOmniResults(results) {
     const title = document.createElement('div');
     title.className = 'croc-omni-result-title';
     const fallbackTitle = result.source === 'notes'
-      ? 'Note'
-      : (result.created_at ? `Dictée · ${formatDateLabel(result.created_at)}` : 'Dictée');
+      ? t('crocomni.result.note')
+      : (result.created_at ? t('crocomni.result.dictationWithDate', { date: formatDateLabel(result.created_at) }) : t('crocomni.result.dictation'));
     title.textContent = result.title || fallbackTitle;
 
     const meta = document.createElement('div');
     meta.className = 'croc-omni-result-meta';
     const stamp = result.updated_at || result.created_at || null;
-    const typeLabel = result.source === 'notes' ? 'NOTE' : 'DICTÉE';
+    const typeLabel = result.source === 'notes' ? t('crocomni.result.type.note') : t('crocomni.result.type.dictation');
     meta.textContent = `${typeLabel}${stamp ? ` · ${formatDateTimeLabel(stamp)}` : ''}`;
 
     header.appendChild(title);
@@ -4383,18 +4395,18 @@ function syncCrocOmniAnswerUiState() {
   }
   if (!aiEnabled) {
     if (crocOmniAnswerOutput) {
-      crocOmniAnswerOutput.textContent = 'Activez “Répondre avec IA” pour générer une réponse.';
+      crocOmniAnswerOutput.textContent = t('crocomni.answer.disabled');
     }
   } else if (!apiReady) {
     if (crocOmniAnswerOutput) {
-      crocOmniAnswerOutput.textContent = 'Ajoutez OPENAI_API_KEY pour générer une réponse.';
+      crocOmniAnswerOutput.textContent = t('crocomni.answer.missingKey');
     }
   }
 }
 
 async function runCrocOmniSearch() {
   if (!window.electronAPI?.searchCrocOmni) {
-    showToast('Recherche CrocOmni indisponible.', 'error');
+    showToastKey('toast.crocomni.searchUnavailable', 'error');
     return;
   }
   const query = crocOmniSearchInput?.value?.trim() || '';
@@ -4411,7 +4423,7 @@ async function runCrocOmniSearch() {
   const rangeDays = rangeValue && rangeValue !== 'all' ? Number.parseInt(rangeValue, 10) : null;
 
   crocOmniSearchPending = true;
-  setCrocOmniSearchStatus('Recherche en cours…');
+  setCrocOmniSearchStatus(t('crocomni.search.pending'));
   syncCrocOmniAnswerUiState();
   try {
     const results = await window.electronAPI.searchCrocOmni(query, {
@@ -4421,12 +4433,12 @@ async function runCrocOmniSearch() {
     });
     crocOmniSearchResults = Array.isArray(results) ? results : [];
     renderCrocOmniResults(crocOmniSearchResults);
-    setCrocOmniSearchStatus(`${crocOmniSearchResults.length} résultat(s)`);
+    setCrocOmniSearchStatus(t('crocomni.search.count', { count: crocOmniSearchResults.length }));
   } catch (error) {
     crocOmniSearchResults = [];
     renderCrocOmniResults(crocOmniSearchResults);
-    setCrocOmniSearchStatus('Recherche impossible.');
-    showToast(error?.message || 'Recherche impossible.', 'error');
+    setCrocOmniSearchStatus(t('crocomni.search.failed'));
+    showToast(error?.message || t('toast.crocomni.searchFailed'), 'error');
   } finally {
     crocOmniSearchPending = false;
     syncCrocOmniAnswerUiState();
@@ -4435,17 +4447,17 @@ async function runCrocOmniSearch() {
 
 async function runCrocOmniAnswer() {
   if (!window.electronAPI?.answerCrocOmni) {
-    showToast('Réponse IA indisponible.', 'error');
+    showToastKey('toast.crocomni.answerUnavailable', 'error');
     return;
   }
   const query = crocOmniSearchQuery || crocOmniSearchInput?.value?.trim() || '';
   if (!query || crocOmniSearchResults.length === 0) {
-    showToast('Lancez une recherche avant.', 'error');
+    showToastKey('toast.crocomni.searchFirst', 'error');
     return;
   }
   crocOmniAnswerPending = true;
   if (crocOmniAnswerOutput) {
-    crocOmniAnswerOutput.textContent = 'Génération de la réponse…';
+    crocOmniAnswerOutput.textContent = t('crocomni.answer.pending');
   }
   syncCrocOmniAnswerUiState();
   try {
@@ -4457,13 +4469,13 @@ async function runCrocOmniAnswer() {
       throw new Error(res?.error || 'answer_failed');
     }
     if (crocOmniAnswerOutput) {
-      crocOmniAnswerOutput.textContent = res.answer || 'Aucune réponse.';
+      crocOmniAnswerOutput.textContent = res.answer || t('crocomni.answer.empty');
     }
   } catch (error) {
     if (crocOmniAnswerOutput) {
-      crocOmniAnswerOutput.textContent = 'Impossible de générer la réponse.';
+      crocOmniAnswerOutput.textContent = t('crocomni.answer.failed');
     }
-    showToast(error?.message || 'Impossible de générer la réponse.', 'error');
+    showToast(error?.message || t('toast.crocomni.answerFailed'), 'error');
   } finally {
     crocOmniAnswerPending = false;
     syncCrocOmniAnswerUiState();
@@ -4530,7 +4542,7 @@ function renderStyles(styles) {
     if (style.id !== currentSettings.activeStyleId) {
       btn.addEventListener('click', async () => {
         await window.electronAPI.activateStyle(style.id);
-        showToast(`Style "${style.name}" activé.`);
+        showToastKey('toast.style.activated', 'success', { name: style.name });
         await refreshDashboard();
       });
     }
@@ -4644,7 +4656,7 @@ function renderContextProfiles(profiles, contextData) {
       } : item));
       await saveContextProfiles(nextProfiles);
       renderContext(contextData);
-      showToast('Profil mis à jour.');
+      showToastKey('toast.profile.updated');
     });
 
     const deleteBtn = document.createElement('button');
@@ -4655,7 +4667,7 @@ function renderContextProfiles(profiles, contextData) {
       const nextProfiles = profiles.filter((item) => item.id !== profile.id);
       await saveContextProfiles(nextProfiles);
       renderContext(contextData);
-      showToast('Profil supprimé.');
+      showToastKey('toast.profile.deleted');
     });
 
     actions.appendChild(editBtn);
@@ -4829,8 +4841,8 @@ function renderSettings(settings) {
 
   if (apiKeyStatus) {
     apiKeyStatus.innerHTML = settings.apiKeyPresent
-      ? '<span style="width:8px;height:8px;border-radius:999px;background:#10B981;"></span> API OpenAI connectée'
-      : '<span style="width:8px;height:8px;border-radius:999px;background:#EF4444;"></span> API manquante';
+      ? `<span style="width:8px;height:8px;border-radius:999px;background:#10B981;"></span> ${t('settings.apiKey.connected')}`
+      : `<span style="width:8px;height:8px;border-radius:999px;background:#EF4444;"></span> ${t('settings.apiKey.missing')}`;
     apiKeyStatus.style.color = settings.apiKeyPresent ? '#059669' : '#EF4444';
   }
 
@@ -4861,18 +4873,18 @@ function renderLocalAsrCommandStatus(settings) {
 
   if (command) {
     if (isLikelyPythonWhisperCommand(command)) {
-      localAsrCommandStatus.textContent = 'Commande détectée (Python Whisper). Incompatible avec les modèles locaux GGML.';
+      localAsrCommandStatus.textContent = t('localAsr.command.python');
       localAsrCommandStatus.classList.add('is-error');
-      localAsrCommandRescan.textContent = 'Rescanner';
+      localAsrCommandRescan.textContent = t('localAsr.command.rescan');
     } else {
-      localAsrCommandStatus.textContent = `Commande détectée: ${command}`;
+      localAsrCommandStatus.textContent = t('localAsr.command.detected', { command });
       localAsrCommandStatus.classList.add('is-ok');
-      localAsrCommandRescan.textContent = 'Rescanner';
+      localAsrCommandRescan.textContent = t('localAsr.command.rescan');
     }
   } else {
-    localAsrCommandStatus.textContent = 'Commande locale manquante. Ajoutez un binaire ou lancez un scan automatique.';
+    localAsrCommandStatus.textContent = t('localAsr.command.missing');
     localAsrCommandStatus.classList.add('is-error');
-    localAsrCommandRescan.textContent = 'Scanner';
+    localAsrCommandRescan.textContent = t('localAsr.command.scan');
   }
 }
 
@@ -4898,12 +4910,12 @@ function renderAuth(auth, syncReady) {
     authPanel.innerHTML = '';
     const errorSpan = document.createElement('span');
     errorSpan.className = 'sync-status error';
-    errorSpan.textContent = 'Erreur de configuration serveur.';
+    errorSpan.textContent = t('auth.serverConfigError');
     authPanel.appendChild(errorSpan);
     if (syncBtn) {
       syncBtn.disabled = true;
     }
-    setSyncStatusMessage('Configuration sync indisponible.', 'error');
+    setSyncStatusMessage(t('sync.status.notConfigured'), 'error');
     return;
   }
 
@@ -4921,7 +4933,7 @@ function renderAuth(auth, syncReady) {
     signOutButton.id = 'signOutButton';
     signOutButton.className = 'auth-action';
     signOutButton.type = 'button';
-    signOutButton.textContent = 'Déconnexion';
+    signOutButton.textContent = t('auth.signOut');
     signOutButton.addEventListener('click', async () => {
       await window.electronAPI.authSignOut();
       await refreshDashboard();
@@ -4929,7 +4941,7 @@ function renderAuth(auth, syncReady) {
     panel.appendChild(email);
     panel.appendChild(signOutButton);
     authPanel.appendChild(panel);
-    setSyncStatusMessage('Synchronisation disponible.', 'ok');
+    setSyncStatusMessage(t('sync.status.available'), 'ok');
     return;
   }
 
@@ -4943,13 +4955,13 @@ function renderAuth(auth, syncReady) {
   authLoginButton.id = 'authLoginButton';
   authLoginButton.className = 'auth-login-btn';
   authLoginButton.type = 'button';
-  authLoginButton.textContent = 'Se connecter';
+  authLoginButton.textContent = t('auth.login');
   authLoginButton.addEventListener('click', async () => {
     if (window.electronAPI?.openSignupUrl) {
-      setButtonLoading(authLoginButton, true, 'Ouverture...');
+      setButtonLoading(authLoginButton, true, t('common.opening'));
       const result = await window.electronAPI.openSignupUrl('login');
       if (result?.ok === false) {
-        showToast('Ouverture impossible.', 'error');
+        showToastKey('common.openFailed', 'error');
       }
       setButtonLoading(authLoginButton, false);
     }
@@ -4958,13 +4970,13 @@ function renderAuth(auth, syncReady) {
   authSignupButton.id = 'authSignupButton';
   authSignupButton.className = 'auth-signup-btn';
   authSignupButton.type = 'button';
-  authSignupButton.textContent = 'Créer compte';
+  authSignupButton.textContent = t('auth.signup');
   authSignupButton.addEventListener('click', async () => {
     if (window.electronAPI?.openSignupUrl) {
-      setButtonLoading(authSignupButton, true, 'Ouverture...');
+      setButtonLoading(authSignupButton, true, t('common.opening'));
       const result = await window.electronAPI.openSignupUrl('signup');
       if (result?.ok === false) {
-        showToast('Ouverture impossible.', 'error');
+        showToastKey('common.openFailed', 'error');
       }
       setButtonLoading(authSignupButton, false);
     }
@@ -4972,7 +4984,7 @@ function renderAuth(auth, syncReady) {
   actions.appendChild(authLoginButton);
   actions.appendChild(authSignupButton);
   authPanel.appendChild(actions);
-  setSyncStatusMessage('Connectez-vous pour synchroniser.');
+  setSyncStatusMessage(t('sync.status.authRequired'));
 }
 
 let currentAuthState = null;
@@ -5000,12 +5012,12 @@ function applyAuthState(state) {
   let msg = '';
   let isErr = false;
   if (status === 'checking') {
-    msg = 'Vérification...';
+    msg = t('auth.checking');
   } else if (status === 'error') {
-    msg = 'Connexion indisponible';
+    msg = t('auth.unavailable');
     isErr = true;
   } else if (status === 'not_configured') {
-    msg = 'Supabase non configuré.';
+    msg = t('auth.notConfigured');
     isErr = true;
   }
 
@@ -5043,26 +5055,26 @@ function applyPolishEntryState(settings) {
 
 async function submitAuthLogin() {
   if (!window.electronAPI?.authSignIn) {
-    setOverlayStatus('Connexion indisponible.', true);
+    setOverlayStatus(t('auth.unavailable'), true);
     return;
   }
   const email = authOverlayEmail?.value.trim();
   const password = authOverlayPassword?.value || '';
   if (!email || !password) {
-    setOverlayStatus('Veuillez saisir email et mot de passe.', true);
+    setOverlayStatus(t('auth.missingCredentials'), true);
     return;
   }
 
   authSubmitPending = true;
   applyAuthState(currentAuthState);
-  setOverlayStatus('Connexion en cours...', false);
+  setOverlayStatus(t('auth.signingIn'), false);
   try {
     await window.electronAPI.authSignIn(email, password);
     if (authOverlayPassword) {
       authOverlayPassword.value = '';
     }
   } catch (error) {
-    setOverlayStatus(error?.message || 'Echec de connexion.', true);
+    setOverlayStatus(error?.message || t('auth.failed'), true);
   } finally {
     authSubmitPending = false;
     applyAuthState(currentAuthState);
@@ -5385,14 +5397,14 @@ async function saveShortcut(shortcut) {
     currentSettings = { ...currentSettings, ...(next || {}) };
     renderSettings(currentSettings);
     if (currentSettings.shortcut !== shortcut) {
-      showToast('Impossible d’enregistrer ce raccourci. L’ancien reste actif.', 'error');
+      showToastKey('toast.shortcut.saveFailedKeep', 'error');
       return;
     }
-    showToast('Raccourci mis à jour.');
+    showToastKey('toast.shortcut.updated');
   } catch (error) {
     currentSettings = { ...currentSettings, shortcut: previous };
     renderSettings(currentSettings);
-    showToast(error?.message || 'Impossible de sauvegarder le raccourci.', 'error');
+    showToast(error?.message || t('toast.shortcut.saveFailed'), 'error');
   } finally {
     if (shortcutInput) {
       shortcutInput.disabled = false;
@@ -5408,11 +5420,12 @@ async function refreshDashboard() {
   try {
     dashboardData = await window.electronAPI.getDashboardData();
   } catch (error) {
-    renderHistoryError('Erreur de chargement. Réessayez.');
-    showToast('Impossible de charger le dashboard.', 'error');
+    renderHistoryError(t('home.history.loadFailed'));
+    showToastKey('toast.dashboard.loadFailed', 'error');
     return;
   }
   currentSettings = dashboardData.settings || {};
+  applyDashboardLanguage(currentSettings);
 
   renderStats(dashboardData.stats);
   renderQuota(dashboardData.quota);
@@ -5733,7 +5746,7 @@ function updateCrocOmniSettings(nextSettings) {
       }
       const result = await window.electronAPI.setLocalModelPreset(preset);
       if (!result?.ok) {
-        showToast('Impossible de changer le preset.', 'error');
+        showToastKey('toast.localModel.presetChangeFailed', 'error');
         return;
       }
       const model = getLocalModelByPreset(preset);
@@ -5743,28 +5756,28 @@ function updateCrocOmniSettings(nextSettings) {
           if (!downloadResult?.ok) {
             const reason = downloadResult?.reason;
             if (reason === 'missing_source') {
-              showToast('Téléchargement indisponible.', 'error');
+              showToastKey('localModel.download.unavailable', 'error');
             } else if (reason === 'already_downloading') {
-              showToast('Téléchargement déjà en cours.');
+              showToastKey('toast.localModel.download.already');
             } else if (reason === 'model_not_found') {
-              showToast('Modèle introuvable.', 'error');
+              showToastKey('toast.localModel.notFound', 'error');
             } else {
-              showToast('Téléchargement impossible.', 'error');
+              showToastKey('toast.localModel.download.failed', 'error');
             }
             await refreshDashboard();
             return;
           }
           if (downloadResult.status === 'already_installed') {
-            showToast('Modèle déjà installé.');
+            showToastKey('toast.localModel.alreadyInstalled');
           } else {
-            showToast('Téléchargement démarré.');
+            showToastKey('toast.localModel.download.started');
           }
           await refreshLocalModelsOnly();
         } else {
-          showToast('Téléchargement indisponible.', 'error');
+          showToastKey('localModel.download.unavailable', 'error');
         }
       } else {
-        showToast('Preset sélectionné.');
+        showToastKey('toast.localModel.preset.selected');
       }
       await refreshDashboard();
     });
@@ -5776,7 +5789,7 @@ function updateCrocOmniSettings(nextSettings) {
         return;
       }
       if (!window.electronAPI?.autoConfigureLocalAsrCommand) {
-        showToast('Scan indisponible.', 'error');
+        showToastKey('toast.localAsr.scan.unavailable', 'error');
         return;
       }
       localAsrCommandRescanPending = true;
@@ -5784,15 +5797,15 @@ function updateCrocOmniSettings(nextSettings) {
       const result = await window.electronAPI.autoConfigureLocalAsrCommand();
       localAsrCommandRescanPending = false;
       if (result?.ok) {
-        showToast('Commande locale détectée.');
+        showToastKey('toast.localAsr.command.detected');
       } else if (result?.reason === 'not_found') {
-        showToast('Aucun binaire local ASR détecté.', 'error');
+        showToastKey('toast.localAsr.command.notFound', 'error');
       } else if (result?.reason === 'already_set') {
-        showToast('Commande déjà définie.');
+        showToastKey('toast.localAsr.command.alreadySet');
       } else if (result?.reason === 'server_mode') {
-        showToast('Mode serveur actif.', 'error');
+        showToastKey('toast.localAsr.serverMode', 'error');
       } else {
-        showToast('Scan impossible.', 'error');
+        showToastKey('toast.localAsr.scan.failed', 'error');
       }
       await refreshDashboard();
     });
@@ -5848,7 +5861,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (uploadAudioButton) {
     uploadAudioButton.addEventListener('click', async () => {
       if (!window.electronAPI?.selectUploadFile) {
-        showToast('Import indisponible.', 'error');
+        showToastKey('toast.import.unavailable', 'error');
         return;
       }
       const result = await window.electronAPI.selectUploadFile();
@@ -5861,7 +5874,7 @@ function updateCrocOmniSettings(nextSettings) {
       if (result?.job) {
         upsertUploadJob(result.job);
       }
-      showToast('Import vers notes en cours...');
+      showToastKey('toast.import.inProgress');
       await refreshDashboard();
     });
   }
@@ -5883,7 +5896,7 @@ function updateCrocOmniSettings(nextSettings) {
         return;
       }
       if (!window.electronAPI?.addUploadFile) {
-        showToast('Import indisponible.', 'error');
+        showToastKey('toast.import.unavailable', 'error');
         return;
       }
       const result = await window.electronAPI.addUploadFile(file.path);
@@ -5896,7 +5909,7 @@ function updateCrocOmniSettings(nextSettings) {
       if (result?.job) {
         upsertUploadJob(result.job);
       }
-      showToast('Import vers notes en cours...');
+      showToastKey('toast.import.inProgress');
       await refreshDashboard();
     });
     uploadDropzone.addEventListener('click', (event) => {
@@ -5918,7 +5931,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (telemetryExportButton) {
     telemetryExportButton.addEventListener('click', async () => {
       if (!window.electronAPI?.exportTelemetry) {
-        showToast('Export télémétrie indisponible.', 'error');
+        showToastKey('toast.telemetry.unavailable', 'error');
         return;
       }
       try {
@@ -5926,9 +5939,9 @@ function updateCrocOmniSettings(nextSettings) {
         if (telemetryOutput) {
           telemetryOutput.textContent = JSON.stringify(payload, null, 2);
         }
-        showToast('Export télémétrie généré.');
+        showToastKey('toast.telemetry.generated');
       } catch (error) {
-        showToast('Export télémétrie échoué.', 'error');
+        showToastKey('toast.telemetry.failed', 'error');
       }
     });
   }
@@ -5938,14 +5951,14 @@ function updateCrocOmniSettings(nextSettings) {
       await fetchDiagnostics();
       const text = diagnosticsOutput?.textContent || '';
       if (!text) {
-        showToast('Aucun diagnostic à copier.', 'error');
+        showToastKey('toast.diagnostics.none', 'error');
         return;
       }
       try {
         await navigator.clipboard.writeText(text);
-        showToast('Diagnostics copiés.');
+        showToastKey('toast.diagnostics.copied');
       } catch (error) {
-        showToast('Impossible de copier.', 'error');
+        showToastKey('toast.copy.failed', 'error');
       }
     });
   }
@@ -6040,7 +6053,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (polishEntryButton) {
     polishEntryButton.addEventListener('click', () => {
       if (!window.electronAPI?.openPolishDiff) {
-        showToast('Polish indisponible.', 'error');
+        showToastKey('toast.polish.unavailable', 'error');
         return;
       }
       window.electronAPI.openPolishDiff();
@@ -6050,31 +6063,31 @@ function updateCrocOmniSettings(nextSettings) {
   if (manageSubscriptionButton) {
     manageSubscriptionButton.addEventListener('click', async () => {
       if (!window.electronAPI?.openSubscriptionPortal) {
-        showToast('Portail indisponible.', 'error');
+        showToastKey('toast.portal.unavailable', 'error');
         return;
       }
       const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
       if (!auth) {
-        showToast('Connectez-vous pour gérer l’abonnement.', 'error');
+        showToastKey('toast.portal.authRequired', 'error');
         if (window.electronAPI?.openSignupUrl) {
-          setButtonLoading(manageSubscriptionButton, true, 'Ouverture...');
+          setButtonLoading(manageSubscriptionButton, true, t('common.opening'));
           const result = await window.electronAPI.openSignupUrl('login');
           if (result?.ok === false) {
-            showToast('Ouverture impossible.', 'error');
+            showToastKey('common.openFailed', 'error');
           }
           setButtonLoading(manageSubscriptionButton, false);
         }
         return;
       }
       try {
-        setButtonLoading(manageSubscriptionButton, true, 'Ouverture...');
+        setButtonLoading(manageSubscriptionButton, true, t('common.opening'));
         const result = await window.electronAPI.openSubscriptionPortal();
         if (!result?.ok) {
-          showToast('Portail non configuré.', 'error');
+          showToastKey('toast.portal.notConfigured', 'error');
           return;
         }
       } catch (error) {
-        showToast(error?.message || 'Portail indisponible.', 'error');
+        showToast(error?.message || t('toast.portal.unavailable'), 'error');
       } finally {
         setButtonLoading(manageSubscriptionButton, false);
       }
@@ -6084,24 +6097,24 @@ function updateCrocOmniSettings(nextSettings) {
   if (refreshSubscriptionButton) {
     refreshSubscriptionButton.addEventListener('click', async () => {
       if (!window.electronAPI?.refreshSubscription) {
-        showToast('Actualisation indisponible.', 'error');
+        showToastKey('toast.subscription.refreshUnavailable', 'error');
         return;
       }
       const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
       if (!auth) {
-        showToast('Connectez-vous pour actualiser.', 'error');
+        showToastKey('toast.subscription.refreshAuthRequired', 'error');
         return;
       }
       try {
         const result = await window.electronAPI.refreshSubscription();
         if (!result?.ok) {
-          showToast('Actualisation impossible.', 'error');
+          showToastKey('toast.subscription.refreshFailed', 'error');
           return;
         }
-        showToast('Abonnement actualisé.');
+        showToastKey('toast.subscription.refreshed');
         await refreshDashboard();
       } catch (error) {
-        showToast(error?.message || 'Actualisation indisponible.', 'error');
+        showToast(error?.message || t('toast.subscription.refreshUnavailable'), 'error');
       }
     });
   }
@@ -6171,7 +6184,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (notificationsRefresh) {
     notificationsRefresh.addEventListener('click', async () => {
       if (!window.electronAPI?.refreshNotifications) {
-        showToast('Notifications indisponibles.', 'error');
+        showToastKey('toast.notifications.unavailable', 'error');
         return;
       }
       await window.electronAPI.refreshNotifications();
@@ -6306,7 +6319,7 @@ function updateCrocOmniSettings(nextSettings) {
       const accelerator = buildAcceleratorFromEvent(event);
       if (!accelerator) {
         if (!shortcutInvalidShown) {
-          showToast('Raccourci invalide. Utilisez au moins un modificateur.', 'error');
+          showToastKey('toast.shortcut.invalid', 'error');
           shortcutInvalidShown = true;
         }
         return;
@@ -6328,30 +6341,30 @@ function updateCrocOmniSettings(nextSettings) {
   if (syncNowButton) {
     syncNowButton.addEventListener('click', async () => {
       if (!window.electronAPI?.syncNow) {
-        showToast('Synchronisation indisponible.', 'error');
+        showToastKey('toast.sync.unavailable', 'error');
         return;
       }
       syncNowButton.disabled = true;
       syncNowButton.classList.add('is-loading');
-      setSyncStatusMessage('Synchronisation en cours...');
+      setSyncStatusMessage(t('sync.status.inProgress'));
       try {
         const result = await window.electronAPI.syncNow();
         if (result?.ok) {
-          showToast('Synchronisation terminée.');
-          setSyncStatusMessage('Synchronisation terminée.', 'ok');
+          showToastKey('toast.sync.completed');
+          setSyncStatusMessage(t('sync.status.completed'), 'ok');
         } else if (result?.reason === 'not_authenticated') {
-          showToast('Connectez-vous pour synchroniser.', 'error');
-          setSyncStatusMessage('Connexion requise pour synchroniser.', 'error');
+          showToastKey('toast.sync.authRequired', 'error');
+          setSyncStatusMessage(t('sync.status.authRequired'), 'error');
         } else if (result?.reason === 'not_configured') {
-          showToast('Sync non configuré.', 'error');
-          setSyncStatusMessage('Configuration sync indisponible.', 'error');
+          showToastKey('toast.sync.notConfigured', 'error');
+          setSyncStatusMessage(t('sync.status.notConfigured'), 'error');
         } else {
-          showToast('Erreur de synchronisation.', 'error');
-          setSyncStatusMessage('Erreur de synchronisation.', 'error');
+          showToastKey('toast.sync.failed', 'error');
+          setSyncStatusMessage(t('sync.status.failed'), 'error');
         }
       } catch (error) {
-        showToast('Erreur de synchronisation.', 'error');
-        setSyncStatusMessage('Erreur de synchronisation.', 'error');
+        showToastKey('toast.sync.failed', 'error');
+        setSyncStatusMessage(t('sync.status.failed'), 'error');
       } finally {
         syncNowButton.disabled = false;
         syncNowButton.classList.remove('is-loading');
@@ -6374,23 +6387,23 @@ function updateCrocOmniSettings(nextSettings) {
     dictionaryAddButton.addEventListener('click', async () => {
       const word = dictionaryWordInput?.value.trim();
       if (!word) {
-        showToast('Veuillez entrer un mot.', 'error');
+        showToastKey('toast.dictionary.enterWord', 'error');
         return;
       }
       const duplicate = (dictionaryData || []).some((entry) =>
         entry.from_text && entry.from_text.trim().toLowerCase() === word.toLowerCase()
       );
       if (duplicate) {
-        showToast('Ce terme existe déjà dans le dictionnaire.', 'error');
+        showToastKey('toast.dictionary.duplicate', 'error');
         return;
       }
       const correction = misspellingToggle?.checked ? dictionaryCorrectionInput?.value.trim() : word;
       if (misspellingToggle?.checked && !correction) {
-        showToast('Veuillez saisir la correction.', 'error');
+        showToastKey('toast.dictionary.enterCorrection', 'error');
         return;
       }
       await window.electronAPI.upsertDictionary({ from_text: word, to_text: correction });
-      showToast(`"${word}" ajouté au dictionnaire.`);
+      showToastKey('toast.dictionary.added', 'success', { word });
       if (dictionaryWordInput) {
         dictionaryWordInput.value = '';
       }
@@ -6476,12 +6489,12 @@ function updateCrocOmniSettings(nextSettings) {
     contextRetentionSave.addEventListener('click', async () => {
       const value = Number.parseInt(contextRetentionInput?.value || '30', 10);
       if (!Number.isFinite(value) || value <= 0) {
-        showToast('Durée invalide.', 'error');
+        showToastKey('toast.context.invalidRetention', 'error');
         return;
       }
       const contextSettings = getContextSettingsLocal();
       await saveContextSettings({ ...contextSettings, retentionDays: value });
-      showToast('Rétention mise à jour.');
+      showToastKey('toast.context.retentionUpdated');
     });
   }
 
@@ -6491,7 +6504,7 @@ function updateCrocOmniSettings(nextSettings) {
         return;
       }
       await window.electronAPI.clearContext();
-      showToast('Contexte supprimé.');
+      showToastKey('toast.context.cleared');
     });
   }
 
@@ -6611,7 +6624,7 @@ function updateCrocOmniSettings(nextSettings) {
       const nextProfiles = [profile, ...profiles];
       await saveContextProfiles(nextProfiles);
       await refreshDashboard();
-      showToast('Profil créé.');
+      showToastKey('toast.profile.created');
     });
   }
 
@@ -6620,7 +6633,7 @@ function updateCrocOmniSettings(nextSettings) {
       const profileId = contextPreviewProfile?.value || '';
       const input = contextPreviewInput?.value || '';
       if (!profileId) {
-        showToast('Choisissez un profil.', 'error');
+        showToastKey('toast.profile.selectRequired', 'error');
         return;
       }
       if (!window.electronAPI?.previewContextFormatting) {
@@ -6639,11 +6652,11 @@ function updateCrocOmniSettings(nextSettings) {
       const template = snippetTemplateInput?.value.trim();
       const description = snippetDescriptionInput?.value.trim() || '';
       if (!cue) {
-        showToast('Veuillez saisir un cue.', 'error');
+        showToastKey('toast.snippet.enterCue', 'error');
         return;
       }
       if (!template) {
-        showToast('Veuillez saisir un template.', 'error');
+        showToastKey('toast.snippet.enterTemplate', 'error');
         return;
       }
       const cueNorm = normalizeSnippetCue(cue);
@@ -6651,11 +6664,11 @@ function updateCrocOmniSettings(nextSettings) {
         normalizeSnippetCue(entry.cue) === cueNorm
       );
       if (duplicate) {
-        showToast('Ce cue existe déjà.', 'error');
+        showToastKey('toast.snippet.duplicate', 'error');
         return;
       }
       await window.electronAPI.upsertSnippet({ cue, template, description });
-      showToast('Snippet ajouté.');
+      showToastKey('toast.snippet.added');
       if (snippetCueInput) {
         snippetCueInput.value = '';
       }
@@ -6692,10 +6705,10 @@ function updateCrocOmniSettings(nextSettings) {
   if (authOverlaySignup) {
     authOverlaySignup.addEventListener('click', async () => {
       if (window.electronAPI?.openSignupUrl) {
-        setButtonLoading(authOverlaySignup, true, 'Ouverture...');
+        setButtonLoading(authOverlaySignup, true, t('common.opening'));
         const result = await window.electronAPI.openSignupUrl('signup');
         if (result?.ok === false) {
-          setOverlayStatus('Ouverture impossible.', true);
+          setOverlayStatus(t('common.openFailed'), true);
         }
         setButtonLoading(authOverlaySignup, false);
       }
@@ -6704,7 +6717,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (authOverlayRetry) {
     authOverlayRetry.addEventListener('click', async () => {
       if (window.electronAPI?.authRetry) {
-        setOverlayStatus('Nouvelle tentative...', false);
+        setOverlayStatus(t('auth.retrying'), false);
         await window.electronAPI.authRetry();
       }
     });
@@ -6802,6 +6815,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (window.electronAPI?.onSettingsUpdated) {
     window.electronAPI.onSettingsUpdated((nextSettings) => {
       currentSettings = nextSettings || currentSettings;
+      applyDashboardLanguage(currentSettings);
       applyOnboardingStateFromSettings(currentSettings);
       renderSettings(currentSettings);
       applyPolishEntryState(currentSettings);

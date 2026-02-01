@@ -1,15 +1,15 @@
 schema: 1
-story: '0.7'
-story_title: 'Patch Story — No Speech / No Placeholder Transcript (Regression)'
+story: '0.4'
+story_title: 'Story 1.4: stabilize-core-recording-and-paste-flow'
 gate: CONCERNS
-status_reason: 'No automated regression tests for no-speech flow.'
+status_reason: 'Concurrency safeguards not covered by automated tests.'
 reviewer: 'Quinn (Test Architect)'
 updated: '2026-02-01T10:43:21Z'
 
 top_issues:
-  - id: 'qa-0.7-1'
+  - id: 'qa-0.4-1'
     severity: medium
-    summary: 'No automated regression tests for no-speech/hallucination handling.'
+    summary: 'No automated regression tests for lock/paste serialization; concurrency regressions possible.'
     suggested_owner: dev
     refs: ['main.js']
 
@@ -23,7 +23,7 @@ evidence:
   risks_identified: 1
   trace:
     ac_covered: []
-    ac_gaps: ['1', '2', '3', '4', '5']
+    ac_gaps: ['1', '2', '3', '4']
 
 nfr_validation:
   security:
@@ -31,10 +31,10 @@ nfr_validation:
     notes: 'No auth/data changes.'
   performance:
     status: PASS
-    notes: 'Silence gate should reduce work.'
+    notes: 'No evidence of perf regression reported.'
   reliability:
     status: CONCERNS
-    notes: 'Manual-only verification for no-speech flow.'
+    notes: 'Concurrency safety not test-covered.'
   maintainability:
     status: PASS
     notes: 'Changes are localized.'
@@ -42,9 +42,9 @@ nfr_validation:
 recommendations:
   immediate: []
   future:
-    - action: 'Add automated regression tests for silence/placeholder detection.'
+    - action: 'Add regression tests for transition lock release on error paths.'
       refs: ['main.js']
-    - action: 'Add a test to ensure no history/note created on no-speech outcomes.'
+    - action: 'Add a paste-queue/clipboard restore test for overlapping paste calls.'
       refs: ['main.js']
-    - action: 'Tune/validate silence thresholds with a small sample set.'
+    - action: 'Add a smoke test for tray state transitions on start/stop.'
       refs: ['main.js']

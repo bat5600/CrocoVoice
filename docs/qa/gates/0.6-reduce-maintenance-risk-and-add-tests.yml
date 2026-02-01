@@ -1,0 +1,48 @@
+schema: 1
+story: '0.6'
+story_title: 'Story 1.6: reduce-maintenance-risk-and-add-tests'
+gate: CONCERNS
+status_reason: 'Only script-level coverage; integration gaps remain.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2026-02-01T10:43:21Z'
+
+top_issues:
+  - id: 'qa-0.6-1'
+    severity: medium
+    summary: 'Coverage limited to script-based tests; integration/regression gaps remain.'
+    suggested_owner: dev
+    refs: ['main.js', 'preload.js', 'store.js', 'sync.js', 'test-core.js']
+
+waiver: { active: false }
+
+quality_score: 90
+expires: '2026-02-15T10:43:21Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 1
+  trace:
+    ac_covered: []
+    ac_gaps: ['1', '2', '3', '4']
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No auth/data changes.'
+  performance:
+    status: PASS
+    notes: 'No perf regressions reported.'
+  reliability:
+    status: CONCERNS
+    notes: 'Integration coverage is limited.'
+  maintainability:
+    status: PASS
+    notes: 'Refactor improves structure.'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Expand test-core coverage for error paths and IPC cleanup edge cases.'
+      refs: ['main.js', 'preload.js', 'store.js', 'sync.js', 'test-core.js']
+    - action: 'Add a lightweight regression/smoke script for refactor-sensitive flows.'
+      refs: ['main.js', 'preload.js', 'store.js', 'sync.js', 'test-core.js']
