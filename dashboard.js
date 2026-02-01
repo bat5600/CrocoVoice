@@ -1904,18 +1904,6 @@ function buildEntryRow(entry, type) {
   });
 
   actions.appendChild(copyBtn);
-  if (type !== 'notes') {
-    const exportBtn = document.createElement('button');
-    exportBtn.className = 'entry-action';
-    exportBtn.type = 'button';
-    exportBtn.textContent = 'Exporter';
-    exportBtn.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      await exportHistoryEntry(entry);
-    });
-    actions.appendChild(exportBtn);
-  }
   actions.appendChild(deleteBtn);
 
   row.appendChild(icon);

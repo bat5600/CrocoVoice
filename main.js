@@ -2063,18 +2063,69 @@ function matchesSnippetCue(text, cueNorm) {
   return regex.test(text);
 }
 
-function isNoAudioTranscription(text) {
+function shouldTreatDiagnosticsAsNoSpeech(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== 'object') {
+    return false;
+  }
+  const silenceRatio = Number.isFinite(diagnostics.silenceRatio) ? diagnostics.silenceRatio : null;
+  const rmsAvg = Number.isFinite(diagnostics.rmsAvg) ? diagnostics.rmsAvg : null;
+  const activeMs = Number.isFinite(diagnostics.activeMs) ? diagnostics.activeMs : null;
+  if (silenceRatio !== null && silenceRatio >= 0.6) {
+    return true;
+  }
+  if (rmsAvg !== null && rmsAvg > 0 && rmsAvg < 0.012) {
+    return true;
+  }
+  if (activeMs !== null && activeMs >= 0 && activeMs < 200) {
+    return true;
+  }
+  return false;
+}
+
+function isNoAudioTranscription(text, diagnostics = null) {
+  if (!text || typeof text !== 'string') {
+    return true;
+  }
   const normalized = normalizeText(text);
+  if (!normalized) {
+    return true;
+  }
   const compact = normalized.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const fragments = [
+  if (!compact) {
+    return true;
+  }
+  const hardFragments = [
     'sous titres realises par la communaute d amara org',
     'sous titrage st 501',
+    'subtitles by the amara org community',
+    'subtitles by amara org',
+    'subtitles by amara',
   ];
-  if (fragments.some((fragment) => compact === fragment || compact.includes(fragment))) {
+  if (hardFragments.some((fragment) => compact === fragment || compact.includes(fragment))) {
     return true;
   }
   const looksLikeSubtitleHallucination = compact.includes('amara') && compact.includes('sous') && compact.includes('titres');
-  return looksLikeSubtitleHallucination;
+  if (looksLikeSubtitleHallucination) {
+    return true;
+  }
+  const silenceLike = shouldTreatDiagnosticsAsNoSpeech(diagnostics);
+  if (!silenceLike) {
+    return false;
+  }
+  const softFragments = [
+    'thank you for watching',
+    'thanks for watching',
+    'thank you for listening',
+    'thanks for listening',
+  ];
+  if (softFragments.some((fragment) => compact === fragment || compact.includes(fragment))) {
+    return true;
+  }
+  const wordCount = compact.split(' ').filter(Boolean).length;
+  if (wordCount <= 2 || compact.length <= 12) {
+    return true;
+  }
+  return false;
 }
 
 function getSubscriptionSnapshot() {
@@ -4257,8 +4308,8 @@ async function runLocalAsr(buffer, mimeType, options = {}) {
   }
 }
 
-async function runTextPipeline(transcribedText) {
-  if (!transcribedText || isNoAudioTranscription(transcribedText)) {
+async function runTextPipeline(transcribedText, diagnostics = null) {
+  if (!transcribedText || isNoAudioTranscription(transcribedText, diagnostics)) {
     return { skip: true, transcribedText: '' };
   }
 
@@ -4337,7 +4388,7 @@ async function runTranscriptionPipeline(buffer, mimeType, diagnostics = null, qu
     }
     transcribedText = await transcribeAudio(inputBuffer, mimeType);
   }
-  if (!transcribedText || isNoAudioTranscription(transcribedText)) {
+  if (!transcribedText || isNoAudioTranscription(transcribedText, diagnostics)) {
     return { skip: true, transcribedText: '' };
   }
 
