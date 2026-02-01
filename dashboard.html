@@ -2227,103 +2227,6 @@
       grid-column: span 2;
     }
 
-    .snippet-helper {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 12px;
-      padding: 12px 14px;
-      border-radius: 16px;
-      background: #F8FAFC;
-      border: 1px solid #E2E8F0;
-      flex-wrap: wrap;
-    }
-
-    .snippet-helper-text {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text-muted);
-      flex: 1;
-      min-width: 220px;
-    }
-
-    .snippet-helper-title {
-      font-weight: 700;
-      color: var(--text-main);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .snippet-helper-subtitle {
-      line-height: 1.5;
-    }
-
-    .snippet-token {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      background: #E2E8F0;
-      color: #0F172A;
-      padding: 2px 6px;
-      border-radius: 8px;
-      font-size: 11px;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-    }
-
-    .snippet-insert-button {
-      border: 1px solid #CBD5E1;
-      background: #FFFFFF;
-      color: #0F172A;
-      font-weight: 600;
-      font-size: 12px;
-      padding: 6px 12px;
-      border-radius: 999px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      white-space: nowrap;
-    }
-
-    .snippet-insert-button:hover {
-      border-color: var(--emerald-500);
-      color: var(--emerald-700);
-      box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
-    }
-
-    .snippet-example {
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .input-helper {
-      margin-top: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text-muted);
-      flex-wrap: wrap;
-    }
-
-    .input-helper-text {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
     .snippet-actions {
       display: flex;
       justify-content: flex-end;
@@ -3946,23 +3849,6 @@
               <input id="snippetCueInput" class="input-field" type="text" placeholder="Cue (ex: email client)">
               <input id="snippetDescriptionInput" class="input-field" type="text" placeholder="Description (optionnel)">
               <textarea id="snippetTemplateInput" class="input-field snippet-template-input" rows="3" placeholder="Template (ex: Bonjour, ...)"></textarea>
-            </div>
-
-            <div class="snippet-helper">
-              <div class="snippet-helper-text">
-                <div class="snippet-helper-title">Contenu dynamique</div>
-                <div class="snippet-helper-subtitle">
-                  Le tag <span class="snippet-token">{{content}}</span> est remplacé par le reste de votre dictée.
-                </div>
-              </div>
-              <button id="snippetInsertContentButton" class="snippet-insert-button" type="button">
-                <span class="snippet-token">{{content}}</span>
-                Insérer le contenu
-              </button>
-            </div>
-
-            <div class="snippet-example">
-              Exemple : cue "email client", template "Bonjour <span class="snippet-token">{{content}}</span>," -> "Bonjour Marie,"
             </div>
 
             <div class="snippet-actions">

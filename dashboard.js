@@ -45,7 +45,6 @@ const snippetTemplateInput = document.getElementById('snippetTemplateInput');
 const snippetDescriptionInput = document.getElementById('snippetDescriptionInput');
 const snippetCancelButton = document.getElementById('snippetCancelButton');
 const snippetAddButton = document.getElementById('snippetAddButton');
-const snippetInsertContentButton = document.getElementById('snippetInsertContentButton');
 const styleList = document.getElementById('styleList');
 const styleEmpty = document.getElementById('styleEmpty');
 const contextEnabledToggle = document.getElementById('contextEnabledToggle');
@@ -489,13 +488,13 @@ function updateOnboardingUI() {
     onboardingDeliveryNext.disabled = !onboardingDeliveryReady;
   }
   if (onboardingState.step === 'permissions' && !onboardingPermissionGranted) {
-    setOnboardingStatus(onboardingPermissionStatus, 'Cliquez pour déclencher la demande d’accès.');
+    setOnboardingStatus(onboardingPermissionStatus, t('onboarding.permissions.status'));
   }
   if (onboardingState.step === 'mic_check' && !onboardingMicReady) {
     if (micListKnown && micDeviceCount === 0) {
-      setOnboardingStatus(onboardingMicStatus, 'Aucun micro détecté. Vérifiez votre matériel.', 'error');
+      setOnboardingStatus(onboardingMicStatus, t('onboarding.mic.noMic'), 'error');
     } else {
-      setOnboardingStatus(onboardingMicStatus, 'En attente de signal audio...');
+      setOnboardingStatus(onboardingMicStatus, t('onboarding.mic.waiting'));
     }
   }
   if (onboardingState.step === 'hotkey') {
@@ -508,9 +507,9 @@ function updateOnboardingUI() {
       persistOnboardingState({ hotkeyReady: true });
     }
     if (!onboardingState.hotkeyReady) {
-      setOnboardingStatus(onboardingHotkeyStatus, 'Définissez un raccourci clavier pour lancer la dictée.');
+      setOnboardingStatus(onboardingHotkeyStatus, t('onboarding.hotkey.prompt'));
     } else {
-      setOnboardingStatus(onboardingHotkeyStatus, 'Raccourci configuré.', 'success');
+      setOnboardingStatus(onboardingHotkeyStatus, t('onboarding.hotkey.ready'), 'success');
     }
   }
   if (onboardingHotkeyNext) {
@@ -587,7 +586,7 @@ function handleOnboardingMicLevel(payload) {
   updateVuMeter(effectiveLevel * 6);
   onboardingPermissionGranted = level > 0 || onboardingPermissionGranted;
   if (onboardingPermissionGranted) {
-    setOnboardingStatus(onboardingPermissionStatus, 'Micro autorisé. Parlez pour voir la jauge.', 'success');
+    setOnboardingStatus(onboardingPermissionStatus, t('onboarding.permissions.allowed'), 'success');
     if (onboardingState?.step === 'permissions') {
       setOnboardingStep('mic_check');
     }
@@ -603,7 +602,7 @@ function handleOnboardingMicLevel(payload) {
     }
     if (Date.now() - onboardingMicLastActiveAt >= MIC_READY_HOLD_MS) {
       onboardingMicReady = true;
-      setOnboardingStatus(onboardingMicStatus, 'Signal détecté. Vous pouvez continuer.', 'success');
+      setOnboardingStatus(onboardingMicStatus, t('onboarding.mic.signalDetected'), 'success');
       updateOnboardingChecklist();
       updateOnboardingUI();
       return;
@@ -612,7 +611,7 @@ function handleOnboardingMicLevel(payload) {
     onboardingMicLastActiveAt = 0;
   }
   if (onboardingMicStatus) {
-    setOnboardingStatus(onboardingMicStatus, 'En attente de signal audio...');
+    setOnboardingStatus(onboardingMicStatus, t('onboarding.mic.waiting'));
   }
 }
 
@@ -654,7 +653,7 @@ async function startSubscriptionActivationCheck({ force } = {}) {
   subscriptionPollInFlight = true;
   const token = ++subscriptionPollToken;
   lastSubscriptionPollAt = Date.now();
-  showToast('Activation en cours...');
+  showToastKey('subscription.activation.pending');
 
   for (let attempt = 0; attempt < SUBSCRIPTION_POLL_MAX_ATTEMPTS; attempt += 1) {
     const result = await refreshSubscriptionData();
@@ -662,15 +661,15 @@ async function startSubscriptionActivationCheck({ force } = {}) {
       break;
     }
     if (result?.ok && isSubscriptionActive(dashboardData?.subscription)) {
-      showToast('Abonnement PRO activé.');
+      showToastKey('subscription.activation.success');
       break;
     }
     if (result?.reason === 'not_authenticated') {
-      showToast('Connectez-vous pour finaliser l’abonnement.', 'error');
+      showToastKey('subscription.activation.authRequired', 'error');
       break;
     }
     if (result?.reason === 'not_configured') {
-      showToast('Actualisation indisponible.', 'error');
+      showToastKey('subscription.activation.unavailable', 'error');
       break;
     }
     if (attempt < SUBSCRIPTION_POLL_MAX_ATTEMPTS - 1) {
@@ -683,51 +682,37 @@ async function startSubscriptionActivationCheck({ force } = {}) {
 
 async function triggerCheckout(button) {
   if (!window.electronAPI?.startCheckout) {
-    showToast('Checkout indisponible.', 'error');
+    showToastKey('subscription.checkout.unavailable', 'error');
     return;
   }
   const auth = window.electronAPI?.authStatus ? await window.electronAPI.authStatus() : null;
   if (!auth) {
-    showToast('Connectez-vous pour passer PRO.', 'error');
+    showToastKey('subscription.checkout.authRequired', 'error');
     if (window.electronAPI?.openSignupUrl) {
-      setButtonLoading(button, true, 'Ouverture...');
+      setButtonLoading(button, true, t('common.opening'));
       const result = await window.electronAPI.openSignupUrl('login');
       if (result?.ok === false) {
-        showToast('Ouverture impossible.', 'error');
+        showToastKey('common.openFailed', 'error');
       }
       setButtonLoading(button, false);
     }
     return;
   }
   try {
-    setButtonLoading(button, true, 'Ouverture...');
+    setButtonLoading(button, true, t('common.opening'));
     const result = await window.electronAPI.startCheckout();
     if (!result?.ok) {
-      showToast('Checkout non configuré.', 'error');
+      showToastKey('subscription.checkout.notConfigured', 'error');
       return;
     }
-    showToast('Redirection vers Stripe...');
+    showToastKey('subscription.checkout.redirect');
     await refreshDashboard();
     startSubscriptionActivationCheck({ force: true });
   } catch (error) {
-    showToast(error?.message || 'Checkout impossible.', 'error');
+    showToast(error?.message || t('subscription.checkout.failed'), 'error');
   } finally {
     setButtonLoading(button, false);
   }
-}
-
-function insertTextAtCursor(input, text) {
-  if (!input) {
-    return;
-  }
-  const value = input.value || '';
-  const start = Number.isInteger(input.selectionStart) ? input.selectionStart : value.length;
-  const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : value.length;
-  input.value = value.slice(0, start) + text + value.slice(end);
-  const nextPos = start + text.length;
-  input.selectionStart = nextPos;
-  input.selectionEnd = nextPos;
-  input.focus();
 }
 
 function openModal({ title, fields, confirmText }) {
@@ -736,7 +721,7 @@ function openModal({ title, fields, confirmText }) {
   }
 
   modalTitle.textContent = title;
-  modalConfirm.textContent = confirmText || 'Sauvegarder';
+  modalConfirm.textContent = confirmText || t('modal.confirm');
   modalBody.innerHTML = '';
   const inputs = {};
 
@@ -772,37 +757,6 @@ function openModal({ title, fields, confirmText }) {
 
     wrapper.appendChild(label);
     wrapper.appendChild(input);
-
-    if (field.helperText || field.helperAction) {
-      const helper = document.createElement('div');
-      helper.className = 'input-helper';
-
-      if (field.helperText) {
-        const helperText = document.createElement('span');
-        helperText.className = 'input-helper-text';
-        helperText.textContent = field.helperText;
-        helper.appendChild(helperText);
-      }
-
-      if (field.helperAction) {
-        const helperButton = document.createElement('button');
-        helperButton.type = 'button';
-        helperButton.className = 'snippet-insert-button';
-        const token = document.createElement('span');
-        token.className = 'snippet-token';
-        token.textContent = field.helperAction.token || '{{content}}';
-        const label = document.createElement('span');
-        label.textContent = field.helperAction.label || 'Insérer le contenu';
-        helperButton.appendChild(token);
-        helperButton.appendChild(label);
-        helperButton.addEventListener('click', () => {
-          insertTextAtCursor(input, field.helperAction.value || '{{content}}');
-        });
-        helper.appendChild(helperButton);
-      }
-
-      wrapper.appendChild(helper);
-    }
     modalBody.appendChild(wrapper);
     inputs[field.key] = input;
 
@@ -1237,7 +1191,7 @@ async function deleteNoteWithUndo(entry) {
   }
   suppressDashboardRefresh(500);
   await window.electronAPI.deleteNote(entry.id);
-  showUndoToast('Note supprimée.', 'Annuler', async () => {
+  showUndoToastKey('toast.noteDeleted', 'toast.undo', async () => {
     const payload = {
       id: entry.id,
       user_id: entry.user_id || null,
@@ -1259,7 +1213,7 @@ async function deleteHistoryWithUndo(entry) {
   historyData = historyData.filter((item) => item.id !== entry.id);
   renderHistoryList();
   await window.electronAPI.deleteHistory(entry.id);
-  showUndoToast('Entrée supprimée.', 'Annuler', async () => {
+  showUndoToastKey('toast.entryDeleted', 'toast.undo', async () => {
       const payload = {
         id: entry.id,
         user_id: entry.user_id || null,
@@ -2197,9 +2151,9 @@ function buildEntryRow(entry, type) {
     const text = entry.text || entry.raw_text || '';
     const ok = await copyTextWithFallback(text);
     if (ok) {
-      showToast('Texte copié.');
+      showToastKey('toast.copy.success');
     } else {
-      showToast('Impossible de copier.', 'error');
+      showToastKey('toast.copy.failed', 'error');
     }
   });
 
@@ -2249,7 +2203,7 @@ function buildEntryRow(entry, type) {
 
 async function exportHistoryEntry(entry) {
   if (!window.electronAPI?.exportHistory || !entry?.id) {
-    showToast('Export indisponible.', 'error');
+    showToastKey('toast.export.unavailable', 'error');
     return;
   }
   const values = await openModal({
@@ -2299,15 +2253,15 @@ async function exportHistoryEntry(entry) {
   };
   const result = await window.electronAPI.exportHistory(entry.id, options);
   if (result?.ok) {
-    showToast('Export généré.');
+    showToastKey('toast.export.generated');
   } else {
-    showToast(result?.reason || 'Export échoué.', 'error');
+    showToast(result?.reason || t('toast.export.failed'), 'error');
   }
 }
 
 async function exportNoteEntry(entry) {
   if (!window.electronAPI?.exportNote || !entry?.id) {
-    showToast('Export indisponible.', 'error');
+    showToastKey('toast.export.unavailable', 'error');
     return;
   }
   const values = await openModal({
@@ -2334,9 +2288,9 @@ async function exportNoteEntry(entry) {
   };
   const result = await window.electronAPI.exportNote(entry.id, options);
   if (result?.ok) {
-    showToast('Export généré.');
+    showToastKey('toast.export.generated');
   } else {
-    showToast(result?.reason || 'Export échoué.', 'error');
+    showToast(result?.reason || t('toast.export.failed'), 'error');
   }
 }
 
@@ -2553,7 +2507,7 @@ function updateLocalModelPresetSelect() {
   if (!snapshot || !Array.isArray(snapshot.presets)) {
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = 'Chargement...';
+    placeholder.textContent = t('localModel.loading');
     localModelPresetSelect.appendChild(placeholder);
     localModelPresetSelect.disabled = true;
     localModelPresetSelectUpdating = false;
@@ -2564,9 +2518,11 @@ function updateLocalModelPresetSelect() {
     const model = getLocalModelByPreset(preset.id);
     const installed = model?.status === 'installed';
     const sizeLabel = model?.sizeBytes ? formatSizeGb(model.sizeBytes) : '';
-    let statusLabel = installed ? 'déjà téléchargé' : (sizeLabel ? `~${sizeLabel}` : 'non téléchargé');
+    let statusLabel = installed
+      ? t('localModel.status.installed')
+      : (sizeLabel ? t('localModel.status.size', { size: sizeLabel }) : t('localModel.status.notDownloaded'));
     if (preset.id === recommended) {
-      statusLabel += ' · recommandé';
+      statusLabel += ` · ${t('localModel.badge.recommande')}`;
     }
     const option = document.createElement('option');
     option.value = preset.id;
@@ -2611,7 +2567,7 @@ function createModelDownloadToast(model, snapshot) {
   const content = document.createElement('div');
   const title = document.createElement('div');
   title.className = 'toast-title';
-  title.textContent = 'Téléchargement du modèle';
+  title.textContent = t('localModel.toast.title');
   const message = document.createElement('div');
   message.className = 'toast-message';
   const progress = document.createElement('div');
@@ -3353,7 +3309,7 @@ async function handleOnboardingDictation() {
   if (onboardingRecordingActive) {
     onboardingRecordingActive = false;
     if (onboardingDictateButton) {
-      onboardingDictateButton.textContent = 'Dicter maintenant';
+      onboardingDictateButton.textContent = t('onboarding.dictation.cta');
     }
     window.electronAPI.toggleRecording();
     return;
@@ -3363,9 +3319,9 @@ async function handleOnboardingDictation() {
   if (onboardingSuccessBadge) {
     onboardingSuccessBadge.classList.remove('active');
   }
-  setOnboardingStatus(onboardingDictationStatus, 'En écoute... Parlez maintenant.');
+  setOnboardingStatus(onboardingDictationStatus, t('onboarding.dictation.listening'));
   if (onboardingDictateButton) {
-    onboardingDictateButton.textContent = 'Arrêter';
+    onboardingDictateButton.textContent = t('onboarding.dictation.stop');
   }
   if (window.electronAPI?.setRecordingTarget) {
     await window.electronAPI.setRecordingTarget('onboarding');
@@ -3720,14 +3676,7 @@ function renderSnippets(snippets) {
         confirmText: 'Mettre à jour',
         fields: [
           { key: 'cue', label: 'Cue (ce que vous dites)', value: entry.cue },
-          {
-            key: 'template',
-            label: 'Template',
-            value: entry.template,
-            multiline: true,
-            helperText: 'Utilisez {{content}} pour insérer le reste de la dictée.',
-            helperAction: { label: 'Insérer le contenu', value: '{{content}}', token: '{{content}}' },
-          },
+          { key: 'template', label: 'Template', value: entry.template, multiline: true },
           { key: 'description', label: 'Description (optionnel)', value: entry.description || '' },
         ],
       });
@@ -5593,11 +5542,11 @@ function updateCrocOmniSettings(nextSettings) {
 
   if (onboardingPermissionButton) {
     onboardingPermissionButton.addEventListener('click', async () => {
-      setOnboardingStatus(onboardingPermissionStatus, 'Demande d’accès en cours...');
+      setOnboardingStatus(onboardingPermissionStatus, t('onboarding.permissions.requesting'));
       if (window.electronAPI?.startOnboardingMic) {
         const result = await window.electronAPI.startOnboardingMic();
         if (result?.ok === false) {
-          setOnboardingStatus(onboardingPermissionStatus, 'Impossible de lancer le micro.', 'error');
+          setOnboardingStatus(onboardingPermissionStatus, t('onboarding.permissions.failed'), 'error');
         }
       }
     });
@@ -5630,7 +5579,7 @@ function updateCrocOmniSettings(nextSettings) {
       onboardingMicLastActiveAt = 0;
       onboardingMicIgnoreUntil = Date.now() + MIC_IGNORE_AFTER_CHANGE_MS;
       updateVuMeter(0);
-      setOnboardingStatus(onboardingMicStatus, 'Micro mis à jour. Test en cours...', '');
+      setOnboardingStatus(onboardingMicStatus, t('onboarding.mic.updated'), '');
       if (window.electronAPI?.startOnboardingMic) {
         await delay(150);
         await window.electronAPI.startOnboardingMic();
@@ -5649,7 +5598,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (onboardingHotkeyInput) {
     onboardingHotkeyInput.addEventListener('focus', () => {
       onboardingShortcutBeforeCapture = onboardingHotkeyInput.value || currentSettings.shortcut || '';
-      onboardingHotkeyInput.value = 'Appuyez sur les touches...';
+      onboardingHotkeyInput.value = t('onboarding.hotkey.capturePrompt');
       setOnboardingHotkeyCaptureState(true);
     });
     onboardingHotkeyInput.addEventListener('blur', () => {
@@ -5672,7 +5621,7 @@ function updateCrocOmniSettings(nextSettings) {
       }
       const accelerator = buildAcceleratorFromEvent(event);
       if (!accelerator) {
-        setOnboardingStatus(onboardingHotkeyStatus, 'Utilisez une combinaison (Ctrl/Alt/Shift + touche).', 'error');
+        setOnboardingStatus(onboardingHotkeyStatus, t('onboarding.hotkey.invalidCombo'), 'error');
         return;
       }
       onboardingHotkeyInput.value = accelerator;
@@ -5682,9 +5631,9 @@ function updateCrocOmniSettings(nextSettings) {
       onboardingState = { ...onboardingState, hotkeyReady: ok };
       await persistOnboardingState({ hotkeyReady: ok });
       if (ok) {
-        setOnboardingStatus(onboardingHotkeyStatus, 'Raccourci enregistré.', 'success');
+        setOnboardingStatus(onboardingHotkeyStatus, t('onboarding.hotkey.saved'), 'success');
       } else {
-        setOnboardingStatus(onboardingHotkeyStatus, 'Raccourci invalide. Essayez une autre combinaison.', 'error');
+        setOnboardingStatus(onboardingHotkeyStatus, t('onboarding.hotkey.invalid'), 'error');
       }
       updateOnboardingChecklist();
       updateOnboardingUI();
@@ -5720,7 +5669,7 @@ function updateCrocOmniSettings(nextSettings) {
   if (onboardingDeliveryTestButton) {
     onboardingDeliveryTestButton.addEventListener('click', async () => {
       if (!window.electronAPI?.runOnboardingDeliveryCheck) {
-        setOnboardingStatus(onboardingDeliveryStatus, 'Test indisponible.', 'error');
+        setOnboardingStatus(onboardingDeliveryStatus, t('onboarding.delivery.unavailable'), 'error');
         return;
       }
       const sample = 'CrocoVoice OK';
@@ -5728,18 +5677,18 @@ function updateCrocOmniSettings(nextSettings) {
         onboardingDeliveryInput.value = '';
         onboardingDeliveryInput.focus();
       }
-      setOnboardingStatus(onboardingDeliveryStatus, 'Test en cours...');
+      setOnboardingStatus(onboardingDeliveryStatus, t('onboarding.delivery.testing'));
       const result = await window.electronAPI.runOnboardingDeliveryCheck(sample);
       setTimeout(() => {
         const received = onboardingDeliveryInput?.value.includes(sample);
         if (result?.ok && received) {
           onboardingDeliveryReady = true;
-          setOnboardingStatus(onboardingDeliveryStatus, 'Injection OK.', 'success');
+          setOnboardingStatus(onboardingDeliveryStatus, t('onboarding.delivery.success'), 'success');
         } else {
           onboardingDeliveryReady = false;
           setOnboardingStatus(
             onboardingDeliveryStatus,
-            result?.reason || 'Injection bloquée. Activez le presse-papier.',
+            result?.reason || t('onboarding.delivery.blocked'),
             'error',
           );
         }
@@ -6003,10 +5952,10 @@ function updateCrocOmniSettings(nextSettings) {
     window.electronAPI.onOnboardingMicError((message) => {
       setOnboardingStatus(
         onboardingPermissionStatus,
-        message || 'Accès micro refusé. Ouvrez les paramètres Windows.',
+        message || t('onboarding.permissions.denied'),
         'error',
       );
-      setOnboardingStatus(onboardingMicStatus, message || 'Aucun signal détecté.', 'error');
+      setOnboardingStatus(onboardingMicStatus, message || t('onboarding.mic.noSignal'), 'error');
     });
   }
 
@@ -6678,12 +6627,6 @@ function updateCrocOmniSettings(nextSettings) {
     });
   }
 
-  if (snippetInsertContentButton) {
-    snippetInsertContentButton.addEventListener('click', () => {
-      insertTextAtCursor(snippetTemplateInput, '{{content}}');
-    });
-  }
-
   if (snippetAddButton) {
     snippetAddButton.addEventListener('click', async () => {
       const cue = snippetCueInput?.value.trim();
@@ -6768,7 +6711,7 @@ function updateCrocOmniSettings(nextSettings) {
         if (!add) {
           return;
         }
-        showToast('Note ajoutée.');
+        showToastKey('toast.noteAdded');
         refreshDashboard();
         return;
       }
@@ -6776,11 +6719,11 @@ function updateCrocOmniSettings(nextSettings) {
       if (target === 'onboarding') {
         onboardingRecordingActive = false;
         if (onboardingDictateButton) {
-          onboardingDictateButton.textContent = 'Dicter maintenant';
+          onboardingDictateButton.textContent = t('onboarding.dictation.cta');
         }
         const add = (text || '').trim();
         if (!add) {
-          setOnboardingStatus(onboardingDictationStatus, 'On ne vous entend pas. Réessayez.', 'error');
+          setOnboardingStatus(onboardingDictationStatus, t('onboarding.dictation.noAudio'), 'error');
           return;
         }
         if (onboardingSandbox) {
@@ -6788,7 +6731,7 @@ function updateCrocOmniSettings(nextSettings) {
         }
         onboardingState = { ...onboardingState, firstRunSuccess: true };
         onboardingDeliveryReady = onboardingDeliveryReady || false;
-        setOnboardingStatus(onboardingDictationStatus, 'Texte reçu avec succès.', 'success');
+        setOnboardingStatus(onboardingDictationStatus, t('onboarding.dictation.received'), 'success');
         if (onboardingSuccessBadge) {
           onboardingSuccessBadge.classList.add('active');
         }
@@ -6815,9 +6758,9 @@ function updateCrocOmniSettings(nextSettings) {
         const message = typeof error === 'string' ? error : error?.message;
         onboardingRecordingActive = false;
         if (onboardingDictateButton) {
-          onboardingDictateButton.textContent = 'Dicter maintenant';
+          onboardingDictateButton.textContent = t('onboarding.dictation.cta');
         }
-        setOnboardingStatus(onboardingDictationStatus, message || 'La dictée a échoué.', 'error');
+        setOnboardingStatus(onboardingDictationStatus, message || t('onboarding.dictation.failed'), 'error');
       }
     });
   }

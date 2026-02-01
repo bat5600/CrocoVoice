@@ -2124,6 +2124,17 @@ function normalizeSnippetCue(value) {
     .replace(/[\s\p{P}]+$/gu, '');
 }
 
+function sanitizeSnippetTemplate(template) {
+  if (!template) {
+    return '';
+  }
+  return template
+    .toString()
+    .replace(/{{\s*content\s*}}/gi, '')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .trim();
+}
+
 function buildSnippetTokenPattern(token) {
   if (!token) {
     return '';
@@ -2299,25 +2310,6 @@ function findFuzzySnippetMatch(text, entries) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function stripCueFromText(text, cueNorm) {
-  if (!text || !cueNorm) {
-    return text || '';
-  }
-  const match = findSnippetCueMatch(text, cueNorm);
-  if (!match) {
-    return text;
-  }
-  const removeEnd = skipSnippetSeparators(text, match.cueEnd);
-  return text.slice(removeEnd);
-}
-
-function matchesSnippetCue(text, cueNorm) {
-  if (!text || !cueNorm) {
-    return false;
-  }
-  return Boolean(findSnippetCueMatch(text, cueNorm));
 }
 
 function shouldTreatDiagnosticsAsNoSpeech(diagnostics) {
@@ -3325,12 +3317,9 @@ async function applySnippets(text) {
       return text;
     }
     const remaining = stripLeadingSpan(text || '', fuzzyMatch.spanEnd).trim();
-    const template = (fuzzyMatch.entry.template || '').trim();
+    const template = sanitizeSnippetTemplate(fuzzyMatch.entry.template || '');
     if (!template) {
-      return text;
-    }
-    if (template.includes('{{content}}')) {
-      return template.replace(/{{\s*content\s*}}/g, remaining);
+      return remaining || text;
     }
     if (!remaining) {
       return template;
@@ -3348,13 +3337,12 @@ async function applySnippets(text) {
   const chosen = bestMatches[0];
   const prefix = text.slice(0, chosen.cueStart);
   const remaining = text.slice(chosen.removeEnd).trim();
-  const template = (chosen.entry.template || '').trim();
+  const template = sanitizeSnippetTemplate(chosen.entry.template || '');
   if (!template) {
-    return text;
-  }
-  if (template.includes('{{content}}')) {
-    const replaced = template.replace(/{{\s*content\s*}}/g, remaining);
-    return `${prefix}${replaced}`;
+    if (!remaining) {
+      return prefix;
+    }
+    return `${prefix}${remaining}`;
   }
   if (!remaining) {
     return `${prefix}${template}`;

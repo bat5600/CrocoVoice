@@ -17,7 +17,7 @@
 Packaging is configured in `package.json` under `config.forge`:
 - `packagerConfig.name`: `CrocoVoice`
 - `packagerConfig.appBundleId`: `com.crocovoice.app`
-- `packagerConfig.icon`: `assets/tray-icon` (requires `assets/tray-icon.ico`)
+- `packagerConfig.icon`: `assets/tray-icon` (requires `assets/tray-icon.ico`; current file is 32x32 placeholder)
 - `makers`: `@electron-forge/maker-squirrel` (EXE) and `@electron-forge/maker-wix` (MSI)
 - `outDir`: `dist`
 
