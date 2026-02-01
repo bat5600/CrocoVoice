@@ -760,6 +760,97 @@ function openModal({ title, fields, confirmText }) {
   });
 }
 
+function openContextScreenshotConsent() {
+  if (!modalBackdrop || !modalBody || !modalTitle || !modalCancel || !modalConfirm) {
+    return Promise.resolve(null);
+  }
+
+  modalTitle.textContent = 'Consentement capture d’écran';
+  modalConfirm.textContent = 'Continuer';
+  modalBody.innerHTML = '';
+
+  const intro = document.createElement('p');
+  intro.style.margin = '0';
+  intro.style.fontSize = '14px';
+  intro.style.color = 'var(--text-muted)';
+  intro.textContent = 'Pour activer la conscience contextuelle, CrocoVoice peut capturer une image de la fenêtre active afin de mieux adapter le formatage.';
+
+  const list = document.createElement('ul');
+  list.style.margin = '0';
+  list.style.paddingLeft = '18px';
+  list.style.display = 'flex';
+  list.style.flexDirection = 'column';
+  list.style.gap = '6px';
+  list.style.color = 'var(--text-muted)';
+  list.style.fontSize = '12px';
+  [
+    'Local uniquement (local-only).',
+    'Jamais synchronisé (never synced).',
+    'Éphémère (ephemeral) : supprimé automatiquement.',
+  ].forEach((text) => {
+    const item = document.createElement('li');
+    item.textContent = text;
+    list.appendChild(item);
+  });
+
+  const consentRow = document.createElement('label');
+  consentRow.className = 'context-signal-row';
+  consentRow.style.marginTop = '4px';
+  consentRow.style.background = '#FFFFFF';
+
+  const consentLabel = document.createElement('div');
+  consentLabel.style.display = 'flex';
+  consentLabel.style.alignItems = 'center';
+  consentLabel.style.gap = '8px';
+  consentLabel.textContent = 'Capture d’écran';
+
+  const badge = document.createElement('span');
+  badge.textContent = 'Recommandé';
+  badge.style.fontSize = '10px';
+  badge.style.fontWeight = '700';
+  badge.style.textTransform = 'uppercase';
+  badge.style.letterSpacing = '0.08em';
+  badge.style.padding = '2px 6px';
+  badge.style.borderRadius = '999px';
+  badge.style.background = '#ECFDF3';
+  badge.style.color = '#047857';
+  consentLabel.appendChild(badge);
+
+  const consentCheckbox = document.createElement('input');
+  consentCheckbox.type = 'checkbox';
+  consentCheckbox.checked = true;
+
+  consentRow.appendChild(consentLabel);
+  consentRow.appendChild(consentCheckbox);
+
+  const footnote = document.createElement('div');
+  footnote.style.fontSize = '12px';
+  footnote.style.color = 'var(--text-muted)';
+  footnote.textContent = 'Vous pourrez modifier ce choix plus tard dans Context → Signaux.';
+
+  modalBody.appendChild(intro);
+  modalBody.appendChild(list);
+  modalBody.appendChild(consentRow);
+  modalBody.appendChild(footnote);
+
+  modalBackdrop.classList.add('is-visible');
+  modalBackdrop.setAttribute('aria-hidden', 'false');
+
+  return new Promise((resolve) => {
+    modalResolver = resolve;
+
+    const closeModal = (value) => {
+      modalBackdrop.classList.remove('is-visible');
+      modalBackdrop.setAttribute('aria-hidden', 'true');
+      modalResolver = null;
+      resolve(value);
+    };
+
+    modalCancel.onclick = () => closeModal(null);
+    modalConfirm.onclick = () => closeModal({ screenshot: consentCheckbox.checked });
+  });
+}
+
 function updateBreadcrumb(viewName) {
   if (!breadcrumbPrimary || !breadcrumbSecondary) {
     return;
@@ -1611,6 +1702,108 @@ function isSelectionInsideFocusedEditor() {
   return noteFocusEditor.contains(range.commonAncestorContainer);
 }
 
+const NOTE_EDITOR_BLOCK_TAGS = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'BLOCKQUOTE']);
+
+function getNoteEditorBlock(node) {
+  if (!noteFocusEditor) {
+    return null;
+  }
+  let current = node && node.nodeType === Node.ELEMENT_NODE ? node : node?.parentNode;
+  while (current && current !== noteFocusEditor) {
+    if (current.nodeType === Node.ELEMENT_NODE && NOTE_EDITOR_BLOCK_TAGS.has(current.tagName)) {
+      return current;
+    }
+    current = current.parentNode;
+  }
+  return noteFocusEditor;
+}
+
+function findInlineCodeAncestor(node) {
+  if (!noteFocusEditor) {
+    return null;
+  }
+  let current = node && node.nodeType === Node.ELEMENT_NODE ? node : node?.parentNode;
+  while (current && current !== noteFocusEditor) {
+    if (current.nodeType === Node.ELEMENT_NODE && current.tagName === 'CODE') {
+      return current;
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
+function unwrapInlineCode(codeElement, selection) {
+  if (!codeElement || !codeElement.parentNode) {
+    return;
+  }
+  const text = codeElement.textContent || '';
+  const textNode = document.createTextNode(text);
+  const parent = codeElement.parentNode;
+  parent.replaceChild(textNode, codeElement);
+
+  const range = document.createRange();
+  const offset = selection && selection.rangeCount ? selection.getRangeAt(0).startOffset : text.length;
+  const safeOffset = Math.min(Math.max(0, offset), text.length);
+  range.setStart(textNode, safeOffset);
+  range.setEnd(textNode, safeOffset);
+  const nextSelection = window.getSelection();
+  if (nextSelection) {
+    nextSelection.removeAllRanges();
+    nextSelection.addRange(range);
+  }
+}
+
+function toggleInlineCode() {
+  if (!noteFocusEditor) {
+    return;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  const startCode = findInlineCodeAncestor(range.startContainer);
+  const endCode = findInlineCodeAncestor(range.endContainer);
+  if (startCode && startCode === endCode) {
+    unwrapInlineCode(startCode, selection);
+    return;
+  }
+  const text = selection.toString();
+  if (text) {
+    document.execCommand('insertHTML', false, `<code>${escapeHtml(text)}</code>`);
+  }
+}
+
+function handleNoteListShortcut(event) {
+  if (!noteFocusEditor || event.defaultPrevented) {
+    return false;
+  }
+  if (event.key !== ' ' || event.ctrlKey || event.metaKey || event.altKey) {
+    return false;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+    return false;
+  }
+  const range = selection.getRangeAt(0);
+  const block = getNoteEditorBlock(range.startContainer);
+  if (!block) {
+    return false;
+  }
+  const prefixRange = document.createRange();
+  prefixRange.setStart(block, 0);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const prefixText = prefixRange.toString().replace(/\u00A0/g, ' ');
+  if (!/^\s*[-*]$/.test(prefixText)) {
+    return false;
+  }
+  event.preventDefault();
+  prefixRange.deleteContents();
+  document.execCommand('insertUnorderedList', false);
+  handleFocusedEditorInput();
+  return true;
+}
+
 function positionFocusToolbar() {
   if (!noteFocusToolbar) {
     return;
@@ -1669,13 +1862,7 @@ async function applyFocusFormat(format) {
       document.execCommand('strikeThrough', false);
       break;
     case 'code': {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount) {
-        const text = selection.toString();
-        if (text) {
-          document.execCommand('insertHTML', false, `<code>${escapeHtml(text)}</code>`);
-        }
-      }
+      toggleInlineCode();
       break;
     }
     case 'quote':
@@ -1936,6 +2123,19 @@ function buildEntryRow(entry, type) {
   });
 
   actions.appendChild(copyBtn);
+
+  if (type === 'notes') {
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'entry-action export';
+    exportBtn.type = 'button';
+    exportBtn.textContent = 'Exporter';
+    exportBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await exportNoteEntry(entry);
+    });
+    actions.appendChild(exportBtn);
+  }
   actions.appendChild(deleteBtn);
 
   row.appendChild(icon);
@@ -1996,6 +2196,41 @@ async function exportHistoryEntry(entry) {
     includeSensitive: values.sensitive === 'true',
   };
   const result = await window.electronAPI.exportHistory(entry.id, options);
+  if (result?.ok) {
+    showToast('Export généré.');
+  } else {
+    showToast(result?.reason || 'Export échoué.', 'error');
+  }
+}
+
+async function exportNoteEntry(entry) {
+  if (!window.electronAPI?.exportNote || !entry?.id) {
+    showToast('Export indisponible.', 'error');
+    return;
+  }
+  const values = await openModal({
+    title: 'Exporter la note',
+    confirmText: 'Exporter',
+    fields: [
+      {
+        key: 'format',
+        label: 'Format',
+        type: 'select',
+        options: [
+          { label: 'Markdown', value: 'md' },
+          { label: 'TXT', value: 'txt' },
+        ],
+        value: 'md',
+      },
+    ],
+  });
+  if (!values) {
+    return;
+  }
+  const options = {
+    format: values.format || 'md',
+  };
+  const result = await window.electronAPI.exportNote(entry.id, options);
   if (result?.ok) {
     showToast('Export généré.');
   } else {
