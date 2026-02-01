@@ -104,6 +104,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setLocalModelPreset: (preset) => ipcRenderer.invoke('local-models:set-preset', preset),
   importLocalModel: (preset) => ipcRenderer.invoke('local-models:import', null, preset),
   openLocalModelFolder: () => ipcRenderer.invoke('local-models:open-folder'),
+  autoConfigureLocalAsrCommand: () => ipcRenderer.invoke('local-asr:auto-configure'),
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   previewContextFormatting: (profileId, text) => ipcRenderer.invoke('context:preview', profileId, text),
   clearContext: () => ipcRenderer.invoke('context:clear'),

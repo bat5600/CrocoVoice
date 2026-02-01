@@ -472,6 +472,78 @@ function getLocalModelPaths(model) {
   };
 }
 
+function getBundledLocalAsrCommand() {
+  const baseName = process.platform === 'win32' ? 'local-asr.exe' : 'local-asr';
+  const resourceRoot = app && app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, 'resources');
+  const candidates = [
+    path.join(resourceRoot, 'local-asr', baseName),
+    path.join(resourceRoot, 'local-asr', process.platform, baseName),
+    path.join(resourceRoot, 'local-asr', process.platform, process.arch, baseName),
+  ];
+  for (const candidatePath of candidates) {
+    try {
+      if (fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile()) {
+        return candidatePath;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function isLikelyPythonWhisperCommand(commandPath) {
+  if (!commandPath) {
+    return false;
+  }
+  const normalized = commandPath.toLowerCase();
+  if (!normalized.endsWith('whisper.exe')) {
+    return false;
+  }
+  return normalized.includes('\\python') && normalized.includes('\\scripts\\');
+}
+
+function resolveLocalAsrCommandCandidate() {
+  const envCandidate = typeof process.env.CROCOVOICE_LOCAL_ASR_COMMAND === 'string'
+    ? process.env.CROCOVOICE_LOCAL_ASR_COMMAND.trim()
+    : '';
+  if (envCandidate && fs.existsSync(envCandidate)) {
+    return envCandidate;
+  }
+  const bundled = getBundledLocalAsrCommand();
+  if (bundled) {
+    return bundled;
+  }
+  return null;
+}
+
+function canAutoConfigureLocalAsrCommand() {
+  const command = typeof settings.localAsrCommand === 'string' ? settings.localAsrCommand.trim() : '';
+  if (command) {
+    if (isLikelyPythonWhisperCommand(command)) {
+      return true;
+    }
+    try {
+      if (!fs.existsSync(command)) {
+        return true;
+      }
+    } catch {
+      return true;
+    }
+    return false;
+  }
+  const mode = typeof settings.localAsrMode === 'string'
+    ? settings.localAsrMode.trim().toLowerCase()
+    : '';
+  const endpoint = typeof settings.localAsrEndpoint === 'string'
+    ? settings.localAsrEndpoint.trim()
+    : '';
+  if (mode === 'server' || endpoint) {
+    return false;
+  }
+  return true;
+}
+
 function loadLocalModelManifestFromFile(filePath) {
   if (!filePath || !fs.existsSync(filePath)) {
     return null;
@@ -6372,13 +6444,19 @@ ipcMain.handle('local-models:list', () => buildLocalModelsSnapshot());
 ipcMain.handle('local-models:install', async (event, idOrPreset) => {
   const model = resolveModelByIdOrPreset(idOrPreset);
   const result = await installLocalModel(idOrPreset);
-  if (result.ok && result.status === 'started') {
+  if (result.ok) {
     const patch = {};
     if (model?.preset) {
       patch.localAsrPreset = model.preset;
     }
     if (settings.localAsrEnabled !== true) {
       patch.localAsrEnabled = true;
+    }
+    if (canAutoConfigureLocalAsrCommand()) {
+      const candidate = resolveLocalAsrCommandCandidate();
+      if (candidate) {
+        patch.localAsrCommand = candidate;
+      }
     }
     if (Object.keys(patch).length) {
       await applySettingsPatch(patch);
@@ -6398,8 +6476,41 @@ ipcMain.handle('local-models:remove', async (event, id) => {
 ipcMain.handle('local-models:set-preset', async (event, preset) => {
   const choice = normalizeLocalPresetChoice(preset);
   const next = choice === 'auto' ? 'auto' : choice;
-  await applySettingsPatch({ localAsrPreset: next });
+  const patch = { localAsrPreset: next };
+  if (settings.localAsrEnabled === true && canAutoConfigureLocalAsrCommand()) {
+    const candidate = resolveLocalAsrCommandCandidate();
+    if (candidate) {
+      patch.localAsrCommand = candidate;
+    }
+  }
+  await applySettingsPatch(patch);
   return { ok: true, preset: next };
+});
+
+ipcMain.handle('local-asr:auto-configure', async () => {
+  if (!canAutoConfigureLocalAsrCommand()) {
+    return { ok: false, reason: 'already_set' };
+  }
+  const mode = typeof settings.localAsrMode === 'string'
+    ? settings.localAsrMode.trim().toLowerCase()
+    : '';
+  const endpoint = typeof settings.localAsrEndpoint === 'string'
+    ? settings.localAsrEndpoint.trim()
+    : '';
+  if (mode === 'server' || endpoint) {
+    return { ok: false, reason: 'server_mode' };
+  }
+  const bundled = getBundledLocalAsrCommand();
+  if (bundled) {
+    await applySettingsPatch({ localAsrCommand: bundled });
+    return { ok: true, path: bundled };
+  }
+  const candidate = resolveLocalAsrCommandCandidate();
+  if (!candidate) {
+    return { ok: false, reason: 'not_found' };
+  }
+  await applySettingsPatch({ localAsrCommand: candidate });
+  return { ok: true, path: candidate };
 });
 
 ipcMain.handle('local-models:import', async (event, filePath, preset) => {

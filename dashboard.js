@@ -183,6 +183,8 @@ const localModelSummary = document.getElementById('localModelSummary');
 const localModelDownloads = document.getElementById('localModelDownloads');
 const localModelList = document.getElementById('localModelList');
 const localModelPresetSelect = document.getElementById('localModelPresetSelect');
+const localAsrCommandStatus = document.getElementById('localAsrCommandStatus');
+const localAsrCommandRescan = document.getElementById('localAsrCommandRescan');
 const diagnosticsRunChecks = document.getElementById('diagnosticsRunChecks');
 const diagnosticsOutput = document.getElementById('diagnosticsOutput');
 const diagnosticsChecks = document.getElementById('diagnosticsChecks');
@@ -211,6 +213,7 @@ let crocOmniActiveConversationId = null;
 let crocOmniMessagesData = [];
 let crocOmniMessagesRequestId = 0;
 let localModelPresetSelectUpdating = false;
+let localAsrCommandRescanPending = false;
 let crocOmniStreaming = false;
 let crocOmniStreamState = new Map();
 let insightsRangeDays = 30;
@@ -2497,6 +2500,9 @@ function updateLocalModelPresetSelect() {
     : (snapshot.activePreset || recommended);
   const hasActiveOption = Array.from(localModelPresetSelect.options).some((opt) => opt.value === activePreset);
   localModelPresetSelect.value = hasActiveOption ? activePreset : recommended;
+  if (localModelPresetSelect.selectedIndex < 0 && localModelPresetSelect.options.length) {
+    localModelPresetSelect.selectedIndex = 0;
+  }
   localModelPresetSelect.disabled = false;
   localModelPresetSelectUpdating = false;
 }
@@ -4718,6 +4724,9 @@ function renderSettings(settings) {
     if (!key) {
       return;
     }
+    if (key === 'microphoneId') {
+      return;
+    }
     if (key.startsWith('featureFlags.')) {
       const flag = key.split('.')[1];
       input.value = settings.featureFlags?.[flag] ? 'true' : 'false';
@@ -4747,6 +4756,13 @@ function renderSettings(settings) {
         input.value = settings[key];
       }
     }
+    if (input.tagName === 'SELECT') {
+      const options = Array.from(input.options || []);
+      const hasMatch = options.some((option) => option.value === input.value);
+      if (!hasMatch && options.length) {
+        input.selectedIndex = 0;
+      }
+    }
   });
 
   if (apiKeyStatus) {
@@ -4754,6 +4770,41 @@ function renderSettings(settings) {
       ? '<span style="width:8px;height:8px;border-radius:999px;background:#10B981;"></span> API OpenAI connectée'
       : '<span style="width:8px;height:8px;border-radius:999px;background:#EF4444;"></span> API manquante';
     apiKeyStatus.style.color = settings.apiKeyPresent ? '#059669' : '#EF4444';
+  }
+
+  renderLocalAsrCommandStatus(settings);
+}
+
+function renderLocalAsrCommandStatus(settings) {
+  if (!localAsrCommandStatus || !localAsrCommandRescan) {
+    return;
+  }
+  const enabled = settings.localAsrEnabled === true;
+  const mode = typeof settings.localAsrMode === 'string' ? settings.localAsrMode.trim().toLowerCase() : '';
+  const endpoint = typeof settings.localAsrEndpoint === 'string' ? settings.localAsrEndpoint.trim() : '';
+  const command = typeof settings.localAsrCommand === 'string' ? settings.localAsrCommand.trim() : '';
+  const show = enabled && mode !== 'server' && !endpoint;
+
+  localAsrCommandStatus.classList.remove('is-error', 'is-ok');
+  if (!show) {
+    localAsrCommandStatus.textContent = '';
+    localAsrCommandStatus.style.display = 'none';
+    localAsrCommandRescan.style.display = 'none';
+    return;
+  }
+
+  localAsrCommandStatus.style.display = 'block';
+  localAsrCommandRescan.style.display = 'inline-flex';
+  localAsrCommandRescan.disabled = localAsrCommandRescanPending;
+
+  if (command) {
+    localAsrCommandStatus.textContent = `Commande détectée: ${command}`;
+    localAsrCommandStatus.classList.add('is-ok');
+    localAsrCommandRescan.textContent = 'Rescanner';
+  } else {
+    localAsrCommandStatus.textContent = 'Commande locale manquante. Ajoutez un binaire ou lancez un scan automatique.';
+    localAsrCommandStatus.classList.add('is-error');
+    localAsrCommandRescan.textContent = 'Scanner';
   }
 }
 
@@ -4999,6 +5050,7 @@ async function populateMicrophones(micsOverride) {
   const storedFallbackLabel = storedId
     ? (storedLabel || `Micro ${storedId.slice(0, 4)}...`)
     : '';
+  const normalizedStoredLabel = storedLabel.toLowerCase();
   const targets = [microphoneSelect, onboardingMicrophoneSelect].filter(Boolean);
   targets.forEach((select) => {
     select.innerHTML = `<option value="">${defaultLabel}</option>`;
@@ -5017,19 +5069,20 @@ async function populateMicrophones(micsOverride) {
       option.textContent = storedFallbackLabel;
       select.appendChild(option);
     }
-    if (storedId && storedInList) {
+    const options = Array.from(select.options);
+    const idMatch = storedId ? options.find((option) => option.value === storedId) : null;
+    const labelMatch = normalizedStoredLabel
+      ? options.find((option) => option.textContent?.trim().toLowerCase() === normalizedStoredLabel)
+      : null;
+    if (idMatch) {
       select.value = storedId;
+    } else if (labelMatch) {
+      select.value = labelMatch.value;
+    } else {
+      select.value = '';
     }
-    if (!select.value && currentSettings.microphoneLabel) {
-      const match = Array.from(select.options).find((option) =>
-        option.textContent?.trim().toLowerCase() === currentSettings.microphoneLabel.trim().toLowerCase()
-      );
-      if (match) {
-        select.value = match.value;
-      }
-    }
-    if (!select.value && shouldAddFallback) {
-      select.value = storedId;
+    if (select.selectedIndex < 0 && select.options.length) {
+      select.selectedIndex = 0;
     }
   });
 
@@ -5615,6 +5668,34 @@ function updateCrocOmniSettings(nextSettings) {
         }
       } else {
         showToast('Preset sélectionné.');
+      }
+      await refreshDashboard();
+    });
+  }
+
+  if (localAsrCommandRescan) {
+    localAsrCommandRescan.addEventListener('click', async () => {
+      if (localAsrCommandRescanPending) {
+        return;
+      }
+      if (!window.electronAPI?.autoConfigureLocalAsrCommand) {
+        showToast('Scan indisponible.', 'error');
+        return;
+      }
+      localAsrCommandRescanPending = true;
+      renderLocalAsrCommandStatus(currentSettings);
+      const result = await window.electronAPI.autoConfigureLocalAsrCommand();
+      localAsrCommandRescanPending = false;
+      if (result?.ok) {
+        showToast('Commande locale détectée.');
+      } else if (result?.reason === 'not_found') {
+        showToast('Aucun binaire local ASR détecté.', 'error');
+      } else if (result?.reason === 'already_set') {
+        showToast('Commande déjà définie.');
+      } else if (result?.reason === 'server_mode') {
+        showToast('Mode serveur actif.', 'error');
+      } else {
+        showToast('Scan impossible.', 'error');
       }
       await refreshDashboard();
     });
