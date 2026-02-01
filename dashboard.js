@@ -111,9 +111,10 @@ const authOverlaySignup = document.getElementById('authOverlaySignup');
 const authOverlayForm = document.getElementById('authOverlayForm');
 const authOverlayEmail = document.getElementById('authOverlayEmail');
 const authOverlayPassword = document.getElementById('authOverlayPassword');
-const statDays = document.getElementById('statDays');
+const statStreak = document.getElementById('statStreak');
 const statWords = document.getElementById('statWords');
 const statTotal = document.getElementById('statTotal');
+const statNotesCard = document.getElementById('statNotesCard');
 const streakSubtitle = document.getElementById('streakSubtitle');
 const quotaRemaining = document.getElementById('quotaRemaining');
 const quotaReset = document.getElementById('quotaReset');
@@ -2944,8 +2945,9 @@ function renderStats(stats) {
   if (!stats) {
     return;
   }
-  if (statDays) {
-    statDays.textContent = stats.daysActive;
+  const streak = Number.isFinite(stats.dayStreak) ? stats.dayStreak : 0;
+  if (statStreak) {
+    statStreak.textContent = `${streak}`;
   }
   if (statWords) {
     statWords.textContent = stats.words;
@@ -2955,7 +2957,6 @@ function renderStats(stats) {
     statTotal.textContent = Number.isFinite(notesTotal) ? notesTotal : '0';
   }
   if (streakSubtitle) {
-    const streak = Number.isFinite(stats.dayStreak) ? stats.dayStreak : 0;
     if (streak <= 0) {
       streakSubtitle.textContent = "Aucune série en cours. Lancez une dictée pour démarrer !";
     } else if (streak === 1) {
@@ -5645,6 +5646,12 @@ function updateCrocOmniSettings(nextSettings) {
       }
     });
   });
+
+  if (statNotesCard) {
+    statNotesCard.addEventListener('click', () => {
+      setActiveView('notes');
+    });
+  }
 
   if (createNoteButton) {
     createNoteButton.addEventListener('click', handleCreateNote);

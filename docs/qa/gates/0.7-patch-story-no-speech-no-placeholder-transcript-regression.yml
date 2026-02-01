@@ -1,0 +1,51 @@
+schema: 1
+story: "0.7"
+story_title: "Patch Story — No Speech / No Placeholder Transcript (Regression)"
+gate: CONCERNS
+status_reason: "Manual checks passed and implementation looks correct, but no automated coverage exists for no-speech heuristics or hallucination filters."
+reviewer: "Quinn (Test Architect)"
+updated: "2026-02-01T08:54:32Z"
+
+waiver: { active: false }
+
+top_issues:
+  - id: "TEST-001"
+    severity: medium
+    finding: "No automated tests for no-speech / low-audio heuristics; relies on manual checks."
+    suggested_action: "Add unit/integration tests covering silence, low audio, and subtitle hallucinations."
+    suggested_owner: dev
+  - id: "RISK-001"
+    severity: low
+    finding: "Heuristic thresholds may suppress very quiet speech."
+    suggested_action: "Validate thresholds with quiet-speech samples and adjust if needed."
+    suggested_owner: dev
+
+risk_summary:
+  totals: { critical: 0, high: 0, medium: 0, low: 0 }
+  recommendations:
+    must_fix: []
+    monitor: []
+
+quality_score: 90
+expires: "2026-02-15T08:55:03Z"
+
+evidence:
+  tests_reviewed: 2
+  risks_identified: 2
+  trace:
+    ac_covered: [1, 2, 4]
+    ac_gaps: [3, 5]
+
+nfr_validation:
+  security: { status: PASS, notes: "No auth/data changes." }
+  performance: { status: PASS, notes: "Early silence skip reduces Whisper calls." }
+  reliability: { status: CONCERNS, notes: "Heuristic thresholds not covered by automated tests." }
+  maintainability: { status: PASS, notes: "Changes are localized and readable." }
+
+recommendations:
+  immediate:
+    - action: "Add automated coverage for no-speech and hallucination filters."
+      refs: ["main.js"]
+  future:
+    - action: "Tune silence thresholds using a quiet-speech sample set."
+      refs: ["main.js"]
