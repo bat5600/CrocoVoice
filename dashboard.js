@@ -81,6 +81,7 @@ const modalConfirm = document.getElementById('modalConfirm');
 const createNoteButton = document.getElementById('createNoteButton');
 const noteFocusOverlay = document.getElementById('noteFocusOverlay');
 const noteFocusShell = document.getElementById('noteFocusShell');
+const noteFocusResizer = document.getElementById('noteFocusResizer');
 const noteFocusBack = document.getElementById('noteFocusBack');
 const noteFocusTitle = document.getElementById('noteFocusTitle');
 const noteFocusEditor = document.getElementById('noteFocusEditor');
@@ -1334,6 +1335,51 @@ function setFocusedNoteStatus(state, detail) {
   }
 }
 
+const NOTE_FOCUS_MIN_WIDTH = 360;
+const NOTE_FOCUS_MAX_RATIO = 0.8;
+let noteFocusWidth = null;
+let noteFocusResizing = false;
+
+function clampNoteFocusWidth(value) {
+  const min = Math.max(NOTE_FOCUS_MIN_WIDTH, Math.floor(window.innerWidth * 0.35));
+  const max = Math.max(min, Math.floor(window.innerWidth * NOTE_FOCUS_MAX_RATIO));
+  const next = Math.round(value);
+  return Math.min(Math.max(next, min), max);
+}
+
+function applyNoteFocusWidth(value) {
+  const next = clampNoteFocusWidth(value);
+  noteFocusWidth = next;
+  document.documentElement.style.setProperty('--note-focus-width', `${next}px`);
+}
+
+function ensureNoteFocusWidth() {
+  if (!noteFocusWidth) {
+    applyNoteFocusWidth(window.innerWidth * 0.5);
+    return;
+  }
+  applyNoteFocusWidth(noteFocusWidth);
+}
+
+function handleNoteFocusResize(event) {
+  if (!noteFocusResizing) {
+    return;
+  }
+  const nextWidth = window.innerWidth - event.clientX;
+  applyNoteFocusWidth(nextWidth);
+}
+
+function stopNoteFocusResize() {
+  if (!noteFocusResizing) {
+    return;
+  }
+  noteFocusResizing = false;
+  document.body.classList.remove('note-focus-resizing');
+  window.removeEventListener('pointermove', handleNoteFocusResize);
+  window.removeEventListener('pointerup', stopNoteFocusResize);
+  window.removeEventListener('pointercancel', stopNoteFocusResize);
+}
+
 function htmlToMarkdownLite(html) {
   if (!html) {
     return '';
@@ -1684,11 +1730,11 @@ function openFocusedNote(note = null) {
     setFocusedNoteStatus('empty');
   }
 
+  ensureNoteFocusWidth();
   document.body.classList.add('note-focus-active');
   if (noteFocusOverlay) {
     noteFocusOverlay.setAttribute('aria-hidden', 'false');
   }
-  setActiveView('note-focus');
   setTimeout(() => noteFocusTitle.focus(), 0);
 }
 
@@ -1696,6 +1742,7 @@ async function closeFocusedNote() {
   if (focusedNoteDirty) {
     await saveFocusedNote({ force: true });
   }
+  stopNoteFocusResize();
   document.body.classList.remove('note-focus-active');
   if (noteFocusOverlay) {
     noteFocusOverlay.setAttribute('aria-hidden', 'true');
@@ -1708,7 +1755,6 @@ async function closeFocusedNote() {
     clearTimeout(focusedNoteTimer);
     focusedNoteTimer = null;
   }
-  setActiveView('notes');
 }
 
 function buildEntryRow(entry, type) {
@@ -3890,6 +3936,12 @@ function updateCrocOmniSettings(nextSettings) {
     hideFocusToolbar();
   });
 
+  window.addEventListener('resize', () => {
+    if (noteFocusWidth) {
+      applyNoteFocusWidth(noteFocusWidth);
+    }
+  });
+
   navItems.forEach((item) => {
     item.addEventListener('click', () => {
       setActiveView(item.dataset.view);
@@ -4251,6 +4303,20 @@ function updateCrocOmniSettings(nextSettings) {
       if (event.target === noteFocusShell) {
         closeFocusedNote();
       }
+    });
+  }
+
+  if (noteFocusResizer) {
+    noteFocusResizer.addEventListener('pointerdown', (event) => {
+      if (event.button !== undefined && event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      noteFocusResizing = true;
+      document.body.classList.add('note-focus-resizing');
+      window.addEventListener('pointermove', handleNoteFocusResize);
+      window.addEventListener('pointerup', stopNoteFocusResize);
+      window.addEventListener('pointercancel', stopNoteFocusResize);
     });
   }
 

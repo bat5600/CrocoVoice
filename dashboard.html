@@ -24,6 +24,7 @@
       --emerald-400: #34D399;
       --emerald-100: #D1FAE5;
       --emerald-50: #ECFDF5;
+      --note-focus-width: 50vw;
     }
 
     * {
@@ -2645,26 +2646,79 @@
       position: fixed;
       inset: 0;
       z-index: 50;
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
     }
 
     .note-focus-shell {
       height: 100%;
-      overflow: auto;
+      overflow: hidden;
       background: transparent;
-      padding: 36px 24px 60px;
+      padding: 0;
+      display: flex;
+      align-items: stretch;
+      justify-content: flex-end;
     }
 
     .note-focus-card {
-      max-width: 760px;
-      margin: 0 auto;
+      width: var(--note-focus-width);
+      min-width: 360px;
+      max-width: 80vw;
+      margin: 0;
+      height: 100%;
       background: #FFFFFF;
-      border-radius: 24px;
+      border-radius: 24px 0 0 24px;
       border: 1px solid #E2E8F0;
-      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
-      padding: 32px 36px 40px;
+      border-right: none;
+      box-shadow: -24px 0 60px rgba(15, 23, 42, 0.12);
+      padding: 32px 36px 40px 44px;
       display: flex;
       flex-direction: column;
       gap: 16px;
+      position: relative;
+      transform: translateX(100%);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    body.note-focus-active .note-focus-card {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    .note-focus-resizer {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 10px;
+      cursor: col-resize;
+    }
+
+    .note-focus-resizer::after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 16px;
+      bottom: 16px;
+      width: 2px;
+      border-radius: 999px;
+      background: #E2E8F0;
+      transition: background 0.2s ease;
+    }
+
+    .note-focus-resizer:hover::after {
+      background: #94A3B8;
+    }
+
+    body.note-focus-resizing {
+      cursor: col-resize;
+      user-select: none;
+    }
+
+    body.note-focus-resizing * {
+      cursor: col-resize !important;
     }
 
     .note-focus-header {
@@ -2706,7 +2760,8 @@
 
     .note-focus-editor {
       width: 100%;
-      min-height: 220px;
+      flex: 1;
+      min-height: 0;
       padding: 10px 2px 40px;
       font-size: 16px;
       line-height: 1.7;
@@ -2715,6 +2770,7 @@
       background: transparent;
       border: none;
       outline: none;
+      overflow-y: auto;
     }
 
     .note-focus-editor:focus {
@@ -3279,6 +3335,7 @@
         <section id="view-note-focus" class="view note-focus-view">
           <div id="noteFocusShell" class="note-focus-shell">
             <div class="note-focus-card">
+              <div id="noteFocusResizer" class="note-focus-resizer" aria-hidden="true"></div>
               <div class="note-focus-header">
                 <button id="noteFocusBack" class="ghost-btn" type="button">← Notes</button>
                 <span id="noteFocusStatus" class="note-status">Enregistré</span>
