@@ -2632,7 +2632,7 @@ async function captureTypingTarget() {
 
 async function assertTypingTargetStillActive({ allowMismatch = false } = {}) {
   if (!typingTarget || !getActiveWindow) {
-    return;
+    return { warningMessage: '' };
   }
   try {
     const activeWindow = await getActiveWindow();
@@ -2640,16 +2640,22 @@ async function assertTypingTargetStillActive({ allowMismatch = false } = {}) {
     if (!title || title !== typingTarget.title) {
       if (allowMismatch) {
         console.warn('Typing guard bypassed: target window changed before paste.');
-        return;
+        return {
+          warningMessage: 'Fenetre cible modifiee pendant le collage. Cliquez dans la zone cible et reessayez.',
+        };
       }
       const guardError = new Error('Fenetre cible modifiee pendant le collage. Cliquez dans la zone cible et reessayez.');
       guardError.code = 'typing_guard';
       throw guardError;
     }
+    return { warningMessage: '' };
   } catch (error) {
     if (allowMismatch) {
       console.warn('Typing guard check failed, continuing paste:', error);
-      return;
+      const detail = error && error.message
+        ? error.message
+        : 'Impossible de verifier la fenetre cible.';
+      return { warningMessage: detail };
     }
     const detail = error && error.message
       ? error.message
@@ -3916,6 +3922,7 @@ async function pasteText(text, options = {}) {
   const runPaste = async () => {
     let previousClipboard = '';
     let restoreClipboard = true;
+    let guardWarningMessage = '';
     const mode = options.mode || 'paste';
     const shouldPaste = mode !== 'clipboard';
     const allowTargetChange = options.allowTargetChange !== false;
@@ -3927,7 +3934,8 @@ async function pasteText(text, options = {}) {
         return;
       }
       if (shouldPaste) {
-        await assertTypingTargetStillActive({ allowMismatch: allowTargetChange });
+        const guardResult = await assertTypingTargetStillActive({ allowMismatch: allowTargetChange });
+        guardWarningMessage = guardResult?.warningMessage || '';
       }
       previousClipboard = clipboard.readText();
       pendingPasteBuffer = text;
@@ -3941,10 +3949,14 @@ async function pasteText(text, options = {}) {
       }
       lastDelivery = {
         mode,
-        status: 'ok',
-        message: '',
+        status: guardWarningMessage ? 'warning' : 'ok',
+        message: guardWarningMessage || '',
         at: new Date().toISOString(),
       };
+      if (guardWarningMessage) {
+        recordDiagnosticEvent('delivery_warning', guardWarningMessage);
+      }
+      return { ok: true, warningMessage: guardWarningMessage, mode };
     } catch (error) {
       console.error('Paste error:', error);
       restoreClipboard = false;
@@ -4484,11 +4496,15 @@ async function handleAudioPayload(event, audioData) {
       scheduleDebouncedSync();
     }
 
+    let deliveryWarningMessage = '';
     if (!shouldSkipPaste) {
-      await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+      const deliveryResult = await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+      deliveryWarningMessage = deliveryResult?.warningMessage || '';
     }
 
-    const combinedWarningMessage = [pipelineWarningMessage, safetyWarningMessage].filter(Boolean).join(' ');
+    const combinedWarningMessage = [pipelineWarningMessage, safetyWarningMessage, deliveryWarningMessage]
+      .filter(Boolean)
+      .join(' ');
     if (combinedWarningMessage) {
       setRecordingState(RecordingState.ERROR, combinedWarningMessage);
       scheduleReturnToIdle(3000);
@@ -5215,8 +5231,10 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
         before: transcribedText || '',
         after: formattedText || finalText || '',
       };
+      let deliveryWarningMessage = '';
       if (!shouldSkipPaste) {
-        await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+        const deliveryResult = await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+        deliveryWarningMessage = deliveryResult?.warningMessage || '';
       }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('transcription-success', finalText);
@@ -5224,7 +5242,12 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
         sendDashboardEvent('dashboard:transcription-success', finalText, target);
       }
-      setRecordingState(RecordingState.IDLE);
+      if (deliveryWarningMessage) {
+        setRecordingState(RecordingState.ERROR, deliveryWarningMessage);
+        scheduleReturnToIdle(3000);
+      } else {
+        setRecordingState(RecordingState.IDLE);
+      }
       return;
     }
     const buffer = session.codec === 'opus'
@@ -5264,8 +5287,10 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
       before: transcribedText || '',
       after: formattedText || finalText || '',
     };
+    let deliveryWarningMessage = '';
     if (!shouldSkipPaste) {
-      await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+      const deliveryResult = await pasteText(finalText, { mode: 'paste', allowTargetChange: true });
+      deliveryWarningMessage = deliveryResult?.warningMessage || '';
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('transcription-success', finalText);
@@ -5273,7 +5298,12 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
     if (dashboardWindow && !dashboardWindow.isDestroyed()) {
       sendDashboardEvent('dashboard:transcription-success', finalText, target);
     }
-    setRecordingState(RecordingState.IDLE);
+    if (deliveryWarningMessage) {
+      setRecordingState(RecordingState.ERROR, deliveryWarningMessage);
+      scheduleReturnToIdle(3000);
+    } else {
+      setRecordingState(RecordingState.IDLE);
+    }
   } catch (error) {
     console.error('Streaming finalize failed:', error);
     await fallbackToFileMode(error?.message || 'Erreur streaming.');
@@ -6440,7 +6470,12 @@ ipcMain.handle('sync:now', async () => {
 ipcMain.on('history:paste-latest', async () => {
   const rows = await store.listHistory({ limit: 1 });
   if (rows.length) {
-    await pasteText(rows[0].text, { mode: 'paste', allowTargetChange: true });
+    const deliveryResult = await pasteText(rows[0].text, { mode: 'paste', allowTargetChange: true });
+    const deliveryWarningMessage = deliveryResult?.warningMessage || '';
+    if (deliveryWarningMessage) {
+      setRecordingState(RecordingState.ERROR, deliveryWarningMessage);
+      scheduleReturnToIdle(3000);
+    }
   }
 });
 

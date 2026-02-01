@@ -2379,6 +2379,28 @@
       color: #64748B;
     }
 
+    .toast-progress {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.1);
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .toast-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--emerald-500);
+      transition: width 0.2s ease;
+    }
+
+    .toast-progress-label {
+      font-size: 11px;
+      color: var(--text-soft);
+      margin-top: 4px;
+    }
+
     .toast-action {
       margin-left: auto;
       border: none;
@@ -3441,7 +3463,7 @@
             <div id="uploadDropzone" class="upload-dropzone" role="button" tabindex="0" aria-label="Importer un fichier audio">
               <div>
                 <div class="upload-dropzone-title">Importer un audio dans vos notes</div>
-                <div class="upload-dropzone-subtitle">Glissez-déposez un fichier audio ou cliquez pour choisir un fichier. Formats acceptés: .wav, .mp3, .m4a, .ogg, .oga.</div>
+                <div class="upload-dropzone-subtitle">Glissez-déposez un fichier audio ou cliquez pour choisir un fichier. Formats acceptés: .wav, .mp3, .m4a, .ogg, .oga. Enregistré dans vos notes (local).</div>
               </div>
               <button id="uploadAudioButton" class="btn-secondary" type="button">Importer audio</button>
             </div>
@@ -4090,8 +4112,7 @@
               <div id="localModelSummary" class="model-subtitle" style="margin-top: 8px;"></div>
               <div id="localModelList" class="model-list"></div>
               <div class="model-actions" style="margin-top: 12px;">
-                <button id="localModelOpenFolder" class="btn-secondary" type="button">Ouvrir le dossier</button>
-                <button id="localModelImport" class="btn-secondary" type="button">Importer un modèle</button>
+                <button id="localModelChoose" class="btn-primary" type="button">Choisir un modèle</button>
               </div>
             </div>
 

@@ -28,6 +28,31 @@ function logHistoryRetentionPolicy(context, retentionDays) {
   console.info(`History retention policy (${context}): retention disabled; no purge.`);
 }
 
+function redactFilePathFromMetadata(value) {
+  if (!value) {
+    return value;
+  }
+  let parsed = value;
+  let wasString = false;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+      wasString = true;
+    } catch {
+      return value;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return value;
+  }
+  if (!parsed.file || typeof parsed.file !== 'object' || !parsed.file.path) {
+    return value;
+  }
+  const next = { ...parsed, file: { ...parsed.file } };
+  delete next.file.path;
+  return wasString ? JSON.stringify(next) : next;
+}
+
 
 class SyncService {
   constructor({ store, supabaseUrl, supabaseKey }) {
@@ -309,7 +334,7 @@ class SyncService {
         user_id: row.user_id,
         title: row.title,
         text: row.text,
-        metadata: row.metadata,
+        metadata: redactFilePathFromMetadata(row.metadata),
         created_at: row.created_at,
         updated_at: row.updated_at,
       }),

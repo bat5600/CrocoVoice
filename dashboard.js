@@ -169,8 +169,7 @@ const uploadDropzone = document.getElementById('uploadDropzone');
 const uploadQueue = document.getElementById('uploadQueue');
 const localModelSummary = document.getElementById('localModelSummary');
 const localModelList = document.getElementById('localModelList');
-const localModelOpenFolder = document.getElementById('localModelOpenFolder');
-const localModelImport = document.getElementById('localModelImport');
+const localModelChoose = document.getElementById('localModelChoose');
 const diagnosticsRunChecks = document.getElementById('diagnosticsRunChecks');
 const diagnosticsOutput = document.getElementById('diagnosticsOutput');
 const diagnosticsChecks = document.getElementById('diagnosticsChecks');
@@ -222,6 +221,8 @@ let onboardingMicLevel = 0;
 let diagnosticsSnapshot = null;
 let diagnosticsChecksState = null;
 let diffData = { before: '', after: '' };
+let modelDownloadToasts = new Map();
+let modelDownloadStatusCache = new Map();
 
 const DEFAULT_CONTEXT_SETTINGS = {
   enabled: true,
@@ -2117,14 +2118,14 @@ function updateUploadNotifications(uploads) {
     }
     const prev = uploadStatusCache.get(job.id);
     if (!prev) {
-      showToast(`Import en cours : ${job.fileName || 'Fichier audio'}.`);
+      showToast(`Import vers notes : ${job.fileName || 'Fichier audio'}.`);
       return;
     }
     if (prev.status === job.status) {
       return;
     }
     if (job.status === 'completed') {
-      showToast(`Transcription terminée : ${job.fileName || 'Fichier audio'}.`);
+      showToast(`Note créée : ${job.fileName || 'Fichier audio'}.`);
       return;
     }
     if (job.status === 'failed') {
@@ -2146,6 +2147,7 @@ function applyLocalModelsSnapshot(snapshot) {
   localModelsData = snapshot || null;
   renderLocalModels();
   renderOnboardingLocalModels();
+  updateModelDownloadToasts(localModelsData);
 }
 
 function getPresetLabel(presetId, presets) {
@@ -2168,6 +2170,175 @@ function buildLocalModelBadges(model, snapshot) {
     badges.push('maj');
   }
   return badges;
+}
+
+function getLocalModelByPreset(presetId) {
+  const models = localModelsData?.models || [];
+  return models.find((model) => model.preset === presetId) || null;
+}
+
+function formatSizeGb(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '';
+  }
+  const gb = bytes / (1024 ** 3);
+  if (gb < 0.1) {
+    return '<0.1 GB';
+  }
+  return `${gb.toFixed(1)} GB`;
+}
+
+function createModelDownloadToast(model, snapshot) {
+  if (!toastContainer) {
+    return null;
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.dataset.modelToast = model.id;
+
+  const icon = document.createElement('div');
+  icon.className = 'toast-icon';
+  icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path></svg>';
+
+  const content = document.createElement('div');
+  const title = document.createElement('div');
+  title.className = 'toast-title';
+  title.textContent = 'Téléchargement du modèle';
+  const message = document.createElement('div');
+  message.className = 'toast-message';
+  const progress = document.createElement('div');
+  progress.className = 'toast-progress';
+  const fill = document.createElement('div');
+  fill.className = 'toast-progress-fill';
+  progress.appendChild(fill);
+  const progressLabel = document.createElement('div');
+  progressLabel.className = 'toast-progress-label';
+  content.appendChild(title);
+  content.appendChild(message);
+  content.appendChild(progress);
+  content.appendChild(progressLabel);
+
+  toast.appendChild(icon);
+  toast.appendChild(content);
+  toastContainer.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  toast.addEventListener('click', () => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+    modelDownloadToasts.delete(model.id);
+  });
+
+  const entry = {
+    toast,
+    message,
+    fill,
+    progressLabel,
+    status: model.download?.status || '',
+  };
+  modelDownloadToasts.set(model.id, entry);
+  updateModelDownloadToast(entry, model, snapshot);
+  return entry;
+}
+
+function updateModelDownloadToast(entry, model, snapshot) {
+  if (!entry) {
+    return;
+  }
+  const presetLabel = getPresetLabel(model.preset, snapshot?.presets);
+  const sizeLabel = model.sizeBytes ? formatSizeGb(model.sizeBytes) : '';
+  const baseLabel = sizeLabel ? `${presetLabel} · ${sizeLabel}` : presetLabel;
+  const status = model.download?.status || 'queued';
+  const percent = Number.isFinite(model.download?.progress) ? model.download.progress : 0;
+  let statusLabel = '';
+  if (status === 'queued') {
+    statusLabel = 'En attente...';
+  } else if (status === 'downloading') {
+    statusLabel = `Téléchargement... ${percent}%`;
+  } else if (status === 'verifying') {
+    statusLabel = 'Vérification...';
+  } else if (status === 'paused') {
+    statusLabel = 'Téléchargement en pause.';
+  }
+  entry.message.textContent = `${baseLabel} · ${statusLabel}`.trim();
+  entry.fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+  entry.progressLabel.textContent = status === 'downloading' ? `${percent}%` : '';
+  entry.status = status;
+}
+
+function removeModelDownloadToast(id) {
+  const entry = modelDownloadToasts.get(id);
+  if (!entry) {
+    return;
+  }
+  entry.toast.classList.remove('show');
+  setTimeout(() => entry.toast.remove(), 300);
+  modelDownloadToasts.delete(id);
+}
+
+function getDownloadErrorMessage(model) {
+  const error = model.download?.error || '';
+  if (error === 'checksum_mismatch') {
+    return 'Vérification échouée. Réessayez.';
+  }
+  if (error === 'download_failed' || error === 'http_error') {
+    return 'Téléchargement indisponible. Réessayez.';
+  }
+  if (error === 'write_failed') {
+    return 'Erreur d\'écriture disque. Vérifiez l\'espace.';
+  }
+  if (error) {
+    return `Téléchargement échoué: ${error}.`;
+  }
+  return 'Téléchargement échoué. Réessayez.';
+}
+
+function updateModelDownloadToasts(snapshot) {
+  if (!snapshot?.models) {
+    modelDownloadToasts.forEach((entry, id) => removeModelDownloadToast(id));
+    modelDownloadStatusCache = new Map();
+    return;
+  }
+  const activeIds = new Set();
+  const nextStatusCache = new Map();
+  snapshot.models.forEach((model) => {
+    const status = model.download?.status;
+    const previous = modelDownloadStatusCache.get(model.id);
+    if (['queued', 'downloading', 'verifying', 'paused'].includes(status)) {
+      activeIds.add(model.id);
+      const existing = modelDownloadToasts.get(model.id);
+      if (existing) {
+        updateModelDownloadToast(existing, model, snapshot);
+      } else {
+        createModelDownloadToast(model, snapshot);
+      }
+      nextStatusCache.set(model.id, status);
+    } else if (status === 'completed') {
+      if (modelDownloadToasts.has(model.id)) {
+        removeModelDownloadToast(model.id);
+      }
+      if (previous !== 'completed') {
+        showToast(`Modèle téléchargé: ${getPresetLabel(model.preset, snapshot.presets)}.`);
+      }
+      nextStatusCache.set(model.id, status);
+    } else if (status === 'failed') {
+      if (modelDownloadToasts.has(model.id)) {
+        removeModelDownloadToast(model.id);
+      }
+      if (previous !== 'failed') {
+        showToast(getDownloadErrorMessage(model), 'error');
+      }
+      nextStatusCache.set(model.id, status);
+    } else if (previous && ['queued', 'downloading', 'verifying', 'paused'].includes(previous)) {
+      removeModelDownloadToast(model.id);
+    }
+  });
+  modelDownloadToasts.forEach((entry, id) => {
+    if (!activeIds.has(id)) {
+      removeModelDownloadToast(id);
+    }
+  });
+  modelDownloadStatusCache = nextStatusCache;
 }
 
 function buildLocalModelRow(model, snapshot, context = 'settings') {
@@ -2224,7 +2395,12 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       cancel.textContent = 'Annuler';
       cancel.addEventListener('click', async () => {
         if (window.electronAPI?.cancelLocalModelDownload) {
-          await window.electronAPI.cancelLocalModelDownload(model.id);
+          const result = await window.electronAPI.cancelLocalModelDownload(model.id);
+          if (result?.ok) {
+            showToast('Téléchargement annulé.');
+          } else {
+            showToast('Annulation impossible.', 'error');
+          }
           await refreshDashboard();
         }
       });
@@ -4436,16 +4612,9 @@ function updateCrocOmniSettings(nextSettings) {
     });
   }
 
-  if (localModelOpenFolder) {
-    localModelOpenFolder.addEventListener('click', async () => {
-      if (window.electronAPI?.openLocalModelFolder) {
-        await window.electronAPI.openLocalModelFolder();
-      }
-    });
-  }
-  if (localModelImport) {
-    localModelImport.addEventListener('click', async () => {
-      if (!window.electronAPI?.importLocalModel) {
+  if (localModelChoose) {
+    localModelChoose.addEventListener('click', async () => {
+      if (!window.electronAPI?.setLocalModelPreset) {
         return;
       }
       const presets = localModelsData?.presets || [
@@ -4453,28 +4622,70 @@ function updateCrocOmniSettings(nextSettings) {
         { id: 'quality', label: 'Quality' },
         { id: 'ultra', label: 'Ultra' },
       ];
+      const recommended = localModelsData?.recommendedPreset || 'quality';
+      const options = presets.map((preset) => {
+        const model = getLocalModelByPreset(preset.id);
+        const installed = model?.status === 'installed';
+        const sizeLabel = model?.sizeBytes ? formatSizeGb(model.sizeBytes) : '';
+        let statusLabel = installed ? 'déjà téléchargé' : (sizeLabel ? `~${sizeLabel}` : 'non téléchargé');
+        if (preset.id === recommended) {
+          statusLabel += ' · recommandé';
+        }
+        return {
+          label: `${preset.label} — ${statusLabel}`,
+          value: preset.id,
+        };
+      });
       const values = await openModal({
-        title: 'Importer un modèle',
-        confirmText: 'Importer',
+        title: 'Choisir un modèle',
+        confirmText: 'Choisir',
         fields: [
           {
             key: 'preset',
             label: 'Preset',
             type: 'select',
-            options: presets.map((preset) => ({ label: preset.label, value: preset.id })),
-            value: localModelsData?.recommendedPreset || 'quality',
+            options,
+            value: recommended,
           },
         ],
       });
       if (!values) {
         return;
       }
-      const result = await window.electronAPI.importLocalModel(values.preset);
+      const result = await window.electronAPI.setLocalModelPreset(values.preset);
       if (!result?.ok) {
-        showToast('Import échoué.', 'error');
+        showToast('Impossible de changer le preset.', 'error');
         return;
       }
-      showToast('Modèle importé.');
+      const model = getLocalModelByPreset(values.preset);
+      if (!model || model.status !== 'installed') {
+        if (window.electronAPI?.installLocalModel) {
+          const downloadResult = await window.electronAPI.installLocalModel(values.preset);
+          if (!downloadResult?.ok) {
+            const reason = downloadResult?.reason;
+            if (reason === 'missing_source') {
+              showToast('Téléchargement indisponible.', 'error');
+            } else if (reason === 'already_downloading') {
+              showToast('Téléchargement déjà en cours.');
+            } else if (reason === 'model_not_found') {
+              showToast('Modèle introuvable.', 'error');
+            } else {
+              showToast('Téléchargement impossible.', 'error');
+            }
+            await refreshDashboard();
+            return;
+          }
+          if (downloadResult.status === 'already_installed') {
+            showToast('Modèle déjà installé.');
+          } else {
+            showToast('Téléchargement démarré.');
+          }
+        } else {
+          showToast('Téléchargement indisponible.', 'error');
+        }
+      } else {
+        showToast('Preset sélectionné.');
+      }
       await refreshDashboard();
     });
   }
@@ -4542,7 +4753,7 @@ function updateCrocOmniSettings(nextSettings) {
       if (result?.job) {
         upsertUploadJob(result.job);
       }
-      showToast('Import en cours...');
+      showToast('Import vers notes en cours...');
       await refreshDashboard();
     });
   }
@@ -4577,7 +4788,7 @@ function updateCrocOmniSettings(nextSettings) {
       if (result?.job) {
         upsertUploadJob(result.job);
       }
-      showToast('Import en cours...');
+      showToast('Import vers notes en cours...');
       await refreshDashboard();
     });
     uploadDropzone.addEventListener('click', (event) => {
