@@ -126,6 +126,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listHistory: (limit) => ipcRenderer.invoke('history:list', limit),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
   exportHistory: (id, options) => ipcRenderer.invoke('history:export', id, options),
+  exportNote: (id, options) => ipcRenderer.invoke('notes:export', id, options),
   selectUploadFile: () => ipcRenderer.invoke('upload:select'),
   addUploadFile: (filePath) => ipcRenderer.invoke('upload:add', filePath),
   cancelUploadJob: (id) => ipcRenderer.invoke('upload:cancel', id),

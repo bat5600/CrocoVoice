@@ -274,6 +274,7 @@ const defaultSettings = {
     enabled: true,
     postProcessEnabled: false,
     retentionDays: 30,
+    screenshotConsentAsked: false,
     signals: {
       app: true,
       window: true,
@@ -340,6 +341,7 @@ const DEFAULT_CONTEXT_SETTINGS = {
   enabled: true,
   postProcessEnabled: false,
   retentionDays: 30,
+  screenshotConsentAsked: false,
   signals: {
     app: true,
     window: true,
@@ -693,6 +695,7 @@ function buildLocalModelsSnapshot() {
     const presetMeta = getPresetMeta(model.preset);
     const installedEntry = installed[model.id] || null;
     let downloadEntry = downloads[model.id] || null;
+    const hasActiveJob = localModelDownloadJobs.has(model.id);
     if (!installedEntry) {
       const paths = getLocalModelPaths(model);
       if (fs.existsSync(paths.partialPath)) {
@@ -709,6 +712,15 @@ function buildLocalModelsSnapshot() {
           };
         } catch {}
       }
+    }
+    if (downloadEntry && ['queued', 'downloading', 'verifying'].includes(downloadEntry.status) && !hasActiveJob) {
+      downloadEntry = {
+        ...downloadEntry,
+        status: 'paused',
+      };
+    }
+    if (installedEntry) {
+      downloadEntry = null;
     }
     const downloadable = Boolean(model.url && model.sha256);
     const status = installedEntry
@@ -1107,10 +1119,12 @@ function normalizeContextSettings(value) {
   }
   const signals = { ...base.signals, ...(value.signals || {}) };
   const overrides = value.overrides && typeof value.overrides === 'object' ? value.overrides : {};
+  const screenshotConsentAsked = value.screenshotConsentAsked === true || value?.signals?.screenshot === true;
   return {
     enabled: value.enabled !== false,
     postProcessEnabled: value.postProcessEnabled === true,
     retentionDays: Number.isFinite(value.retentionDays) ? value.retentionDays : base.retentionDays,
+    screenshotConsentAsked,
     signals,
     overrides,
   };
@@ -5283,7 +5297,11 @@ async function finalizeUploadFailure(job, message) {
   if (!job) {
     return;
   }
-  await deleteUploadNote(job);
+  try {
+    await deleteUploadNote(job);
+  } catch (error) {
+    console.warn('Upload note cleanup failed:', error?.message || error);
+  }
   updateUploadJob(job.id, { status: 'failed', error: message || 'Erreur de traitement.' });
 }
 
@@ -5291,7 +5309,11 @@ async function finalizeUploadCancel(job) {
   if (!job) {
     return;
   }
-  await deleteUploadNote(job);
+  try {
+    await deleteUploadNote(job);
+  } catch (error) {
+    console.warn('Upload note cleanup failed:', error?.message || error);
+  }
   updateUploadJob(job.id, { status: 'cancelled', error: null });
 }
 
@@ -5379,17 +5401,23 @@ async function processUploadJob(job) {
     await finalizeUploadCancel(job);
     return;
   }
-  await upsertUploadNote(job, {
-    text: finalText,
-    title,
-    status: 'completed',
-    durationMs: job.durationMs,
-    completedAt,
-  });
+  try {
+    await upsertUploadNote(job, {
+      text: finalText,
+      title,
+      status: 'completed',
+      durationMs: job.durationMs,
+      completedAt,
+    });
+  } catch (error) {
+    await finalizeUploadFailure(job, error?.message || 'Impossible de sauvegarder la note.');
+    return;
+  }
   sendDashboardEvent('dashboard:data-updated');
-  await incrementQuotaUsage(finalText);
-
   updateUploadJob(job.id, { status: 'completed', progress: 100, completedAt });
+  incrementQuotaUsage(finalText).catch((error) => {
+    console.warn('Upload quota update failed:', error?.message || error);
+  });
 }
 
 function sanitizeContextForExport(contextPayload, includeSensitive = false) {
@@ -5597,6 +5625,41 @@ function buildExportPayload(entry, options) {
     return `# ${title}\n\n${content}`;
   }
   return content;
+}
+
+function buildNoteExportPayload(entry, options) {
+  const format = options.format || 'md';
+  const title = entry.title || 'note';
+  const text = entry.text || '';
+  if (format === 'json') {
+    let metadata = entry.metadata || null;
+    if (metadata && typeof metadata === 'string') {
+      try {
+        metadata = JSON.parse(metadata);
+      } catch {
+        metadata = { raw: metadata };
+      }
+    }
+    return JSON.stringify({
+      export_version: 'v1',
+      id: entry.id,
+      title,
+      created_at: entry.created_at || null,
+      updated_at: entry.updated_at || null,
+      metadata,
+      text,
+    }, null, 2);
+  }
+  if (format === 'md') {
+    if (!text.trim()) {
+      return `# ${title}\n`;
+    }
+    if (text.trim().startsWith('#')) {
+      return text;
+    }
+    return `# ${title}\n\n${text}`;
+  }
+  return text;
 }
 
 function slugifyFilename(value) {
@@ -7160,6 +7223,33 @@ ipcMain.handle('history:export', async (event, id, options = {}) => {
     return { ok: false, reason: 'canceled' };
   }
   const content = buildExportPayload(entry, { ...options, format: ext });
+  try {
+    await fs.promises.writeFile(dialogResult.filePath, content);
+    return { ok: true, path: dialogResult.filePath };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'export_failed' };
+  }
+});
+
+ipcMain.handle('notes:export', async (event, id, options = {}) => {
+  if (!id) {
+    return { ok: false, reason: 'missing_id' };
+  }
+  const entry = await store.getNoteById(id);
+  if (!entry) {
+    return { ok: false, reason: 'not_found' };
+  }
+  const format = options.format || 'md';
+  const ext = format === 'md' ? 'md' : format === 'json' ? 'json' : 'txt';
+  const defaultPath = buildExportFilename({ ...entry, title: entry.title || 'note' }, ext);
+  const dialogResult = await dialog.showSaveDialog({
+    defaultPath,
+    filters: [{ name: 'Export', extensions: [ext] }],
+  });
+  if (dialogResult.canceled || !dialogResult.filePath) {
+    return { ok: false, reason: 'canceled' };
+  }
+  const content = buildNoteExportPayload(entry, { format: ext });
   try {
     await fs.promises.writeFile(dialogResult.filePath, content);
     return { ok: true, path: dialogResult.filePath };

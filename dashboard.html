@@ -1208,7 +1208,7 @@
       gap: 16px;
       padding: 16px;
       border-bottom: 1px solid #F1F5F9;
-      transition: background 0.2s ease;
+      transition: background 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
     }
 
     .entry-row:last-child {
@@ -1221,6 +1221,12 @@
 
     .entry-row.is-highlight {
       background: rgba(245, 158, 11, 0.08);
+    }
+
+    .entry-row.is-removing {
+      opacity: 0;
+      transform: translateY(-4px);
+      pointer-events: none;
     }
 
     .entry-icon {
@@ -1347,6 +1353,12 @@
       background: #FEF2F2;
       border-color: #FECACA;
       color: #DC2626;
+    }
+
+    .entry-action.export:hover {
+      background: #EFF6FF;
+      border-color: #BFDBFE;
+      color: #2563EB;
     }
 
     .history-skeleton {
@@ -3267,12 +3279,11 @@
       border-radius: 8px;
       padding: 6px 8px;
       cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
     }
 
     .note-focus-tool:hover {
       background: #E2E8F0;
-      font-size: 16px;
-      line-height: 1.7;
       color: #0F172A;
     }
 
@@ -4353,7 +4364,7 @@
               <div id="localModelDownloads" class="model-downloads"></div>
               <div id="localModelList" class="model-list"></div>
               <div class="model-actions" style="margin-top: 12px;">
-                <button id="localModelChoose" class="btn-primary" type="button">Choisir un modèle</button>
+                <select id="localModelPresetSelect" class="input-select" style="min-width: 260px;"></select>
               </div>
             </div>
 

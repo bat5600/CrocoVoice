@@ -182,7 +182,7 @@ const uploadQueue = document.getElementById('uploadQueue');
 const localModelSummary = document.getElementById('localModelSummary');
 const localModelDownloads = document.getElementById('localModelDownloads');
 const localModelList = document.getElementById('localModelList');
-const localModelChoose = document.getElementById('localModelChoose');
+const localModelPresetSelect = document.getElementById('localModelPresetSelect');
 const diagnosticsRunChecks = document.getElementById('diagnosticsRunChecks');
 const diagnosticsOutput = document.getElementById('diagnosticsOutput');
 const diagnosticsChecks = document.getElementById('diagnosticsChecks');
@@ -210,6 +210,7 @@ let crocOmniConversations = [];
 let crocOmniActiveConversationId = null;
 let crocOmniMessagesData = [];
 let crocOmniMessagesRequestId = 0;
+let localModelPresetSelectUpdating = false;
 let crocOmniStreaming = false;
 let crocOmniStreamState = new Map();
 let insightsRangeDays = 30;
@@ -218,6 +219,7 @@ let platform = 'win32';
 let shortcutCaptureActive = false;
 let shortcutBeforeCapture = '';
 let shortcutInvalidShown = false;
+let suppressDashboardRefreshUntil = 0;
 let historyLoadError = false;
 let quotaSnapshot = null;
 let currentSubscription = null;
@@ -802,7 +804,8 @@ function openContextScreenshotConsent() {
   consentLabel.style.display = 'flex';
   consentLabel.style.alignItems = 'center';
   consentLabel.style.gap = '8px';
-  consentLabel.textContent = 'Capture d’écran';
+  const consentText = document.createElement('span');
+  consentText.textContent = 'Capture d’écran';
 
   const badge = document.createElement('span');
   badge.textContent = 'Recommandé';
@@ -814,6 +817,7 @@ function openContextScreenshotConsent() {
   badge.style.borderRadius = '999px';
   badge.style.background = '#ECFDF3';
   badge.style.color = '#047857';
+  consentLabel.appendChild(consentText);
   consentLabel.appendChild(badge);
 
   const consentCheckbox = document.createElement('input');
@@ -1144,7 +1148,13 @@ async function deleteNoteWithUndo(entry) {
   if (statTotal) {
     statTotal.textContent = `${notesData.length}`;
   }
-  renderNotesList();
+  const filtered = filterEntries(notesData, searchTerm);
+  const removed = removeNoteRowFromList(entry.id);
+  updateNotesEmptyState(filtered);
+  if (!removed) {
+    renderNotesList();
+  }
+  suppressDashboardRefresh(500);
   await window.electronAPI.deleteNote(entry.id);
   showUndoToast('Note supprimée.', 'Annuler', async () => {
     const payload = {
@@ -1255,6 +1265,17 @@ function setEmptyStateState(element, hasSearch) {
   if (actionEl) {
     actionEl.style.display = hasSearch ? 'none' : 'inline-flex';
   }
+}
+
+function suppressDashboardRefresh(durationMs = 0) {
+  const until = Date.now() + Math.max(0, durationMs);
+  if (until > suppressDashboardRefreshUntil) {
+    suppressDashboardRefreshUntil = until;
+  }
+}
+
+function shouldSuppressDashboardRefresh() {
+  return Date.now() < suppressDashboardRefreshUntil;
 }
 
 function renderHistoryLoading() {
@@ -2407,6 +2428,7 @@ function applyLocalModelsSnapshot(snapshot) {
   localModelsData = snapshot || null;
   renderLocalModels();
   renderOnboardingLocalModels();
+  updateLocalModelPresetSelect();
   updateModelDownloadToasts(localModelsData);
 }
 
@@ -2438,6 +2460,45 @@ function buildLocalModelBadges(model, snapshot) {
 function getLocalModelByPreset(presetId) {
   const models = localModelsData?.models || [];
   return models.find((model) => model.preset === presetId) || null;
+}
+
+function updateLocalModelPresetSelect() {
+  if (!localModelPresetSelect) {
+    return;
+  }
+  const snapshot = localModelsData;
+  localModelPresetSelectUpdating = true;
+  localModelPresetSelect.innerHTML = '';
+  if (!snapshot || !Array.isArray(snapshot.presets)) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Chargement...';
+    localModelPresetSelect.appendChild(placeholder);
+    localModelPresetSelect.disabled = true;
+    localModelPresetSelectUpdating = false;
+    return;
+  }
+  const recommended = snapshot.recommendedPreset || 'quality';
+  snapshot.presets.forEach((preset) => {
+    const model = getLocalModelByPreset(preset.id);
+    const installed = model?.status === 'installed';
+    const sizeLabel = model?.sizeBytes ? formatSizeGb(model.sizeBytes) : '';
+    let statusLabel = installed ? 'déjà téléchargé' : (sizeLabel ? `~${sizeLabel}` : 'non téléchargé');
+    if (preset.id === recommended) {
+      statusLabel += ' · recommandé';
+    }
+    const option = document.createElement('option');
+    option.value = preset.id;
+    option.textContent = `${preset.label} — ${statusLabel}`;
+    localModelPresetSelect.appendChild(option);
+  });
+  const activePreset = snapshot.activePreset === 'auto'
+    ? recommended
+    : (snapshot.activePreset || recommended);
+  const hasActiveOption = Array.from(localModelPresetSelect.options).some((opt) => opt.value === activePreset);
+  localModelPresetSelect.value = hasActiveOption ? activePreset : recommended;
+  localModelPresetSelect.disabled = false;
+  localModelPresetSelectUpdating = false;
 }
 
 function formatSizeGb(bytes) {
@@ -2812,14 +2873,20 @@ function renderLocalModels() {
   const snapshot = localModelsData;
   renderLocalModelDownloads();
   const models = snapshot?.models || [];
+  const activeDownloadModels = new Set(
+    models
+      .filter((model) => model.download && ['queued', 'downloading', 'verifying', 'paused'].includes(model.download.status))
+      .map((model) => model.id),
+  );
   localModelList.innerHTML = '';
-  if (!models.length) {
+  const modelsToRender = models.filter((model) => !activeDownloadModels.has(model.id));
+  if (!modelsToRender.length) {
     const empty = document.createElement('div');
     empty.className = 'model-subtitle';
     empty.textContent = 'Aucun modèle disponible.';
     localModelList.appendChild(empty);
   } else {
-    models.forEach((model) => {
+    modelsToRender.forEach((model) => {
       localModelList.appendChild(buildLocalModelRow(model, snapshot, 'settings'));
     });
   }
@@ -3095,14 +3162,44 @@ function renderNotesList() {
   const filtered = filterEntries(notesData, searchTerm);
   notesList.innerHTML = '';
   if (!filtered.length) {
+    updateNotesEmptyState(filtered);
+    return;
+  }
+  updateNotesEmptyState(filtered);
+  filtered.forEach((entry) => {
+    notesList.appendChild(buildEntryRow(entry, 'notes'));
+  });
+}
+
+function updateNotesEmptyState(filtered) {
+  if (!notesEmpty) {
+    return;
+  }
+  if (!filtered || filtered.length === 0) {
     notesEmpty.style.display = 'flex';
     setEmptyStateState(notesEmpty, Boolean(searchTerm));
     return;
   }
   notesEmpty.style.display = 'none';
-  filtered.forEach((entry) => {
-    notesList.appendChild(buildEntryRow(entry, 'notes'));
-  });
+}
+
+function removeNoteRowFromList(entryId) {
+  if (!notesList || !entryId) {
+    return false;
+  }
+  const row = notesList.querySelector(`[data-entry-id="${entryId}"]`);
+  if (!row) {
+    return false;
+  }
+  row.classList.add('is-removing');
+  const remove = () => {
+    if (row.isConnected) {
+      row.remove();
+    }
+  };
+  row.addEventListener('transitionend', remove, { once: true });
+  setTimeout(remove, 240);
+  return true;
 }
 
 function refreshActiveList() {
@@ -5472,56 +5569,27 @@ function updateCrocOmniSettings(nextSettings) {
     });
   }
 
-  if (localModelChoose) {
-    localModelChoose.addEventListener('click', async () => {
+  if (localModelPresetSelect) {
+    localModelPresetSelect.addEventListener('change', async (event) => {
+      if (localModelPresetSelectUpdating) {
+        return;
+      }
       if (!window.electronAPI?.setLocalModelPreset) {
         return;
       }
-      const presets = localModelsData?.presets || [
-        { id: 'lite', label: 'Lite' },
-        { id: 'balanced', label: 'Balanced' },
-        { id: 'quality', label: 'Quality' },
-        { id: 'ultra', label: 'Ultra' },
-      ];
-      const recommended = localModelsData?.recommendedPreset || 'quality';
-      const options = presets.map((preset) => {
-        const model = getLocalModelByPreset(preset.id);
-        const installed = model?.status === 'installed';
-        const sizeLabel = model?.sizeBytes ? formatSizeGb(model.sizeBytes) : '';
-        let statusLabel = installed ? 'déjà téléchargé' : (sizeLabel ? `~${sizeLabel}` : 'non téléchargé');
-        if (preset.id === recommended) {
-          statusLabel += ' · recommandé';
-        }
-        return {
-          label: `${preset.label} — ${statusLabel}`,
-          value: preset.id,
-        };
-      });
-      const values = await openModal({
-        title: 'Choisir un modèle',
-        confirmText: 'Choisir',
-        fields: [
-          {
-            key: 'preset',
-            label: 'Preset',
-            type: 'select',
-            options,
-            value: recommended,
-          },
-        ],
-      });
-      if (!values) {
+      const preset = event.target.value;
+      if (!preset) {
         return;
       }
-      const result = await window.electronAPI.setLocalModelPreset(values.preset);
+      const result = await window.electronAPI.setLocalModelPreset(preset);
       if (!result?.ok) {
         showToast('Impossible de changer le preset.', 'error');
         return;
       }
-      const model = getLocalModelByPreset(values.preset);
+      const model = getLocalModelByPreset(preset);
       if (!model || model.status !== 'installed') {
         if (window.electronAPI?.installLocalModel) {
-          const downloadResult = await window.electronAPI.installLocalModel(values.preset);
+          const downloadResult = await window.electronAPI.installLocalModel(preset);
           if (!downloadResult?.ok) {
             const reason = downloadResult?.reason;
             if (reason === 'missing_source') {
@@ -5753,6 +5821,11 @@ function updateCrocOmniSettings(nextSettings) {
 
   if (noteFocusEditor) {
     noteFocusEditor.addEventListener('input', handleFocusedEditorInput);
+    noteFocusEditor.addEventListener('keydown', (event) => {
+      if (handleNoteListShortcut(event)) {
+        return;
+      }
+    });
     noteFocusEditor.addEventListener('click', (event) => {
       const link = event.target && event.target.closest ? event.target.closest('a') : null;
       if (!link || !link.href) {
@@ -6170,6 +6243,22 @@ function updateCrocOmniSettings(nextSettings) {
   if (contextEnabledToggle) {
     contextEnabledToggle.addEventListener('change', async () => {
       const contextSettings = getContextSettingsLocal();
+      if (contextEnabledToggle.checked && !contextSettings.screenshotConsentAsked) {
+        const consent = await openContextScreenshotConsent();
+        if (!consent) {
+          contextEnabledToggle.checked = false;
+          return;
+        }
+        const nextSignals = { ...(contextSettings.signals || {}), screenshot: Boolean(consent.screenshot) };
+        await saveContextSettings({
+          ...contextSettings,
+          enabled: true,
+          signals: nextSignals,
+          screenshotConsentAsked: true,
+        });
+        await refreshDashboard();
+        return;
+      }
       await saveContextSettings({ ...contextSettings, enabled: contextEnabledToggle.checked });
       await refreshDashboard();
     });
@@ -6196,7 +6285,11 @@ function updateCrocOmniSettings(nextSettings) {
     el.addEventListener('change', async () => {
       const contextSettings = getContextSettingsLocal();
       const nextSignals = { ...(contextSettings.signals || {}), [key]: el.checked };
-      await saveContextSettings({ ...contextSettings, signals: nextSignals });
+      const nextSettings = { ...contextSettings, signals: nextSignals };
+      if (key === 'screenshot' && !contextSettings.screenshotConsentAsked) {
+        nextSettings.screenshotConsentAsked = true;
+      }
+      await saveContextSettings(nextSettings);
       await refreshDashboard();
     });
   });
@@ -6511,7 +6604,12 @@ function updateCrocOmniSettings(nextSettings) {
   }
 
   if (window.electronAPI?.onDashboardDataUpdated) {
-    window.electronAPI.onDashboardDataUpdated(() => refreshDashboard());
+    window.electronAPI.onDashboardDataUpdated(() => {
+      if (shouldSuppressDashboardRefresh()) {
+        return;
+      }
+      refreshDashboard();
+    });
   }
   if (window.electronAPI?.onCrocOmniStream) {
     window.electronAPI.onCrocOmniStream((payload) => handleCrocOmniStream(payload));
