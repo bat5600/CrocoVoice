@@ -10,6 +10,7 @@
 **Constraints**
 - Squirrel.Windows builds only on Windows or Linux with `mono` and `wine` installed.
 - Windows app icons require a real `.ico` file (Forge appends the platform extension automatically).
+- Squirrel.Windows requires handling install/uninstall events (we use `electron-squirrel-startup`).
 
 ## Build Configuration
 Packaging is configured in `package.json` under `config.forge`:
@@ -22,6 +23,7 @@ Packaging is configured in `package.json` under `config.forge`:
 Additional identity values:
 - `productName` in `package.json` drives user-facing strings and the Squirrel `Setup.exe` name.
 - `authors` and `description` are provided in the Squirrel maker config.
+- Windows AppUserModelID is set in `main.js` to `com.crocovoice.app`.
 
 Versioning comes from `package.json` (`version`).
 

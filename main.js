@@ -1,8 +1,16 @@
 require('dotenv').config();
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, clipboard, shell, dialog, Notification } = require('electron');
 const { execFile } = require('child_process');
+const isSquirrelStartup = require('electron-squirrel-startup');
+
+if (isSquirrelStartup) {
+  app.quit();
+}
 
 app.disableHardwareAcceleration();
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.crocovoice.app');
+}
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -11,6 +19,8 @@ const crypto = require('crypto');
 const os = require('os');
 const { OpenAI } = require('openai');
 const Store = require('./store');
+const { mergeFeatureFlags, shouldRefreshRemoteFlags } = require('./feature-flags');
+const { sanitizeContextForExport, redactSensitiveText, redactContextPayload } = require('./telemetry-utils');
 const SyncService = require('./sync');
 let WebSocketClient = null;
 try {
@@ -95,12 +105,126 @@ let authState = {
   retryable: false,
 };
 
+let settings = { uiLanguage: 'en' };
+
 const RecordingState = Object.freeze({
   IDLE: 'idle',
   RECORDING: 'recording',
   PROCESSING: 'processing',
   ERROR: 'error',
 });
+
+const UI_MESSAGES = {
+  'audio.noAudio': { en: 'No audio captured.', fr: 'Aucun audio capte.' },
+  'audio.lowAudio': { en: 'Audio too quiet.', fr: 'Audio trop faible.' },
+  'audio.checkMic': { en: 'Check your microphone.', fr: 'Verifiez votre micro.' },
+  'audio.checkMicLabel': { en: 'Check the mic in use ({{label}}).', fr: 'Verifiez le micro utilise ({{label}}).' },
+  'audio.checkMicId': { en: 'Check the mic in use ({{id}}).', fr: 'Verifiez le micro utilise ({{id}}).' },
+  'audio.idleTimeout': {
+    en: 'Auto-stop: no audio detected. {{suffix}}',
+    fr: 'Arret automatique : aucun son detecte. {{suffix}}',
+  },
+  'auth.required': { en: 'Login required.', fr: 'Connexion requise.' },
+  'auth.required.use': { en: 'Login required to use CrocoVoice.', fr: 'Connexion requise pour utiliser CrocoVoice.' },
+  'auth.required.styles': { en: 'Login required to edit styles.', fr: 'Connexion requise pour modifier les styles.' },
+  'auth.required.pro': { en: 'Login required to go Pro.', fr: 'Connexion requise pour passer PRO.' },
+  'auth.required.subscription': { en: 'Login required to manage subscription.', fr: 'Connexion requise pour gerer l\'abonnement.' },
+  'auth.required.refresh': { en: 'Login required to refresh.', fr: 'Connexion requise pour actualiser.' },
+  'auth.required.sync': { en: 'Login required to sync.', fr: 'Connexion requise pour synchroniser.' },
+  'auth.error.invalidCredentials': { en: 'Invalid email or password.', fr: 'Email ou mot de passe invalide.' },
+  'auth.error.emailNotConfirmed': { en: 'Email not confirmed. Check your inbox.', fr: 'Email non confirme. Verifiez votre boite mail.' },
+  'auth.error.network': { en: 'Network unavailable. Try again.', fr: 'Reseau indisponible. Reessayez.' },
+  'auth.error.unavailable': { en: 'Unable to sign in.', fr: 'Impossible de se connecter.' },
+  'auth.supabase.missing': { en: 'Supabase not configured.', fr: 'Supabase non configure.' },
+  'auth.status.checking': { en: 'Checking session...', fr: 'Verification de session...' },
+  'auth.status.unstable': {
+    en: 'Connection unstable. Read-only mode, try again.',
+    fr: 'Connexion instable. Mode lecture seule, reessayez.',
+  },
+  'auth.status.connecting': { en: 'Connecting...', fr: 'Connexion en cours...' },
+  'auth.status.creating': { en: 'Creating account...', fr: 'Creation du compte...' },
+  'auth.status.signedOut': { en: 'Signed out.', fr: 'Deconnecte.' },
+  'quota.checkFailed': { en: 'Unable to verify quota.', fr: 'Impossible de verifier le quota.' },
+  'quota.checkFailed.network': {
+    en: 'Unable to verify quota (network unavailable).',
+    fr: 'Impossible de verifier le quota (reseau indisponible).',
+  },
+  'quota.reached': { en: 'Quota reached. Go Pro to continue.', fr: 'Quota atteint. Passez Pro pour continuer.' },
+  'recording.startError': { en: 'Failed to start.', fr: 'Erreur de demarrage.' },
+  'recording.stopError': { en: 'Failed to stop.', fr: 'Erreur lors de l\'arret.' },
+  'recording.shortcut.invalid': { en: 'Shortcut invalid or unavailable.', fr: 'Raccourci invalide ou indisponible.' },
+  'recording.streaming.timeout': { en: 'Streaming interrupted (timeout).', fr: 'Streaming interrompu (timeout).' },
+  'recording.streaming.invalidOrder': { en: 'Streaming interrupted (invalid order).', fr: 'Streaming interrompu (ordre invalide).' },
+  'recording.streaming.chunkTooLarge': { en: 'Audio chunk too large.', fr: 'Chunk audio trop volumineux.' },
+  'recording.streaming.tooLong': { en: 'Streaming session too long.', fr: 'Session streaming trop longue.' },
+  'recording.streaming.error': { en: 'Streaming error.', fr: 'Erreur streaming.' },
+  'openai.timeout': {
+    en: 'OpenAI timed out. Try again in a moment.',
+    fr: 'OpenAI ne repond pas (timeout). Reessayez dans quelques instants.',
+  },
+  'openai.invalidKey': { en: 'Invalid OpenAI key. Check OPENAI_API_KEY.', fr: 'Cle OpenAI invalide. Verifiez votre OPENAI_API_KEY.' },
+  'openai.rateLimit': { en: 'OpenAI rate limit reached (429). Try again soon.', fr: 'Limite de requetes OpenAI atteinte (429). Reessayez bientot.' },
+  'openai.quota': { en: 'OpenAI quota exhausted. Check your plan or billing.', fr: 'Quota OpenAI epuise. Verifiez votre plan ou facturation.' },
+  'openai.generic': { en: 'OpenAI error. Try again.', fr: 'Erreur OpenAI. Reessayez.' },
+  'openai.missingKey': { en: 'OPENAI_API_KEY missing.', fr: 'OPENAI_API_KEY manquante.' },
+  'postprocess.skipped.missingKey': {
+    en: 'Post-processing skipped: OPENAI_API_KEY missing.',
+    fr: 'Post-traitement ignore: OPENAI_API_KEY manquante.',
+  },
+  'processing.error': { en: 'Processing error.', fr: 'Erreur de traitement.' },
+  'paste.targetChanged': {
+    en: 'Target window changed during paste. Click the target field and try again.',
+    fr: 'Fenetre cible modifiee pendant le collage. Cliquez dans la zone cible et reessayez.',
+  },
+  'paste.targetCheckFailed': { en: 'Unable to verify the target window.', fr: 'Impossible de verifier la fenetre cible.' },
+  'paste.failed': { en: 'Paste failed', fr: 'Echec du collage' },
+  'paste.clipboardKept': { en: 'Text kept in the clipboard.', fr: 'Texte conserve dans le presse-papier.' },
+  'storage.unavailable': { en: 'Storage unavailable.', fr: 'Stockage indisponible.' },
+  'note.create.failed': { en: 'Unable to create note.', fr: 'Impossible de creer la note.' },
+  'note.save.failed': { en: 'Unable to save the note.', fr: 'Impossible de sauvegarder la note.' },
+  'upload.postprocess.failed': { en: 'Post-processing failed.', fr: 'Post-traitement impossible.' },
+  'upload.noAudio': { en: 'No audio detected.', fr: 'Aucun audio detecte.' },
+  'upload.localUnavailable': { en: 'Local transcription unavailable.', fr: 'Transcription locale indisponible.' },
+  'upload.injectionFailed': { en: 'Injection failed.', fr: 'Echec injection' },
+  'crocomni.missingKey': {
+    en: 'CrocOmni unavailable: OPENAI_API_KEY missing.',
+    fr: 'CrocOmni indisponible : OPENAI_API_KEY manquante.',
+  },
+  'snippet.required': { en: 'Cue and template are required.', fr: 'Cue et template requis.' },
+  'content.required': { en: 'Content is required.', fr: 'Le contenu est requis.' },
+};
+
+function normalizeUiLanguage(value) {
+  return value === 'fr' ? 'fr' : 'en';
+}
+
+function formatUiMessage(template, vars) {
+  if (!vars) {
+    return template;
+  }
+  return String(template).replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    if (Object.prototype.hasOwnProperty.call(vars, key)) {
+      return String(vars[key]);
+    }
+    return match;
+  });
+}
+
+function tUi(key, vars, fallback) {
+  const entry = UI_MESSAGES[key];
+  const lang = normalizeUiLanguage(settings?.uiLanguage);
+  if (!entry) {
+    return fallback !== undefined ? fallback : key;
+  }
+  let value = entry[lang];
+  if (!value) {
+    value = entry.en;
+  }
+  if (value === undefined || value === null) {
+    return fallback !== undefined ? fallback : key;
+  }
+  return formatUiMessage(value, vars);
+}
 
 const ACTION_DEBOUNCE_MS = 500;
 const parsedHistoryRetentionFree = Number.parseInt(process.env.CROCOVOICE_HISTORY_RETENTION_DAYS_FREE || '14', 10);
@@ -157,8 +281,6 @@ const SNIPPET_FUZZY = {
   maxDistanceRatio: 0.25,
 };
 
-const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
-
 function resolveMicrophoneLabel(micDevice) {
   const candidateId = typeof micDevice === 'string' ? micDevice.trim() : '';
   const fallbackId = candidateId
@@ -181,20 +303,20 @@ function resolveMicrophoneLabel(micDevice) {
 function buildNoAudioCheckSuffix(micDevice) {
   const { id, label } = resolveMicrophoneLabel(micDevice);
   if (label) {
-    return `Verifiez le micro utilise (${label}).`;
+    return tUi('audio.checkMicLabel', { label });
   }
   if (id) {
-    return `Verifiez le micro utilise (${id}).`;
+    return tUi('audio.checkMicId', { id });
   }
-  return 'Verifiez votre micro.';
+  return tUi('audio.checkMic');
 }
 
 function buildNoAudioMessage(micDevice) {
-  return `${NO_AUDIO_MESSAGE} ${buildNoAudioCheckSuffix(micDevice)}`;
+  return `${tUi('audio.noAudio')} ${buildNoAudioCheckSuffix(micDevice)}`;
 }
 
 function buildLowAudioMessage(micDevice) {
-  return `Audio trop faible. ${buildNoAudioCheckSuffix(micDevice)}`;
+  return `${tUi('audio.lowAudio')} ${buildNoAudioCheckSuffix(micDevice)}`;
 }
 
 let widgetDisplayId = null;
@@ -230,6 +352,7 @@ let widgetHideTimer = null;
 
 const defaultSettings = {
   language: process.env.CROCOVOICE_LANGUAGE || 'fr',
+  uiLanguage: 'en',
   shortcut:
     process.env.CROCOVOICE_SHORTCUT
     || (process.platform === 'darwin' ? 'Command+Shift+R' : 'Ctrl+Shift+R'),
@@ -316,7 +439,7 @@ const defaultSettings = {
     updatedAt: null,
   },
 };
-let settings = { ...defaultSettings };
+settings = { ...defaultSettings };
 const DICTIONARY_CACHE_TTL_MS = 60000;
 let dictionaryCache = { entries: null, updatedAt: 0 };
 const SNIPPET_CACHE_TTL_MS = 60000;
@@ -1223,12 +1346,12 @@ function getFeatureFlags() {
   const base = defaultSettings.featureFlags || {};
   const current = settings.featureFlags && typeof settings.featureFlags === 'object' ? settings.featureFlags : {};
   const remote = getFeatureFlagsRemote();
-  const flags = { ...base, ...remote, ...current };
-  if (STREAMING_DEPRECATED) {
-    flags.streaming = false;
-    flags.worklet = false;
-  }
-  return flags;
+  return mergeFeatureFlags({
+    base,
+    remote,
+    current,
+    streamingDeprecated: STREAMING_DEPRECATED,
+  });
 }
 
 function isFeatureEnabled(flag) {
@@ -1276,7 +1399,7 @@ async function refreshRemoteFeatureFlags({ force = false } = {}) {
     ? settings.featureFlagsTtlMs
     : defaultSettings.featureFlagsTtlMs;
   const now = Date.now();
-  if (!force && featureFlagCache.fetchedAt && now - featureFlagCache.fetchedAt < ttlMs) {
+  if (!shouldRefreshRemoteFlags({ cache: featureFlagCache, ttlMs, now, force })) {
     return featureFlagCache;
   }
   try {
@@ -1668,7 +1791,7 @@ async function createUploadJobFromFile(filePath) {
     placeholderText: 'Import audio en cours...',
   };
   if (!store) {
-    return { ok: false, reason: 'Stockage indisponible.' };
+    return { ok: false, reason: tUi('storage.unavailable') };
   }
   try {
     await store.addNote({
@@ -1682,7 +1805,7 @@ async function createUploadJobFromFile(filePath) {
     });
     scheduleDebouncedSync();
   } catch (error) {
-    return { ok: false, reason: error?.message || 'Impossible de créer la note.' };
+    return { ok: false, reason: error?.message || tUi('note.create.failed') };
   }
   uploadJobs = [job, ...uploadJobs].slice(0, 20);
   uploadJobById.set(job.id, job);
@@ -1801,39 +1924,6 @@ function normalizeContextId(value) {
     return '';
   }
   return value.toString().toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-function redactSensitiveText(text) {
-  if (!text || typeof text !== 'string') {
-    return text;
-  }
-  return text
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted-email]')
-    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[redacted-phone]')
-    .replace(/\b\d{6,}\b/g, '[redacted-number]');
-}
-
-function redactContextPayload(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return payload;
-  }
-  const next = { ...payload };
-  if (next.appName) {
-    next.appName = redactSensitiveText(next.appName);
-  }
-  if (next.windowTitle) {
-    next.windowTitle = redactSensitiveText(next.windowTitle);
-  }
-  if (next.url) {
-    next.url = redactSensitiveText(next.url);
-  }
-  if (next.axText) {
-    next.axText = redactSensitiveText(next.axText);
-  }
-  if (next.textboxText) {
-    next.textboxText = redactSensitiveText(next.textboxText);
-  }
-  return next;
 }
 
 function truncateHint(value, max = 140) {
@@ -2698,7 +2788,7 @@ async function getQuotaSnapshot() {
           requiresAuth: false,
           unlimited: false,
           checkFailed: true,
-          message: 'Impossible de verifier le quota (reseau indisponible).',
+          message: tUi('quota.checkFailed.network'),
         };
       }
     }
@@ -2744,12 +2834,12 @@ async function ensureQuotaAvailable() {
   try {
     const quota = await getQuotaSnapshot();
     if (quota?.checkFailed) {
-      setRecordingState(RecordingState.ERROR, quota.message || 'Impossible de verifier le quota.');
+      setRecordingState(RecordingState.ERROR, quota.message || tUi('quota.checkFailed'));
       scheduleReturnToIdle(3500);
       return false;
     }
     if (isQuotaReached(quota)) {
-      setRecordingState(RecordingState.ERROR, 'Quota atteint. Passez Pro pour continuer.');
+      setRecordingState(RecordingState.ERROR, tUi('quota.reached'));
       scheduleReturnToIdle(3500);
       notifyQuotaBlocked(quota);
       return false;
@@ -2758,7 +2848,7 @@ async function ensureQuotaAvailable() {
   } catch (error) {
     console.warn('Failed to check quota before recording:', error);
     if (QUOTA_MODE === 'server') {
-      setRecordingState(RecordingState.ERROR, 'Impossible de verifier le quota.');
+      setRecordingState(RecordingState.ERROR, tUi('quota.checkFailed'));
       scheduleReturnToIdle(3500);
       return false;
     }
@@ -2897,8 +2987,8 @@ function requireAuthenticated(message) {
   if (canAccessPremium()) {
     return;
   }
-  notifyAuthRequired(message || 'Connexion requise.');
-  const error = new Error(message || 'Connexion requise.');
+  notifyAuthRequired(message || tUi('auth.required'));
+  const error = new Error(message || tUi('auth.required'));
   error.code = 'auth_required';
   throw error;
 }
@@ -2906,23 +2996,28 @@ function requireAuthenticated(message) {
 function getAuthErrorMessage(error) {
   const message = (error && error.message) ? error.message.toLowerCase() : '';
   if (message.includes('invalid login credentials')) {
-    return 'Email ou mot de passe invalide.';
+    return tUi('auth.error.invalidCredentials');
   }
   if (message.includes('email not confirmed')) {
-    return 'Email non confirme. Verifiez votre boite mail.';
+    return tUi('auth.error.emailNotConfirmed');
   }
   if (message.includes('network') || message.includes('fetch')) {
-    return 'Reseau indisponible. Reessayez.';
+    return tUi('auth.error.network');
   }
-  return error?.message || 'Impossible de se connecter.';
+  return error?.message || tUi('auth.error.unavailable');
+}
+
+function isAuthNetworkError(error) {
+  const message = (error && error.message) ? error.message.toLowerCase() : '';
+  return message.includes('network') || message.includes('fetch');
 }
 
 function notifyAuthRequired(message) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('auth:required', message || 'Connexion requise.');
+    mainWindow.webContents.send('auth:required', message || tUi('auth.required'));
   }
   if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-    dashboardWindow.webContents.send('auth:required', message || 'Connexion requise.');
+    dashboardWindow.webContents.send('auth:required', message || tUi('auth.required'));
   }
   ensureDashboardWindow();
 }
@@ -2951,7 +3046,7 @@ async function hydrateAuthState() {
   if (!syncService || !syncService.isReady()) {
     setAuthState({
       status: 'not_configured',
-      message: 'Supabase non configure.',
+      message: tUi('auth.supabase.missing'),
       user: null,
       syncReady: false,
       retryable: false,
@@ -2961,7 +3056,7 @@ async function hydrateAuthState() {
 
   setAuthState({
     status: 'checking',
-    message: 'Verification de session...',
+    message: tUi('auth.status.checking'),
     syncReady: true,
     retryable: false,
   });
@@ -2988,7 +3083,7 @@ async function hydrateAuthState() {
   } catch (error) {
     authErrorCount += 1;
     const message = authErrorCount >= 2
-      ? 'Connexion instable. Mode lecture seule, reessayez.'
+      ? tUi('auth.status.unstable')
       : getAuthErrorMessage(error);
     setAuthState({
       status: 'error',
@@ -3063,11 +3158,12 @@ async function assertTypingTargetStillActive({ allowMismatch = false } = {}) {
     if (!title || title !== typingTarget.title) {
       if (allowMismatch) {
         console.warn('Typing guard bypassed: target window changed before paste.');
+        const targetChangedMessage = tUi('paste.targetChanged');
         return {
-          warningMessage: 'Fenetre cible modifiee pendant le collage. Cliquez dans la zone cible et reessayez.',
+          warningMessage: targetChangedMessage,
         };
       }
-      const guardError = new Error('Fenetre cible modifiee pendant le collage. Cliquez dans la zone cible et reessayez.');
+      const guardError = new Error(tUi('paste.targetChanged'));
       guardError.code = 'typing_guard';
       throw guardError;
     }
@@ -3077,12 +3173,12 @@ async function assertTypingTargetStillActive({ allowMismatch = false } = {}) {
       console.warn('Typing guard check failed, continuing paste:', error);
       const detail = error && error.message
         ? error.message
-        : 'Impossible de verifier la fenetre cible.';
+        : tUi('paste.targetCheckFailed');
       return { warningMessage: detail };
     }
     const detail = error && error.message
       ? error.message
-      : 'Impossible de verifier la fenetre cible.';
+      : tUi('paste.targetCheckFailed');
     const guardError = new Error(detail);
     guardError.code = 'typing_guard';
     throw guardError;
@@ -3164,18 +3260,18 @@ function isRetryableOpenAIError(error) {
 function getOpenAIUserMessage(error) {
   const { status, code, message } = extractOpenAIErrorInfo(error);
   if (code === 'ETIMEDOUT' || (message && message.toLowerCase().includes('timeout'))) {
-    return 'OpenAI ne repond pas (timeout). Reessayez dans quelques instants.';
+    return tUi('openai.timeout');
   }
   if (status === 401 || status === 403 || code === 'invalid_api_key') {
-    return 'Cle OpenAI invalide. Verifiez votre OPENAI_API_KEY.';
+    return tUi('openai.invalidKey');
   }
   if (status === 429 || code === 'rate_limit_exceeded') {
-    return 'Limite de requetes OpenAI atteinte (429). Reessayez bientot.';
+    return tUi('openai.rateLimit');
   }
   if (code === 'insufficient_quota') {
-    return 'Quota OpenAI epuise. Verifiez votre plan ou facturation.';
+    return tUi('openai.quota');
   }
-  return 'Erreur OpenAI. Reessayez.';
+  return tUi('openai.generic');
 }
 
 async function executeOpenAICall({ label, timeoutMs, action }) {
@@ -4197,7 +4293,7 @@ function hideWidgetFor(ms) {
 
 async function startRecording() {
   if (!canAccessPremium()) {
-    notifyAuthRequired('Connexion requise pour utiliser CrocoVoice.');
+    notifyAuthRequired(tUi('auth.required.use'));
     return;
   }
   if (transitionLock || shouldDebounceAction('start')) {
@@ -4225,7 +4321,7 @@ async function startRecording() {
     }
   } catch (error) {
     console.error('Failed to start recording:', error);
-    setRecordingState(RecordingState.ERROR, error?.message || 'Erreur de demarrage.');
+    setRecordingState(RecordingState.ERROR, error?.message || tUi('recording.startError'));
     scheduleReturnToIdle(3000);
   } finally {
     transitionLock = false;
@@ -4258,7 +4354,7 @@ async function stopRecording() {
     return recordingDuration;
   } catch (error) {
     console.error('Failed to stop recording:', error);
-    setRecordingState(RecordingState.ERROR, error?.message || 'Erreur lors de l\'arret.');
+    setRecordingState(RecordingState.ERROR, error?.message || tUi('recording.stopError'));
     scheduleReturnToIdle(3000);
     return 0;
   } finally {
@@ -4393,7 +4489,7 @@ async function pasteText(text, options = {}) {
     } catch (error) {
       console.error('Paste error:', error);
       restoreClipboard = false;
-      const baseMessage = error?.message || 'Echec du collage';
+      const baseMessage = error?.message || tUi('paste.failed');
       lastDelivery = {
         mode,
         status: 'error',
@@ -4402,7 +4498,7 @@ async function pasteText(text, options = {}) {
         at: new Date().toISOString(),
       };
       recordDiagnosticEvent('delivery_error', lastDelivery.message);
-      throw new Error(`${baseMessage} Texte conservé dans le presse-papier.`);
+      throw new Error(`${baseMessage} ${tUi('paste.clipboardKept')}`);
     } finally {
       if (shouldPaste && restoreClipboard && previousClipboard !== null && previousClipboard !== undefined) {
         clipboard.writeText(previousClipboard);
@@ -4689,7 +4785,7 @@ async function runTextPipeline(transcribedText, diagnostics = null) {
     editedText = await postProcessText(transcribedText, stylePrompt, contextHint);
   } catch (error) {
     if (error?.code === 'missing_api_key') {
-      warningMessage = 'Post-traitement ignore: OPENAI_API_KEY manquante.';
+      warningMessage = tUi('postprocess.skipped.missingKey');
     } else {
       warningMessage = getOpenAIUserMessage(error);
     }
@@ -4772,7 +4868,7 @@ async function runTranscriptionPipeline(buffer, mimeType, diagnostics = null, qu
     editedText = await postProcessText(transcribedText, stylePrompt, contextHint);
   } catch (error) {
     if (error?.code === 'missing_api_key') {
-      warningMessage = 'Post-traitement ignore: OPENAI_API_KEY manquante.';
+      warningMessage = tUi('postprocess.skipped.missingKey');
     } else {
       warningMessage = getOpenAIUserMessage(error);
     }
@@ -4866,7 +4962,7 @@ async function handleAudioPayload(event, audioData) {
   const target = resolveRecordingTarget();
   try {
     if (!OPENAI_API_KEY) {
-      const message = 'OPENAI_API_KEY manquante.';
+      const message = tUi('openai.missingKey');
       setRecordingState(RecordingState.ERROR, message);
       setTimeout(() => setRecordingState(RecordingState.IDLE), 3000);
       event.reply('transcription-error', message);
@@ -4970,9 +5066,9 @@ async function handleAudioPayload(event, audioData) {
     );
     const defaultMessage = openAIErrorDetected
       ? getOpenAIUserMessage(error)
-      : (error?.message || 'Erreur de traitement.');
+      : (error?.message || tUi('processing.error'));
     const userMessage = error?.code === 'missing_api_key'
-      ? 'OPENAI_API_KEY manquante.'
+      ? tUi('openai.missingKey')
       : defaultMessage;
     setRecordingState(RecordingState.ERROR, userMessage);
     scheduleReturnToIdle(3000);
@@ -5435,7 +5531,7 @@ async function finalizeUploadFailure(job, message) {
   } catch (error) {
     console.warn('Upload note cleanup failed:', error?.message || error);
   }
-  updateUploadJob(job.id, { status: 'failed', error: message || 'Erreur de traitement.' });
+  updateUploadJob(job.id, { status: 'failed', error: message || tUi('processing.error') });
 }
 
 async function finalizeUploadCancel(job) {
@@ -5497,7 +5593,7 @@ async function processUploadJob(job) {
   } else {
     const fallbackHint = 'Activez la transcription locale ou le fallback cloud.';
     const baseReason = localAsr.reason === 'local_asr_disabled'
-      ? 'Transcription locale indisponible.'
+      ? tUi('upload.localUnavailable')
       : 'Transcription locale en echec.';
     await finalizeUploadFailure(job, `${baseReason} ${fallbackHint}`);
     return;
@@ -5516,11 +5612,11 @@ async function processUploadJob(job) {
   try {
     pipelineResult = await runTextPipeline(transcribedText);
   } catch (error) {
-    await finalizeUploadFailure(job, error?.message || 'Post-traitement impossible.');
+    await finalizeUploadFailure(job, error?.message || tUi('upload.postprocess.failed'));
     return;
   }
   if (pipelineResult.skip) {
-    await finalizeUploadFailure(job, 'Aucun audio détecté.');
+    await finalizeUploadFailure(job, tUi('upload.noAudio'));
     return;
   }
   if (isUploadCancelled(job)) {
@@ -5543,7 +5639,7 @@ async function processUploadJob(job) {
       completedAt,
     });
   } catch (error) {
-    await finalizeUploadFailure(job, error?.message || 'Impossible de sauvegarder la note.');
+    await finalizeUploadFailure(job, error?.message || tUi('note.save.failed'));
     return;
   }
   sendDashboardEvent('dashboard:data-updated');
@@ -5551,29 +5647,6 @@ async function processUploadJob(job) {
   incrementQuotaUsage(finalText).catch((error) => {
     console.warn('Upload quota update failed:', error?.message || error);
   });
-}
-
-function sanitizeContextForExport(contextPayload, includeSensitive = false) {
-  if (!contextPayload || typeof contextPayload !== 'object') {
-    return contextPayload;
-  }
-  if (includeSensitive) {
-    return contextPayload;
-  }
-  const next = { ...contextPayload };
-  if (next.axText) {
-    delete next.axText;
-  }
-  if (next.textboxText) {
-    delete next.textboxText;
-  }
-  if (next.screenshot) {
-    delete next.screenshot;
-  }
-  if (next.file && next.file.path) {
-    delete next.file.path;
-  }
-  return next;
 }
 
 function getCrocOmniSettings() {
@@ -5899,8 +5972,8 @@ ipcMain.on('stream:start', (event, payload = {}) => {
         id: session.id,
         waitedMs: now - session.startedAt,
       });
-      void fallbackToFileMode('Streaming interrompu (timeout).');
-      setRecordingState(RecordingState.ERROR, 'Streaming interrompu (timeout).');
+      void fallbackToFileMode(tUi('recording.streaming.timeout'));
+      setRecordingState(RecordingState.ERROR, tUi('recording.streaming.timeout'));
       scheduleReturnToIdle(3000);
       return;
     }
@@ -5912,8 +5985,8 @@ ipcMain.on('stream:start', (event, payload = {}) => {
         id: session.id,
         gapMs: now - session.lastChunkAt,
       });
-      void fallbackToFileMode('Streaming interrompu (timeout).');
-      setRecordingState(RecordingState.ERROR, 'Streaming interrompu (timeout).');
+      void fallbackToFileMode(tUi('recording.streaming.timeout'));
+      setRecordingState(RecordingState.ERROR, tUi('recording.streaming.timeout'));
       scheduleReturnToIdle(3000);
     }
   }, 1000);
@@ -5935,8 +6008,8 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
       expected: session.seqExpected,
       got: payload.seq,
     });
-    void fallbackToFileMode('Streaming interrompu (ordre invalide).');
-    setRecordingState(RecordingState.ERROR, 'Streaming interrompu (ordre invalide).');
+    void fallbackToFileMode(tUi('recording.streaming.invalidOrder'));
+    setRecordingState(RecordingState.ERROR, tUi('recording.streaming.invalidOrder'));
     scheduleReturnToIdle(3000);
     return;
   }
@@ -5967,7 +6040,7 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
         max: 5 * 1024 * 1024,
       });
       void fallbackToFileMode('Chunk audio trop volumineux.');
-      setRecordingState(RecordingState.ERROR, 'Chunk audio trop volumineux.');
+      setRecordingState(RecordingState.ERROR, tUi('recording.streaming.chunkTooLarge'));
       scheduleReturnToIdle(3000);
       return;
     }
@@ -6000,7 +6073,7 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
         max: STREAM_MAX_CHUNK_SAMPLES,
       });
       void fallbackToFileMode('Chunk audio trop volumineux.');
-      setRecordingState(RecordingState.ERROR, 'Chunk audio trop volumineux.');
+      setRecordingState(RecordingState.ERROR, tUi('recording.streaming.chunkTooLarge'));
       scheduleReturnToIdle(3000);
       return;
     }
@@ -6025,7 +6098,7 @@ ipcMain.on('stream:chunk', async (event, payload = {}) => {
       maxMs: STREAM_MAX_DURATION_MS,
     });
     void fallbackToFileMode('Session streaming trop longue.');
-    setRecordingState(RecordingState.ERROR, 'Session streaming trop longue.');
+    setRecordingState(RecordingState.ERROR, tUi('recording.streaming.tooLong'));
     scheduleReturnToIdle(3000);
     return;
   }
@@ -6210,13 +6283,13 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
     }
   } catch (error) {
     console.error('Streaming finalize failed:', error);
-    await fallbackToFileMode(error?.message || 'Erreur streaming.');
-    setRecordingState(RecordingState.ERROR, error?.message || 'Erreur streaming.');
+    await fallbackToFileMode(error?.message || tUi('recording.streaming.error'));
+    setRecordingState(RecordingState.ERROR, error?.message || tUi('recording.streaming.error'));
     scheduleReturnToIdle(3000);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('transcription-error', error?.message || 'Erreur streaming.');
+      mainWindow.webContents.send('transcription-error', error?.message || tUi('recording.streaming.error'));
     }
-    sendDashboardEvent('dashboard:transcription-error', error?.message || 'Erreur streaming.');
+    sendDashboardEvent('dashboard:transcription-error', error?.message || tUi('recording.streaming.error'));
   }
 });
 
@@ -6271,7 +6344,7 @@ ipcMain.on('recording-error', (event, error) => {
   clearProcessingTimeout();
   setRecordingState(RecordingState.ERROR, error);
   scheduleReturnToIdle(3000);
-  recordDiagnosticEvent('recording_error', typeof error === 'string' ? error : 'Erreur enregistrement');
+  recordDiagnosticEvent('recording_error', typeof error === 'string' ? error : tUi('processing.error'));
 });
 
 ipcMain.on('recording-empty', (event, reason) => {
@@ -6279,7 +6352,7 @@ ipcMain.on('recording-empty', (event, reason) => {
   clearProcessingTimeout();
   const micHint = settings.microphoneId || null;
   const noAudioMessage = buildNoAudioMessage(micHint);
-  const idleTimeoutMessage = `Arret automatique : aucun son detecte. ${buildNoAudioCheckSuffix(micHint)}`;
+  const idleTimeoutMessage = tUi('audio.idleTimeout', { suffix: buildNoAudioCheckSuffix(micHint) });
   const messages = {
     idle_timeout: idleTimeoutMessage,
     no_audio: noAudioMessage,
@@ -6389,7 +6462,7 @@ ipcMain.handle('settings:save', async (event, nextSettings) => {
     if (!ok) {
       registerGlobalShortcut(settings.shortcut);
       candidate.shortcut = settings.shortcut;
-      setRecordingState(RecordingState.ERROR, 'Raccourci invalide ou indisponible.');
+      setRecordingState(RecordingState.ERROR, tUi('recording.shortcut.invalid'));
       scheduleReturnToIdle(3000);
     }
   }
@@ -6450,7 +6523,7 @@ ipcMain.handle('onboarding:delivery-check', async (event, sampleText) => {
     await pasteText(text, { mode: 'paste' });
     return { ok: true };
   } catch (error) {
-    return { ok: false, reason: error?.message || 'Echec injection' };
+    return { ok: false, reason: error?.message || tUi('upload.injectionFailed') };
   }
 });
 
@@ -6927,7 +7000,7 @@ ipcMain.handle('crocomni:send', async (event, payload = {}) => {
 
   const client = getOpenAIClient();
   if (!client) {
-    const fallbackMessage = 'CrocOmni indisponible : OPENAI_API_KEY manquante.';
+    const fallbackMessage = tUi('crocomni.missingKey');
     const fallbackId = crypto.randomUUID();
     await store.addCrocOmniMessage({
       id: fallbackId,
@@ -7177,7 +7250,7 @@ ipcMain.handle('snippets:list', async () => {
 
 ipcMain.handle('snippets:upsert', async (event, entry) => {
   if (!entry || !entry.cue || !entry.template) {
-    throw new Error('Cue et template requis.');
+    throw new Error(tUi('snippet.required'));
   }
   const now = new Date().toISOString();
   const cue = entry.cue.trim();
@@ -7211,7 +7284,7 @@ ipcMain.handle('snippets:delete', async (event, id) => {
 });
 
 ipcMain.handle('styles:upsert', async (event, entry) => {
-  requireAuthenticated('Connexion requise pour modifier les styles.');
+  requireAuthenticated(tUi('auth.required.styles'));
   const now = new Date().toISOString();
   const record = await store.upsertStyle({
     id: entry.id || crypto.randomUUID(),
@@ -7325,7 +7398,7 @@ ipcMain.handle('notes:delete', async (event, id) => {
 
 ipcMain.handle('notes:add', async (event, payload) => {
   if (!payload || typeof payload.text !== 'string' || !payload.text.trim()) {
-    throw new Error('Le contenu est requis.');
+    throw new Error(tUi('content.required'));
   }
   const text = payload.text;
   const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
@@ -7344,7 +7417,7 @@ ipcMain.handle('notes:add', async (event, payload) => {
 
 ipcMain.handle('notes:upsert', async (event, payload) => {
   if (!payload || typeof payload.text !== 'string') {
-    throw new Error('Le contenu est requis.');
+    throw new Error(tUi('content.required'));
   }
   const text = payload.text;
   const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
@@ -7477,7 +7550,7 @@ ipcMain.handle('auth:sign-in', async (event, email, password) => {
   }
   setAuthState({
     status: 'checking',
-    message: 'Connexion en cours...',
+    message: tUi('auth.status.connecting'),
     retryable: false,
   });
   try {
@@ -7496,7 +7569,7 @@ ipcMain.handle('auth:sign-in', async (event, email, password) => {
     return { user: result.user };
   } catch (error) {
     const message = getAuthErrorMessage(error);
-    const isNetworkError = message.toLowerCase().includes('reseau');
+    const isNetworkError = isAuthNetworkError(error);
     setAuthState({
       status: isNetworkError ? 'error' : 'unauthenticated',
       message,
@@ -7514,7 +7587,7 @@ ipcMain.handle('auth:sign-up', async (event, email, password) => {
   }
   setAuthState({
     status: 'checking',
-    message: 'Creation du compte...',
+    message: tUi('auth.status.creating'),
     retryable: false,
   });
   try {
@@ -7533,7 +7606,7 @@ ipcMain.handle('auth:sign-up', async (event, email, password) => {
     return { user: result.user };
   } catch (error) {
     const message = getAuthErrorMessage(error);
-    const isNetworkError = message.toLowerCase().includes('reseau');
+    const isNetworkError = isAuthNetworkError(error);
     setAuthState({
       status: isNetworkError ? 'error' : 'unauthenticated',
       message,
@@ -7558,7 +7631,7 @@ ipcMain.handle('auth:sign-out', async () => {
   sendDashboardEvent('dashboard:data-updated');
   setAuthState({
     status: 'unauthenticated',
-    message: 'Deconnecte.',
+    message: tUi('auth.status.signedOut'),
     user: null,
     syncReady: true,
     retryable: false,
@@ -7567,7 +7640,7 @@ ipcMain.handle('auth:sign-out', async () => {
 });
 
 ipcMain.handle('subscription:checkout', async () => {
-  requireAuthenticated('Connexion requise pour passer PRO.');
+  requireAuthenticated(tUi('auth.required.pro'));
   const authUser = syncService && syncService.getUser();
   let checkoutUrl = null;
   if (syncService && syncService.isReady()) {
@@ -7592,7 +7665,7 @@ ipcMain.handle('subscription:checkout', async () => {
 });
 
 ipcMain.handle('subscription:portal', async () => {
-  requireAuthenticated('Connexion requise pour gerer l’abonnement.');
+  requireAuthenticated(tUi('auth.required.subscription'));
   const authUser = syncService && syncService.getUser();
   let portalUrl = null;
   if (syncService && syncService.isReady()) {
@@ -7610,7 +7683,7 @@ ipcMain.handle('subscription:portal', async () => {
 });
 
 ipcMain.handle('subscription:refresh', async () => {
-  requireAuthenticated('Connexion requise pour actualiser.');
+  requireAuthenticated(tUi('auth.required.refresh'));
   return requestSync({ refreshSettings: true });
 });
 
@@ -7645,7 +7718,7 @@ ipcMain.handle('sync:now', async () => {
     return { ok: false, reason: 'not_configured' };
   }
   if (!syncService.getUser()) {
-    notifyAuthRequired('Connexion requise pour synchroniser.');
+    notifyAuthRequired(tUi('auth.required.sync'));
     return { ok: false, reason: 'not_authenticated' };
   }
   const result = await requestSync({ refreshSettings: true });
@@ -7795,7 +7868,7 @@ app.whenReady().then(async () => {
   createTray();
   registerGlobalShortcut(settings.shortcut);
   if (!OPENAI_API_KEY) {
-    setRecordingState(RecordingState.ERROR, 'OPENAI_API_KEY manquante');
+    setRecordingState(RecordingState.ERROR, tUi('openai.missingKey'));
     setTimeout(() => setRecordingState(RecordingState.IDLE), 4000);
   }
 

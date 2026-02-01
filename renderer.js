@@ -93,6 +93,8 @@ let partialTranscript = '';
 let widgetFeatureFlags = {};
 let contextMenuEnabled = true;
 let statusBubbleEnabled = true;
+let lastWidgetState = 'idle';
+let lastWidgetMessage = '';
 
 const CANCEL_UNDO_DURATION_MS = 4000;
 const AUDIO_RMS_ACTIVE_THRESHOLD = 0.018;
@@ -109,36 +111,127 @@ const STREAM_PING_BASE_MS = 1000;
 const STREAM_PING_MAX_MS = 10000;
 const STREAM_PONG_TIMEOUT_MS = 7000;
 const MIC_LABEL_MAX_CHARS = 28;
+const i18n = window.CrocoI18n || null;
+const t = i18n
+  ? i18n.t
+  : (key, vars, fallback) => (fallback !== undefined ? fallback : key);
 const LANGUAGE_OPTIONS = [
-  { code: 'fr', label: 'Francais' },
-  { code: 'en', label: 'Anglais' },
-  { code: 'es', label: 'Espagnol' },
-  { code: 'de', label: 'Allemand' },
-  { code: 'it', label: 'Italien' },
-  { code: 'pt', label: 'Portugais' },
-  { code: 'nl', label: 'Neerlandais' },
-  { code: 'sv', label: 'Suedois' },
-  { code: 'no', label: 'Norvegien' },
-  { code: 'da', label: 'Danois' },
-  { code: 'fi', label: 'Finnois' },
-  { code: 'pl', label: 'Polonais' },
-  { code: 'cs', label: 'Tcheque' },
-  { code: 'sk', label: 'Slovaque' },
-  { code: 'hu', label: 'Hongrois' },
-  { code: 'ro', label: 'Roumain' },
-  { code: 'ru', label: 'Russe' },
-  { code: 'uk', label: 'Ukrainien' },
-  { code: 'tr', label: 'Turc' },
-  { code: 'ar', label: 'Arabe' },
-  { code: 'he', label: 'Hebreu' },
-  { code: 'hi', label: 'Hindi' },
-  { code: 'ja', label: 'Japonais' },
-  { code: 'ko', label: 'Coreen' },
-  { code: 'zh', label: 'Chinois' },
-  { code: 'th', label: 'Thai' },
-  { code: 'vi', label: 'Vietnamien' },
-  { code: 'id', label: 'Indonesien' },
+  { code: 'fr', labels: { en: 'French', fr: 'Francais' } },
+  { code: 'en', labels: { en: 'English', fr: 'Anglais' } },
+  { code: 'es', labels: { en: 'Spanish', fr: 'Espagnol' } },
+  { code: 'de', labels: { en: 'German', fr: 'Allemand' } },
+  { code: 'it', labels: { en: 'Italian', fr: 'Italien' } },
+  { code: 'pt', labels: { en: 'Portuguese', fr: 'Portugais' } },
+  { code: 'nl', labels: { en: 'Dutch', fr: 'Neerlandais' } },
+  { code: 'sv', labels: { en: 'Swedish', fr: 'Suedois' } },
+  { code: 'no', labels: { en: 'Norwegian', fr: 'Norvegien' } },
+  { code: 'da', labels: { en: 'Danish', fr: 'Danois' } },
+  { code: 'fi', labels: { en: 'Finnish', fr: 'Finnois' } },
+  { code: 'pl', labels: { en: 'Polish', fr: 'Polonais' } },
+  { code: 'cs', labels: { en: 'Czech', fr: 'Tcheque' } },
+  { code: 'sk', labels: { en: 'Slovak', fr: 'Slovaque' } },
+  { code: 'hu', labels: { en: 'Hungarian', fr: 'Hongrois' } },
+  { code: 'ro', labels: { en: 'Romanian', fr: 'Roumain' } },
+  { code: 'ru', labels: { en: 'Russian', fr: 'Russe' } },
+  { code: 'uk', labels: { en: 'Ukrainian', fr: 'Ukrainien' } },
+  { code: 'tr', labels: { en: 'Turkish', fr: 'Turc' } },
+  { code: 'ar', labels: { en: 'Arabic', fr: 'Arabe' } },
+  { code: 'he', labels: { en: 'Hebrew', fr: 'Hebreu' } },
+  { code: 'hi', labels: { en: 'Hindi', fr: 'Hindi' } },
+  { code: 'ja', labels: { en: 'Japanese', fr: 'Japonais' } },
+  { code: 'ko', labels: { en: 'Korean', fr: 'Coreen' } },
+  { code: 'zh', labels: { en: 'Chinese', fr: 'Chinois' } },
+  { code: 'th', labels: { en: 'Thai', fr: 'Thai' } },
+  { code: 'vi', labels: { en: 'Vietnamese', fr: 'Vietnamien' } },
+  { code: 'id', labels: { en: 'Indonesian', fr: 'Indonesien' } },
 ];
+
+const I18N_MESSAGES = {
+  'widget.cancel.aria': { en: 'Cancel recording', fr: 'Annuler l\'enregistrement' },
+  'widget.stop.aria': { en: 'Stop', fr: 'Stop' },
+  'widget.stop.label': { en: 'Stop', fr: 'Stop' },
+  'widget.tooltip.prefix': { en: 'Click or hold', fr: 'Cliquez ou maintenez' },
+  'widget.tooltip.suffix': { en: 'to dictate', fr: 'pour dicter' },
+  'widget.error.label': { en: 'Error', fr: 'Erreur' },
+  'widget.error.upgrade': { en: 'Go Pro', fr: 'Passer Pro' },
+  'widget.cancelled': { en: 'Transcript cancelled', fr: 'Transcription annulee' },
+  'widget.undo': { en: 'Undo', fr: 'Annuler' },
+  'widget.menu.hide1h': { en: 'Hide for 1 hour', fr: 'Masquer 1 heure' },
+  'widget.menu.settings': { en: 'Settings', fr: 'Reglages' },
+  'widget.menu.polish': { en: 'View polish', fr: 'Voir le polish' },
+  'widget.menu.microphone': { en: 'Change mic', fr: 'Changer le micro' },
+  'widget.menu.microphone.header': { en: 'Microphone', fr: 'Microphone' },
+  'widget.menu.microphone.current': { en: 'Current mic:', fr: 'Micro actuel :' },
+  'widget.menu.language': { en: 'Language', fr: 'Langue' },
+  'widget.menu.language.header': { en: 'Language', fr: 'Langue' },
+  'widget.menu.language.search': { en: 'Search a language...', fr: 'Rechercher une langue...' },
+  'widget.menu.history': { en: 'View history', fr: 'Voir l\'historique' },
+  'widget.menu.pasteLatest': { en: 'Paste latest transcription', fr: 'Coller la derniere transcription' },
+  'widget.menu.shortcutHint': { en: '(Shortcut)', fr: '(Raccourci)' },
+  'widget.status.ready': { en: 'Ready', fr: 'Pret' },
+  'widget.status.processing': { en: 'Transcribing...', fr: 'Transcription...' },
+  'widget.status.error': { en: 'Error', fr: 'Erreur' },
+  'widget.status.listening': { en: 'Listening...', fr: 'Ecoute...' },
+  'widget.shortcut.placeholder': { en: '[Shortcut]', fr: '[Raccourci]' },
+  'widget.menu.language.withValue': { en: 'Language: {{label}}', fr: 'Langue: {{label}}' },
+  'widget.menu.language.empty': { en: 'Choose language', fr: 'Choisir la langue' },
+  'widget.menu.language.noResults': { en: 'No results', fr: 'Aucun resultat' },
+  'widget.menu.microphone.default': { en: 'Auto detect', fr: 'Detection auto' },
+  'widget.menu.microphone.fallback': { en: 'Mic {{id}}...', fr: 'Micro {{id}}...' },
+  'widget.warning.maxDuration': {
+    en: 'Auto-stop: max duration reached ({{minutes}} min).',
+    fr: 'Arret automatique : duree max atteinte ({{minutes}} min).',
+  },
+  'auth.title': { en: 'Login required', fr: 'Connexion requise' },
+  'auth.subtitle': {
+    en: 'Sign in to access CrocoVoice and sync your data.',
+    fr: 'Connectez-vous pour acceder a CrocoVoice et synchroniser vos donnees.',
+  },
+  'auth.email.label': { en: 'Email address', fr: 'Adresse email' },
+  'auth.email.placeholder': { en: 'you@example.com', fr: 'vous@exemple.com' },
+  'auth.password.label': { en: 'Password', fr: 'Mot de passe' },
+  'auth.password.placeholder': { en: 'Your password', fr: 'Votre mot de passe' },
+  'auth.login': { en: 'Sign in', fr: 'Se connecter' },
+  'auth.signup': { en: 'Create account', fr: 'Creer un compte' },
+  'auth.retry': { en: 'Retry', fr: 'Reessayer' },
+  'auth.status.checking': { en: 'Checking session...', fr: 'Verification de session...' },
+  'auth.status.error': { en: 'Connection unavailable.', fr: 'Connexion indisponible.' },
+  'auth.status.notConfigured': { en: 'Supabase not configured.', fr: 'Supabase non configure.' },
+  'auth.status.unauthenticated': { en: 'Login required.', fr: 'Connexion requise.' },
+  'auth.status.unavailable': { en: 'Login unavailable.', fr: 'Connexion indisponible.' },
+  'auth.status.missingFields': { en: 'Enter email and password.', fr: 'Veuillez saisir email et mot de passe.' },
+  'auth.status.signingIn': { en: 'Signing in...', fr: 'Connexion en cours...' },
+  'auth.status.signInFailed': { en: 'Sign in failed.', fr: 'Echec de connexion.' },
+  'auth.status.opening': { en: 'Opening...', fr: 'Ouverture...' },
+  'auth.status.openFailed': { en: 'Unable to open.', fr: 'Ouverture impossible.' },
+  'auth.status.retrying': { en: 'Retrying...', fr: 'Nouvelle tentative...' },
+  'auth.status.retryFailed': { en: 'Retry unavailable.', fr: 'Retry indisponible.' },
+  'auth.status.stateUnavailable': { en: 'Auth status unavailable.', fr: 'Etat auth indisponible.' },
+  'quota.title': { en: 'Quota reached', fr: 'Quota atteint' },
+  'quota.subtitle': { en: 'Your weekly word quota is exhausted.', fr: 'Votre quota hebdo de mots est epuise.' },
+  'quota.remaining': { en: 'words remaining', fr: 'mots restants' },
+  'quota.reset': { en: 'Reset Monday 00:00 UTC', fr: 'Reset lundi 00:00 UTC' },
+  'quota.reset.default': { en: 'Reset Monday 00:00 UTC', fr: 'Reset lundi 00:00 UTC' },
+  'quota.reset.withDate': { en: 'Reset {{when}} UTC', fr: 'Reset {{when}} UTC' },
+  'quota.upgrade': { en: 'Go Pro', fr: 'Passer Pro' },
+  'quota.dashboard': { en: 'Open dashboard', fr: 'Ouvrir le dashboard' },
+  'quota.dismiss': { en: 'Close', fr: 'Fermer' },
+  'quota.status.checkoutUnavailable': { en: 'Checkout unavailable.', fr: 'Checkout indisponible.' },
+  'quota.status.checkoutOpening': { en: 'Opening checkout...', fr: 'Ouverture du checkout...' },
+  'quota.status.checkoutNotConfigured': { en: 'Checkout not configured.', fr: 'Checkout non configure.' },
+  'widget.error.checkoutUnavailable': { en: 'Checkout unavailable.', fr: 'Checkout indisponible.' },
+  'widget.error.checkoutNotConfigured': { en: 'Checkout not configured.', fr: 'Checkout non configure.' },
+  'stream.disconnected': { en: 'Streaming disconnected.', fr: 'Streaming deconnecte.' },
+  'stream.interrupted': { en: 'Streaming interrupted.', fr: 'Streaming interrompu.' },
+  'stream.worklet.unavailable': { en: 'AudioWorklet unavailable.', fr: 'AudioWorklet indisponible.' },
+  'mic.monitor.busy': { en: 'Mic already in use by recording.', fr: 'Micro deja utilise par l\'enregistrement.' },
+  'mic.monitor.audioContextMissing': { en: 'Audio context unavailable.', fr: 'Audio context indisponible.' },
+  'mic.monitor.accessFailed': { en: 'Microphone access failed.', fr: 'Acces micro impossible.' },
+};
+
+if (i18n) {
+  i18n.setMessages(I18N_MESSAGES);
+}
 
 function setUndoActive(active) {
   if (!widgetContainer) {
@@ -150,7 +243,14 @@ function setUndoActive(active) {
 
 function resolveLanguageLabel(code) {
   const entry = LANGUAGE_OPTIONS.find((option) => option.code === code);
-  return entry ? entry.label : code || '';
+  if (!entry) {
+    return code || '';
+  }
+  if (entry.labels) {
+    const lang = i18n ? i18n.getLanguage() : 'en';
+    return entry.labels[lang] || entry.labels.en || entry.labels.fr || code || '';
+  }
+  return entry.label || code || '';
 }
 
 function renderLanguageList(filterValue = '') {
@@ -160,7 +260,11 @@ function renderLanguageList(filterValue = '') {
   const filter = filterValue.trim().toLowerCase();
   widgetLanguageList.innerHTML = '';
   const currentLanguage = currentSettings.language || 'fr';
-  const matches = LANGUAGE_OPTIONS.filter((option) => {
+  const options = LANGUAGE_OPTIONS.map((option) => ({
+    ...option,
+    label: resolveLanguageLabel(option.code),
+  }));
+  const matches = options.filter((option) => {
     if (!filter) {
       return true;
     }
@@ -169,7 +273,7 @@ function renderLanguageList(filterValue = '') {
   if (!matches.length) {
     const empty = document.createElement('div');
     empty.className = 'submenu-empty';
-    empty.textContent = 'Aucun resultat';
+    empty.textContent = t('widget.menu.language.noResults');
     widgetLanguageList.appendChild(empty);
     return;
   }
@@ -236,7 +340,7 @@ function renderMicrophoneList() {
   const isDefault = !resolvedId;
   const defaultLabel = document.createElement('span');
   defaultLabel.className = 'submenu-text';
-  defaultLabel.textContent = 'Detection auto';
+  defaultLabel.textContent = t('widget.menu.microphone.default');
   const defaultCheck = document.createElement('span');
   defaultCheck.className = 'submenu-check';
   defaultCheck.textContent = isDefault ? '✓' : '';
@@ -253,7 +357,7 @@ function renderMicrophoneList() {
     button.dataset.micId = mic.deviceId;
     button.dataset.micLabel = mic.label || '';
     button.dataset.micGroup = mic.groupId || '';
-    const label = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
+    const label = mic.label || t('widget.menu.microphone.fallback', { id: mic.deviceId.slice(0, 4) });
     const isSelected = resolvedId === mic.deviceId;
     const labelSpan = document.createElement('span');
     labelSpan.className = 'submenu-text';
@@ -274,15 +378,36 @@ function updateMenuLabels() {
   if (widgetLanguageLabel) {
     const currentLanguage = currentSettings.language || 'fr';
     const label = resolveLanguageLabel(currentLanguage) || currentLanguage;
-    widgetLanguageLabel.textContent = label ? `Langue: ${label}` : 'Choisir la langue';
+    widgetLanguageLabel.textContent = label
+      ? t('widget.menu.language.withValue', { label })
+      : t('widget.menu.language.empty');
   }
   if (widgetMicrophoneLabel) {
-    widgetMicrophoneLabel.textContent = 'Changer le micro';
+    widgetMicrophoneLabel.textContent = t('widget.menu.microphone');
   }
   if (widgetMicrophoneCurrent) {
     const selected = resolveMicrophoneDevice();
-    const label = selected ? (selected.label || `Micro ${selected.deviceId.slice(0, 4)}...`) : 'Detection auto';
+    const label = selected
+      ? (selected.label || t('widget.menu.microphone.fallback', { id: selected.deviceId.slice(0, 4) }))
+      : t('widget.menu.microphone.default');
     widgetMicrophoneCurrent.textContent = wrapLabel(label, MIC_LABEL_MAX_CHARS);
+  }
+}
+
+function applyWidgetLanguage(nextSettings) {
+  if (!i18n) {
+    return;
+  }
+  const nextLanguage = i18n.normalizeLanguage(nextSettings?.uiLanguage);
+  i18n.setLanguage(nextLanguage);
+  renderMicrophoneList();
+  renderLanguageList(widgetLanguageSearch ? widgetLanguageSearch.value : '');
+  updateMenuLabels();
+  if (lastWidgetState) {
+    updateWidgetState(lastWidgetState, lastWidgetMessage);
+  }
+  if ((isRecording || streamingActive) && !partialTranscript && statusTextEl) {
+    statusTextEl.textContent = t('widget.status.listening');
   }
 }
 
@@ -369,7 +494,7 @@ function setAvailableMicrophones(candidates) {
   if (storedId && !normalized.some((device) => device.deviceId === storedId)) {
     normalized.unshift({
       deviceId: storedId,
-      label: storedLabel || `Micro ${storedId.slice(0, 4)}...`,
+      label: storedLabel || t('widget.menu.microphone.fallback', { id: storedId.slice(0, 4) }),
       groupId: storedGroupId,
       __stored: true,
     });
@@ -469,7 +594,9 @@ function startSafetyMonitor() {
     const now = Date.now();
     const elapsed = now - recordingStartedAt;
     if (elapsed >= RECORDING_MAX_DURATION_MS && !pendingWarningMessage) {
-      pendingWarningMessage = `Arrêt automatique : durée max atteinte (${Math.round(RECORDING_MAX_DURATION_MS / 60000)} min).`;
+      pendingWarningMessage = t('widget.warning.maxDuration', {
+        minutes: Math.round(RECORDING_MAX_DURATION_MS / 60000),
+      });
       clearSafetyMonitor();
       if (window.electronAPI?.toggleRecording) {
         window.electronAPI.toggleRecording();
@@ -640,6 +767,9 @@ function updateWidgetState(state, message) {
     return;
   }
 
+  lastWidgetState = state;
+  lastWidgetMessage = message || '';
+
   widgetContainer.classList.remove('idle', 'recording', 'processing', 'error');
   widgetContainer.classList.add(state);
 
@@ -651,17 +781,17 @@ function updateWidgetState(state, message) {
 
   if (statusTextEl) {
     if (state === 'processing') {
-      statusTextEl.textContent = 'Transcription...';
+      statusTextEl.textContent = t('widget.status.processing');
     } else if (state === 'error') {
-      statusTextEl.textContent = message || 'Erreur';
+      statusTextEl.textContent = message || t('widget.status.error');
     } else {
-      statusTextEl.textContent = 'Prêt';
+      statusTextEl.textContent = t('widget.status.ready');
     }
   }
 
   if (state === 'error') {
     if (widgetErrorText) {
-      widgetErrorText.textContent = message || 'Erreur';
+      widgetErrorText.textContent = message || t('widget.status.error');
     }
     if (widgetErrorUpgradeButton) {
       const showUpgrade = quotaGateActive || /quota/i.test(message || '');
@@ -730,7 +860,7 @@ function updateShortcutLabel(shortcut) {
   if (!shortcutLabelEl) {
     return;
   }
-  shortcutLabelEl.textContent = shortcut || '[Raccourci]';
+  shortcutLabelEl.textContent = shortcut || t('widget.shortcut.placeholder');
 }
 
 function setAuthStatus(message, isError) {
@@ -750,14 +880,17 @@ function setQuotaStatus(message, isError) {
 }
 
 function formatQuotaResetLabel(iso) {
+  const fallback = t('quota.reset.default');
   if (!iso) {
-    return 'Reset lundi 00:00 UTC';
+    return fallback;
   }
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
-    return 'Reset lundi 00:00 UTC';
+    return fallback;
   }
-  return `Reset ${date.toLocaleDateString([], { weekday: 'long', hour: '2-digit', minute: '2-digit' })} UTC`;
+  const locale = i18n && i18n.getLanguage() === 'fr' ? 'fr-FR' : 'en-US';
+  const when = date.toLocaleDateString(locale, { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+  return t('quota.reset.withDate', { when });
 }
 
 function applyQuotaGate(payload) {
@@ -810,13 +943,13 @@ function applyAuthState(state) {
   }
 
   if (status === 'checking') {
-    setAuthStatus(currentAuthState.message || 'Verification de session...', false);
+    setAuthStatus(currentAuthState.message || t('auth.status.checking'), false);
   } else if (status === 'error') {
-    setAuthStatus(currentAuthState.message || 'Connexion indisponible.', true);
+    setAuthStatus(currentAuthState.message || t('auth.status.error'), true);
   } else if (status === 'not_configured') {
-    setAuthStatus(currentAuthState.message || 'Supabase non configure.', true);
+    setAuthStatus(currentAuthState.message || t('auth.status.notConfigured'), true);
   } else if (status === 'unauthenticated') {
-    setAuthStatus(currentAuthState.message || 'Connexion requise.', false);
+    setAuthStatus(currentAuthState.message || t('auth.status.unauthenticated'), false);
   } else {
     setAuthStatus('');
   }
@@ -843,26 +976,26 @@ function applyAuthState(state) {
 
 async function submitAuthLogin() {
   if (!window.electronAPI?.authSignIn) {
-    setAuthStatus('Connexion indisponible.', true);
+    setAuthStatus(t('auth.status.unavailable'), true);
     return;
   }
   const email = authEmailInput?.value.trim();
   const password = authPasswordInput?.value || '';
   if (!email || !password) {
-    setAuthStatus('Veuillez saisir email et mot de passe.', true);
+    setAuthStatus(t('auth.status.missingFields'), true);
     return;
   }
 
   authSubmitPending = true;
   applyAuthState(currentAuthState);
-  setAuthStatus('Connexion en cours...', false);
+  setAuthStatus(t('auth.status.signingIn'), false);
   try {
     await window.electronAPI.authSignIn(email, password);
     if (authPasswordInput) {
       authPasswordInput.value = '';
     }
   } catch (error) {
-    setAuthStatus(error?.message || 'Echec de connexion.', true);
+    setAuthStatus(error?.message || t('auth.status.signInFailed'), true);
   } finally {
     authSubmitPending = false;
     applyAuthState(currentAuthState);
@@ -992,7 +1125,7 @@ async function startMicMonitor() {
     return;
   }
   if (isRecording || (mediaRecorder && mediaRecorder.state === 'recording')) {
-    window.electronAPI.sendMicMonitorError('Mic already in use by recording.');
+    window.electronAPI.sendMicMonitorError(t('mic.monitor.busy'));
     return;
   }
 
@@ -1013,7 +1146,7 @@ async function startMicMonitor() {
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) {
-      throw new Error('AudioContext unavailable.');
+      throw new Error(t('mic.monitor.audioContextMissing'));
     }
     if (!micMonitorContext) {
       micMonitorContext = new AudioContextClass();
@@ -1050,7 +1183,7 @@ async function startMicMonitor() {
     micMonitorAnimationId = requestAnimationFrame(render);
   } catch (error) {
     micMonitorActive = false;
-    window.electronAPI.sendMicMonitorError(error?.message || 'Microphone access failed.');
+    window.electronAPI.sendMicMonitorError(error?.message || t('mic.monitor.accessFailed'));
     stopMicMonitor();
   }
 }
@@ -1082,7 +1215,7 @@ function handleStreamingDisconnect(message) {
     window.electronAPI.sendStreamDiag({
       code: 'stream_disconnect',
       details: {
-        reason: message || 'Streaming interrompu.',
+        reason: message || t('stream.interrupted'),
         sessionId: streamSessionId,
         lastPongAt: lastStreamPongAt || null,
         now: Date.now(),
@@ -1092,7 +1225,7 @@ function handleStreamingDisconnect(message) {
     });
   }
   if (window.electronAPI?.sendRecordingError) {
-    window.electronAPI.sendRecordingError(message || 'Streaming interrompu.');
+    window.electronAPI.sendRecordingError(message || t('stream.interrupted'));
   }
   if (streamSessionId && window.electronAPI?.sendStreamStop) {
     window.electronAPI.sendStreamStop({ sessionId: streamSessionId });
@@ -1119,7 +1252,7 @@ function scheduleStreamPing() {
     if (now - lastStreamPongAt > STREAM_PONG_TIMEOUT_MS) {
       streamPingBackoffMs = Math.min(streamPingBackoffMs * 2, STREAM_PING_MAX_MS);
       if (streamPingBackoffMs >= STREAM_PING_MAX_MS && now - lastStreamPongAt > STREAM_PONG_TIMEOUT_MS * 2) {
-        handleStreamingDisconnect('Streaming déconnecté.');
+        handleStreamingDisconnect(t('stream.disconnected'));
         return;
       }
     } else {
@@ -1340,7 +1473,7 @@ async function initializeStreamingRecorder() {
 
     const moduleUrl = new URL('assets/stream-worklet.js', window.location.href);
     if (!audioContext?.audioWorklet) {
-      throw new Error('AudioWorklet indisponible.');
+      throw new Error(t('stream.worklet.unavailable'));
     }
     await audioContext.audioWorklet.addModule(moduleUrl);
     streamNode = new AudioWorkletNode(audioContext, 'stream-worklet');
@@ -1561,7 +1694,7 @@ if (window.electronAPI.onPartialTranscript) {
     if (statusTextEl && (isRecording || streamingActive)) {
       statusTextEl.textContent = partialTranscript
         ? partialTranscript.slice(0, 60)
-        : 'Écoute...';
+        : t('widget.status.listening');
     }
   });
 }
@@ -1617,7 +1750,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.getAuthState().then((state) => {
       applyAuthState(state);
     }).catch(() => {
-      applyAuthState({ status: 'error', message: 'Etat auth indisponible.', retryable: true });
+      applyAuthState({ status: 'error', message: t('auth.status.stateUnavailable'), retryable: true });
     });
   }
 
@@ -1629,7 +1762,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (window.electronAPI?.onAuthRequired) {
     window.electronAPI.onAuthRequired((message) => {
-      applyAuthState({ ...(currentAuthState || {}), status: 'unauthenticated', message: message || 'Connexion requise.' });
+      applyAuthState({
+        ...(currentAuthState || {}),
+        status: 'unauthenticated',
+        message: message || t('auth.status.unauthenticated'),
+      });
     });
   }
 
@@ -1651,10 +1788,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!window.electronAPI?.openSignupUrl) {
         return;
       }
-      setAuthStatus('Ouverture...', false);
+      setAuthStatus(t('auth.status.opening'), false);
       const result = await window.electronAPI.openSignupUrl('signup');
       if (result?.ok === false) {
-        setAuthStatus('Ouverture impossible.', true);
+        setAuthStatus(t('auth.status.openFailed'), true);
       } else {
         setAuthStatus('');
       }
@@ -1666,11 +1803,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!window.electronAPI?.authRetry) {
         return;
       }
-      setAuthStatus('Nouvelle tentative...', false);
+      setAuthStatus(t('auth.status.retrying'), false);
       try {
         await window.electronAPI.authRetry();
       } catch (error) {
-        setAuthStatus(error?.message || 'Retry indisponible.', true);
+        setAuthStatus(error?.message || t('auth.status.retryFailed'), true);
       }
     });
   }
@@ -1678,17 +1815,17 @@ document.addEventListener('DOMContentLoaded', () => {
   if (quotaUpgradeButton) {
     quotaUpgradeButton.addEventListener('click', async () => {
       if (!window.electronAPI?.startCheckout) {
-        setQuotaStatus('Checkout indisponible.', true);
+        setQuotaStatus(t('quota.status.checkoutUnavailable'), true);
         return;
       }
-      setQuotaStatus('Ouverture du checkout...', false);
+      setQuotaStatus(t('quota.status.checkoutOpening'), false);
       try {
         const result = await window.electronAPI.startCheckout();
         if (!result?.ok) {
-          setQuotaStatus('Checkout non configuré.', true);
+          setQuotaStatus(t('quota.status.checkoutNotConfigured'), true);
         }
       } catch (error) {
-        setQuotaStatus(error?.message || 'Checkout indisponible.', true);
+        setQuotaStatus(error?.message || t('quota.status.checkoutUnavailable'), true);
       }
     });
   }
@@ -1714,7 +1851,7 @@ document.addEventListener('DOMContentLoaded', () => {
     widgetErrorUpgradeButton.addEventListener('click', async () => {
       if (!window.electronAPI?.startCheckout) {
         if (widgetErrorText) {
-          widgetErrorText.textContent = 'Checkout indisponible.';
+          widgetErrorText.textContent = t('widget.error.checkoutUnavailable');
         }
         return;
       }
@@ -1722,11 +1859,11 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const result = await window.electronAPI.startCheckout();
         if (!result?.ok && widgetErrorText) {
-          widgetErrorText.textContent = 'Checkout non configuré.';
+          widgetErrorText.textContent = t('widget.error.checkoutNotConfigured');
         }
       } catch (error) {
         if (widgetErrorText) {
-          widgetErrorText.textContent = error?.message || 'Checkout indisponible.';
+          widgetErrorText.textContent = error?.message || t('widget.error.checkoutUnavailable');
         }
       } finally {
         widgetErrorUpgradeButton.disabled = false;
