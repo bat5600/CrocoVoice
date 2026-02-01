@@ -988,6 +988,11 @@
       color: var(--text-muted);
     }
 
+    .model-subtitle.is-error {
+      color: #b91c1c;
+      font-weight: 600;
+    }
+
     .model-badges {
       display: flex;
       flex-wrap: wrap;
@@ -1007,6 +1012,12 @@
       border: 1px solid var(--emerald-100);
     }
 
+    .model-badge.is-error {
+      background: #fee2e2;
+      color: #b91c1c;
+      border-color: #fecaca;
+    }
+
     .model-progress {
       width: 100%;
       height: 6px;
@@ -1024,6 +1035,72 @@
     }
 
     .model-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .model-downloads {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .model-download-heading {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .model-download-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+      background: rgba(15, 23, 42, 0.04);
+    }
+
+    .model-download-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .model-download-title {
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .model-download-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .model-download-progress {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.1);
+      margin-top: 6px;
+    }
+
+    .model-download-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--emerald-500);
+      transition: width 0.2s ease;
+    }
+
+    .model-download-actions {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
@@ -1659,9 +1736,10 @@
 
     .croc-omni-layout {
       display: grid;
-      grid-template-columns: 240px 1fr;
+      grid-template-columns: 260px 1fr;
       gap: 16px;
       margin-top: 16px;
+      align-items: start;
     }
 
     .croc-omni-sidebar {
@@ -1670,103 +1748,248 @@
       gap: 12px;
     }
 
-    .croc-omni-results {
+    .croc-omni-panel {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      padding: 12px;
+      box-shadow: 0 2px 12px rgba(148, 163, 184, 0.08);
+    }
+
+    .croc-omni-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .croc-omni-panel-title {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .croc-omni-panel-subtitle {
+      font-size: 11px;
+      color: rgba(148, 163, 184, 0.85);
+    }
+
+    .croc-omni-conversation-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
+      max-height: 520px;
+      overflow-y: auto;
+      padding-right: 2px;
     }
 
-    .croc-omni-result {
+    .croc-omni-conversation {
       width: 100%;
       text-align: left;
-      padding: 12px 12px;
-      border-radius: 14px;
-      border: 1px solid #E2E8F0;
-      background: #FFFFFF;
-      color: inherit;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: #F8FAFC;
       cursor: pointer;
-      transition: border-color 120ms ease, box-shadow 120ms ease;
+      transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
     }
 
-    .croc-omni-result:hover {
-      border-color: rgba(59, 130, 246, 0.35);
-      box-shadow: 0 2px 12px rgba(59, 130, 246, 0.08);
+    .croc-omni-conversation:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      box-shadow: 0 2px 10px rgba(59, 130, 246, 0.08);
+    }
+
+    .croc-omni-conversation.active {
+      border-color: rgba(59, 130, 246, 0.45);
+      background: #EEF2FF;
+    }
+
+    .croc-omni-conversation-title {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .croc-omni-conversation-meta {
+      margin-top: 4px;
+      font-size: 11px;
+      color: rgba(148, 163, 184, 0.85);
+      display: flex;
+      gap: 6px;
+      align-items: center;
     }
 
     .croc-omni-main {
       display: flex;
       flex-direction: column;
       gap: 12px;
-      min-height: 320px;
+      min-height: 420px;
     }
 
-    .croc-omni-result-header {
+    .croc-omni-messages {
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
       gap: 12px;
-      align-items: baseline;
-    }
-
-    .croc-omni-result-title {
-      font-weight: 800;
-      font-size: 13px;
-    }
-
-    .croc-omni-result-meta {
-      font-size: 11px;
-      color: rgba(148, 163, 184, 0.85);
-      white-space: nowrap;
-    }
-
-    .croc-omni-result-snippet {
-      margin-top: 6px;
-      font-size: 13px;
-      color: var(--text-muted);
-      line-height: 1.45;
-    }
-
-    .croc-omni-result-snippet mark {
-      background: rgba(245, 158, 11, 0.18);
-      color: inherit;
-      padding: 0 2px;
-      border-radius: 4px;
-    }
-
-    .croc-omni-actions {
-      margin-top: 10px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .croc-omni-answer {
-      margin-top: 12px;
       padding: 12px;
       border-radius: 16px;
       background: #FFFFFF;
       border: 1px solid #E2E8F0;
       box-shadow: 0 2px 12px rgba(148, 163, 184, 0.1);
+      min-height: 320px;
+      max-height: 520px;
+      overflow-y: auto;
     }
 
-    .croc-omni-answer-header {
+    .croc-omni-message {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .croc-omni-message-block {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      max-width: 100%;
+    }
+
+    .croc-omni-message.user .croc-omni-message-block {
+      align-items: flex-end;
+    }
+
+    .croc-omni-message.user {
+      justify-content: flex-end;
+    }
+
+    .croc-omni-message.assistant {
+      justify-content: flex-start;
+    }
+
+    .croc-omni-bubble {
+      max-width: 78%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid #E2E8F0;
+      background: #F8FAFC;
+      color: var(--text-main);
+      font-size: 14px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .croc-omni-bubble p {
+      margin: 0 0 8px;
+    }
+
+    .croc-omni-bubble p:last-child {
+      margin-bottom: 0;
+    }
+
+    .croc-omni-bubble ul,
+    .croc-omni-bubble ol {
+      margin: 6px 0 6px 18px;
+      padding: 0;
+    }
+
+    .croc-omni-bubble code {
+      background: rgba(148, 163, 184, 0.18);
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .croc-omni-bubble pre {
+      background: rgba(148, 163, 184, 0.12);
+      padding: 8px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+
+    .croc-omni-message.user .croc-omni-bubble {
+      background: #E0F2FE;
+      border-color: #BAE6FD;
+    }
+
+    .croc-omni-message-meta {
+      margin-top: 4px;
+      font-size: 11px;
+      color: rgba(148, 163, 184, 0.85);
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .croc-omni-thinking {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: rgba(148, 163, 184, 0.9);
+    }
+
+    .croc-omni-typing-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .croc-omni-typing-dots span {
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.9);
+      animation: croc-omni-dot 1.2s infinite;
+    }
+
+    .croc-omni-typing-dots span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .croc-omni-typing-dots span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes croc-omni-dot {
+      0%, 80%, 100% {
+        opacity: 0.25;
+        transform: translateY(0);
+      }
+      40% {
+        opacity: 1;
+        transform: translateY(-2px);
+      }
+    }
+
+    .croc-omni-composer {
+      padding: 12px;
+      border-radius: 16px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      box-shadow: 0 2px 12px rgba(148, 163, 184, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .croc-omni-input {
+      width: 100%;
+      min-height: 72px;
+      border-radius: 12px;
+      border: 1px solid #E2E8F0;
+      padding: 10px 12px;
+      font-size: 14px;
+      resize: vertical;
+    }
+
+    .croc-omni-composer-actions {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
     }
 
-    .croc-omni-answer-output {
-      margin-top: 10px;
-      white-space: pre-wrap;
-      font-size: 13px;
-      color: var(--text-muted);
-      min-height: 90px;
-    }
-
-    .croc-omni-status {
-      margin-top: 8px;
-      font-size: 12px;
-      color: rgba(148, 163, 184, 0.8);
+    .croc-omni-composer-meta {
+      font-size: 11px;
+      color: rgba(148, 163, 184, 0.85);
     }
 
     .subscription-panel {
@@ -3435,6 +3658,9 @@
 
           <div class="list-header">
             <div class="list-title">Historique</div>
+            <div class="list-actions">
+              <button id="polishEntryButton" class="outline-btn" type="button">Voir le polish</button>
+            </div>
           </div>
 
           <div class="list-panel">
@@ -3594,67 +3820,62 @@
           </div>
         </section>
 
-        <section id="view-crocomni" class="view" style="max-width: 900px; margin: 0 auto;">
+        <section id="view-crocomni" class="view" style="max-width: 980px; margin: 0 auto;">
           <div class="section-header">
             <div>
               <h2 class="section-title">CrocOmni</h2>
-              <p class="section-subtitle">Recherche locale dans vos notes et dictées.</p>
+              <p class="section-subtitle">Votre assistant local avec historique de conversation.</p>
+            </div>
+            <div class="section-actions">
+              <button id="crocOmniNewConversation" class="btn-secondary" type="button">Nouvelle conversation</button>
+              <button id="crocOmniClearConversation" class="btn-secondary" type="button">Effacer</button>
             </div>
           </div>
 
           <div class="croc-omni-layout">
             <aside class="croc-omni-sidebar">
-              <div class="settings-card">
-                <div class="settings-row">
+              <div class="croc-omni-panel">
+                <div class="croc-omni-panel-header">
                   <div>
-                    <div style="font-weight: 700;">Sources</div>
-                    <div class="text-muted">Notes, dictées, ou les deux.</div>
+                    <div class="croc-omni-panel-title">Conversations</div>
+                    <div class="croc-omni-panel-subtitle">Reprenez là où vous vous êtes arrêté.</div>
                   </div>
-                  <select id="crocOmniSearchSource" class="input-select" style="width: auto;">
-                    <option value="all">Tout</option>
-                    <option value="notes">Notes</option>
-                    <option value="history">Dictées</option>
-                  </select>
+                  <button id="crocOmniCreateButton" class="btn-secondary" type="button">Nouvelle</button>
                 </div>
-                <div class="settings-row" style="margin-top: 12px;">
-                  <div>
-                    <div style="font-weight: 700;">Période</div>
-                    <div class="text-muted">Filtrer par date.</div>
+                <div id="crocOmniConversationList" class="croc-omni-conversation-list"></div>
+                <div id="crocOmniConversationEmpty" class="empty-state" data-empty-title="Aucune conversation" data-empty-body="Démarrez une discussion avec CrocOmni." data-search-title="Aucune conversation" data-search-body="Aucune conversation ne correspond à cette recherche.">
+                  <div class="empty-illustration">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>
                   </div>
-                  <select id="crocOmniSearchRange" class="input-select" style="width: auto;">
-                    <option value="all">Tout</option>
-                    <option value="7">7 jours</option>
-                    <option value="30">30 jours</option>
-                    <option value="90">90 jours</option>
-                    <option value="365">365 jours</option>
-                  </select>
-                </div>
-                <div class="settings-row" style="margin-top: 12px;">
-                  <div>
-                    <div style="font-weight: 700;">Répondre avec IA (opt-in)</div>
-                    <div class="text-muted">Génère une réponse à partir des extraits.</div>
-                  </div>
-                  <input id="crocOmniAiReplyToggle" type="checkbox" class="toggle-checkbox">
-                </div>
-                <div class="settings-row" style="margin-top: 12px;">
-                  <div>
-                    <div style="font-weight: 700;">Inclure contenu sensible</div>
-                    <div class="text-muted">Envoie des extraits non-redactés.</div>
-                  </div>
-                  <input id="crocOmniAiSensitiveToggle" type="checkbox" class="toggle-checkbox">
+                  <h3 class="empty-title"></h3>
+                  <p class="empty-body"></p>
+                  <button class="empty-action" type="button" data-empty-action="crocomni">Nouvelle conversation</button>
                 </div>
               </div>
-            </aside>
-            <div class="croc-omni-main">
-              <div id="crocOmniSearchStatus" class="croc-omni-status"></div>
-              <div id="crocOmniResults" class="croc-omni-results"></div>
 
-              <div class="croc-omni-answer" id="crocOmniAnswerPanel">
-                <div class="croc-omni-answer-header">
-                  <div style="font-weight: 800;">Réponse (optionnel)</div>
-                  <button id="crocOmniAnswerButton" class="btn-secondary" type="button">Répondre</button>
+              <div class="croc-omni-panel">
+                <div class="croc-omni-panel-title">Sources locales</div>
+                <div class="croc-omni-panel-subtitle">Recherche automatique dans vos notes et dictees.</div>
+                <div class="text-muted" style="font-size: 12px; margin-top: 6px;">Le contexte actif reste optionnel. Les extraits utilises sont redactes par defaut.</div>
+              </div>
+            </aside>
+
+            <div class="croc-omni-main">
+              <div id="crocOmniMessages" class="croc-omni-messages"></div>
+              <div id="crocOmniMessagesEmpty" class="empty-state" data-empty-title="Posez votre première question" data-empty-body="CrocOmni conserve l’historique localement pour continuer la discussion.">
+                <div class="empty-illustration">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10"></path><path d="M7 12h6"></path><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>
                 </div>
-                <div id="crocOmniAnswerOutput" class="croc-omni-answer-output">Aucune réponse générée.</div>
+                <h3 class="empty-title"></h3>
+                <p class="empty-body"></p>
+              </div>
+
+              <div class="croc-omni-composer">
+                <textarea id="crocOmniComposer" class="croc-omni-input" placeholder="Demandez quelque chose à CrocOmni..."></textarea>
+                <div class="croc-omni-composer-actions">
+                  <div id="crocOmniComposerMeta" class="croc-omni-composer-meta">Entrée pour envoyer · Shift+Entrée pour une nouvelle ligne.</div>
+                  <button id="crocOmniSendButton" class="btn-primary" type="button">Envoyer</button>
+                </div>
               </div>
             </div>
           </div>
@@ -4111,6 +4332,7 @@
                 </div>
               </div>
               <div id="localModelSummary" class="model-subtitle" style="margin-top: 8px;"></div>
+              <div id="localModelDownloads" class="model-downloads"></div>
               <div id="localModelList" class="model-list"></div>
               <div class="model-actions" style="margin-top: 12px;">
                 <button id="localModelChoose" class="btn-primary" type="button">Choisir un modèle</button>

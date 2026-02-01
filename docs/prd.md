@@ -109,6 +109,7 @@ Unit + Integration; light E2E where feasible.
 - Use existing OpenAI integration; allow alternate ASR providers as optional fallback.
 - Use SQLite for local storage; sync via Supabase remains optional.
 - Add WebSocket service for streaming, with configurable endpoint and defined protocol.
+- For local model downloads, accept GGML initially; migrate to GGUF once a stable repo + checksums are locked.
 
 ## Milestones (Roadmap)
 - **M1 (NOW):** Epic 4 + Epic 7 + Epic 9 - daily driver data, permissions/diagnostics, status bubble + context menu.

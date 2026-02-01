@@ -12,6 +12,19 @@ function countWords(text) {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function estimateTokenCount(text) {
+  if (!text) {
+    return 0;
+  }
+  const trimmed = String(text).trim();
+  if (!trimmed) {
+    return 0;
+  }
+  const wordEstimate = trimmed.split(/\s+/).filter(Boolean).length;
+  const charEstimate = Math.ceil(trimmed.length / 4);
+  return Math.max(wordEstimate, charEstimate);
+}
+
 function isProSubscription(subscription) {
   const plan = subscription?.plan || 'free';
   const status = subscription?.status || 'inactive';
@@ -684,6 +697,85 @@ class Store {
     await this._deleteSearchDocument('notes', id);
   }
 
+  async listUploadJobs({ limit = 20 } = {}) {
+    return this._all('SELECT * FROM upload_jobs ORDER BY created_at DESC LIMIT ?', [limit]);
+  }
+
+  async getUploadJob(id) {
+    if (!id) {
+      return null;
+    }
+    return this._get('SELECT * FROM upload_jobs WHERE id = ?', [id]);
+  }
+
+  async upsertUploadJob(entry) {
+    const now = new Date().toISOString();
+    const record = {
+      id: entry.id,
+      user_id: entry.user_id || null,
+      note_id: entry.note_id || null,
+      status: entry.status || 'queued',
+      progress: Number.isFinite(entry.progress) ? entry.progress : 0,
+      file_name: entry.file_name || null,
+      file_size: Number.isFinite(entry.file_size) ? entry.file_size : null,
+      file_path: entry.file_path || null,
+      duration_ms: Number.isFinite(entry.duration_ms) ? entry.duration_ms : null,
+      error: entry.error || null,
+      created_at: entry.created_at || now,
+      updated_at: entry.updated_at || now,
+      completed_at: entry.completed_at || null,
+    };
+    await this._run(
+      `INSERT INTO upload_jobs (id, user_id, note_id, status, progress, file_name, file_size, file_path, duration_ms, error, created_at, updated_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         user_id = excluded.user_id,
+         note_id = excluded.note_id,
+         status = excluded.status,
+         progress = excluded.progress,
+         file_name = excluded.file_name,
+         file_size = excluded.file_size,
+         file_path = excluded.file_path,
+         duration_ms = excluded.duration_ms,
+         error = excluded.error,
+         updated_at = excluded.updated_at,
+         completed_at = excluded.completed_at`,
+      [
+        record.id,
+        record.user_id,
+        record.note_id,
+        record.status,
+        record.progress,
+        record.file_name,
+        record.file_size,
+        record.file_path,
+        record.duration_ms,
+        record.error,
+        record.created_at,
+        record.updated_at,
+        record.completed_at,
+      ],
+    );
+    return record;
+  }
+
+  async deleteUploadJob(id) {
+    await this._run('DELETE FROM upload_jobs WHERE id = ?', [id]);
+  }
+
+  async pruneUploadJobs(limit = 50) {
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return;
+    }
+    await this._run(
+      `DELETE FROM upload_jobs
+       WHERE id NOT IN (
+         SELECT id FROM upload_jobs ORDER BY created_at DESC LIMIT ?
+       )`,
+      [limit],
+    );
+  }
+
   async addHistory(entry) {
     const now = new Date().toISOString();
     const record = {
@@ -893,6 +985,46 @@ class Store {
       'SELECT * FROM crocomni_messages WHERE conversation_id = ? ORDER BY created_at ASC',
       [conversationId],
     );
+  }
+
+  async clearCrocOmniConversation(conversationId) {
+    if (!conversationId) {
+      return;
+    }
+    const now = new Date().toISOString();
+    await this._run('DELETE FROM crocomni_messages WHERE conversation_id = ?', [conversationId]);
+    await this._run('UPDATE crocomni_conversations SET updated_at = ? WHERE id = ?', [now, conversationId]);
+  }
+
+  async trimCrocOmniConversation(conversationId, maxTokens = 0) {
+    const cap = Number.isFinite(maxTokens) ? maxTokens : 0;
+    if (!conversationId || cap <= 0) {
+      return { trimmed: false, removed: 0 };
+    }
+    const messages = await this._all(
+      'SELECT id, content, created_at FROM crocomni_messages WHERE conversation_id = ? ORDER BY created_at ASC',
+      [conversationId],
+    );
+    if (!messages.length) {
+      return { trimmed: false, removed: 0 };
+    }
+    const tokenCounts = messages.map((message) => estimateTokenCount(message.content || ''));
+    let totalTokens = tokenCounts.reduce((sum, count) => sum + count, 0);
+    if (totalTokens <= cap) {
+      return { trimmed: false, removed: 0, totalTokens };
+    }
+    let removeCount = 0;
+    while (removeCount < messages.length - 1 && totalTokens > cap) {
+      totalTokens -= tokenCounts[removeCount];
+      removeCount += 1;
+    }
+    if (removeCount <= 0) {
+      return { trimmed: false, removed: 0, totalTokens };
+    }
+    const ids = messages.slice(0, removeCount).map((message) => message.id);
+    const placeholders = ids.map(() => '?').join(', ');
+    await this._run(`DELETE FROM crocomni_messages WHERE id IN (${placeholders})`, ids);
+    return { trimmed: true, removed: removeCount, totalTokens };
   }
 
   async addCrocOmniMessage(entry) {
@@ -1247,6 +1379,21 @@ class Store {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`);
+    await this._run(`CREATE TABLE IF NOT EXISTS upload_jobs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      note_id TEXT,
+      status TEXT NOT NULL,
+      progress INTEGER,
+      file_name TEXT,
+      file_size INTEGER,
+      file_path TEXT,
+      duration_ms INTEGER,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT
+    )`);
     await this._run(`CREATE TABLE IF NOT EXISTS snippets (
       id TEXT PRIMARY KEY,
       user_id TEXT,
@@ -1310,6 +1457,7 @@ class Store {
   async _createIndexes() {
     await this._run('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at)');
+    await this._run('CREATE INDEX IF NOT EXISTS idx_upload_jobs_created_at ON upload_jobs(created_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_dictionary_updated_at ON dictionary(updated_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_styles_updated_at ON styles(updated_at)');
     await this._run('CREATE INDEX IF NOT EXISTS idx_snippets_updated_at ON snippets(updated_at)');

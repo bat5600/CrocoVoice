@@ -4,6 +4,7 @@ const settingsInputs = document.querySelectorAll('[data-setting]');
 const apiKeyStatus = document.getElementById('apiKeyStatus');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
+const polishEntryButton = document.getElementById('polishEntryButton');
 const notesList = document.getElementById('notesList');
 const notesEmpty = document.getElementById('notesEmpty');
 const dictionaryList = document.getElementById('dictionaryList');
@@ -29,6 +30,16 @@ const crocOmniAnswerButton = document.getElementById('crocOmniAnswerButton');
 const crocOmniAnswerOutput = document.getElementById('crocOmniAnswerOutput');
 const crocOmniAiReplyToggle = document.getElementById('crocOmniAiReplyToggle');
 const crocOmniAiSensitiveToggle = document.getElementById('crocOmniAiSensitiveToggle');
+const crocOmniConversationList = document.getElementById('crocOmniConversationList');
+const crocOmniConversationEmpty = document.getElementById('crocOmniConversationEmpty');
+const crocOmniMessages = document.getElementById('crocOmniMessages');
+const crocOmniMessagesEmpty = document.getElementById('crocOmniMessagesEmpty');
+const crocOmniComposer = document.getElementById('crocOmniComposer');
+const crocOmniSendButton = document.getElementById('crocOmniSendButton');
+const crocOmniNewConversation = document.getElementById('crocOmniNewConversation');
+const crocOmniCreateButton = document.getElementById('crocOmniCreateButton');
+const crocOmniClearConversation = document.getElementById('crocOmniClearConversation');
+const crocOmniComposerMeta = document.getElementById('crocOmniComposerMeta');
 const snippetCueInput = document.getElementById('snippetCueInput');
 const snippetTemplateInput = document.getElementById('snippetTemplateInput');
 const snippetDescriptionInput = document.getElementById('snippetDescriptionInput');
@@ -168,6 +179,7 @@ const uploadAudioButton = document.getElementById('uploadAudioButton');
 const uploadDropzone = document.getElementById('uploadDropzone');
 const uploadQueue = document.getElementById('uploadQueue');
 const localModelSummary = document.getElementById('localModelSummary');
+const localModelDownloads = document.getElementById('localModelDownloads');
 const localModelList = document.getElementById('localModelList');
 const localModelChoose = document.getElementById('localModelChoose');
 const diagnosticsRunChecks = document.getElementById('diagnosticsRunChecks');
@@ -193,6 +205,12 @@ let crocOmniSearchPending = false;
 let crocOmniAnswerPending = false;
 let crocOmniSearchDebounceId = null;
 let crocOmniAutoReturnView = null;
+let crocOmniConversations = [];
+let crocOmniActiveConversationId = null;
+let crocOmniMessagesData = [];
+let crocOmniMessagesRequestId = 0;
+let crocOmniStreaming = false;
+let crocOmniStreamState = new Map();
 let insightsRangeDays = 30;
 let modalResolver = null;
 let platform = 'win32';
@@ -244,7 +262,9 @@ let onboardingDeliveryReady = false;
 let onboardingShortcutCaptureActive = false;
 let onboardingShortcutBeforeCapture = '';
 let micDeviceCount = 0;
+let micListKnown = false;
 let onboardingMicIgnoreUntil = 0;
+let localModelsRefreshAt = 0;
 let uploadsInitialized = false;
 let uploadStatusCache = new Map();
 const UPGRADE_NUDGE_THRESHOLD = 500;
@@ -290,6 +310,7 @@ const MIC_NOISE_FLOOR = 0.012;
 const MIC_READY_THRESHOLD = 0.018;
 const MIC_READY_HOLD_MS = 500;
 const MIC_IGNORE_AFTER_CHANGE_MS = 1000;
+const LOCAL_MODELS_REFRESH_COOLDOWN_MS = 2000;
 let focusedNote = null;
 let focusedNoteDirty = false;
 let focusedNoteSaving = false;
@@ -429,9 +450,6 @@ function updateOnboardingUI() {
   if (onboardingMicContinue) {
     onboardingMicContinue.disabled = !onboardingMicReady;
   }
-  if (onboardingHotkeyNext) {
-    onboardingHotkeyNext.disabled = !onboardingState?.hotkeyReady;
-  }
   if (onboardingFirstRunNext) {
     onboardingFirstRunNext.disabled = !onboardingState?.firstRunSuccess;
   }
@@ -442,17 +460,20 @@ function updateOnboardingUI() {
     setOnboardingStatus(onboardingPermissionStatus, 'Cliquez pour déclencher la demande d’accès.');
   }
   if (onboardingState.step === 'mic_check' && !onboardingMicReady) {
-    setOnboardingStatus(onboardingMicStatus, 'En attente de signal audio...');
-  }
-  if (onboardingState.step === 'mic_check' && micDeviceCount === 0) {
-    setOnboardingStatus(onboardingMicStatus, 'Aucun micro détecté. Vérifiez votre matériel.', 'error');
-    if (onboardingMicContinue) {
-      onboardingMicContinue.disabled = true;
+    if (micListKnown && micDeviceCount === 0) {
+      setOnboardingStatus(onboardingMicStatus, 'Aucun micro détecté. Vérifiez votre matériel.', 'error');
+    } else {
+      setOnboardingStatus(onboardingMicStatus, 'En attente de signal audio...');
     }
   }
   if (onboardingState.step === 'hotkey') {
     if (onboardingHotkeyInput && !onboardingShortcutCaptureActive) {
       onboardingHotkeyInput.value = currentSettings.shortcut || '';
+    }
+    const hasShortcut = Boolean((currentSettings.shortcut || '').trim());
+    if (hasShortcut && !onboardingState.hotkeyReady) {
+      onboardingState = { ...onboardingState, hotkeyReady: true };
+      persistOnboardingState({ hotkeyReady: true });
     }
     if (!onboardingState.hotkeyReady) {
       setOnboardingStatus(onboardingHotkeyStatus, 'Définissez un raccourci clavier pour lancer la dictée.');
@@ -460,11 +481,18 @@ function updateOnboardingUI() {
       setOnboardingStatus(onboardingHotkeyStatus, 'Raccourci configuré.', 'success');
     }
   }
+  if (onboardingHotkeyNext) {
+    onboardingHotkeyNext.disabled = !onboardingState?.hotkeyReady;
+  }
 
   if (onboardingState.step === 'local_model') {
     if (platform !== 'win32') {
       setOnboardingStep('first_dictation');
       return;
+    }
+    if (Date.now() - localModelsRefreshAt >= LOCAL_MODELS_REFRESH_COOLDOWN_MS) {
+      localModelsRefreshAt = Date.now();
+      void refreshLocalModelsOnly();
     }
     if (onboardingLocalModelNext) {
       onboardingLocalModelNext.disabled = false;
@@ -741,7 +769,7 @@ function updateBreadcrumb(viewName) {
     'note-focus': { primary: 'Notes', secondary: 'Focus' },
     dictionary: { primary: 'Dictionnaire', secondary: 'Corrections' },
     snippets: { primary: 'Snippets', secondary: 'Templates' },
-    crocomni: { primary: 'CrocOmni', secondary: 'Recherche' },
+    crocomni: { primary: 'CrocOmni', secondary: 'Assistant' },
     inbox: { primary: 'Notifications', secondary: 'Inbox' },
     insights: { primary: 'Insights', secondary: 'Wrapped' },
     context: { primary: 'Context', secondary: 'Privacy' },
@@ -2064,7 +2092,12 @@ function renderUploads(uploads) {
       cancel.textContent = 'Annuler';
       cancel.addEventListener('click', async () => {
         if (window.electronAPI?.cancelUploadJob) {
-          await window.electronAPI.cancelUploadJob(job.id);
+          const result = await window.electronAPI.cancelUploadJob(job.id);
+          if (!result?.ok) {
+            showToast('Annulation impossible.', 'error');
+            return;
+          }
+          upsertUploadJob({ ...job, status: 'cancelled' });
           await refreshDashboard();
         }
       });
@@ -2157,6 +2190,9 @@ function buildLocalModelBadges(model, snapshot) {
   if (model.updateAvailable) {
     badges.push('maj');
   }
+  if (model.download?.status === 'failed') {
+    badges.push('erreur');
+  }
   return badges;
 }
 
@@ -2236,18 +2272,7 @@ function updateModelDownloadToast(entry, model, snapshot) {
   const presetLabel = getPresetLabel(model.preset, snapshot?.presets);
   const sizeLabel = model.sizeBytes ? formatSizeGb(model.sizeBytes) : '';
   const baseLabel = sizeLabel ? `${presetLabel} · ${sizeLabel}` : presetLabel;
-  const status = model.download?.status || 'queued';
-  const percent = Number.isFinite(model.download?.progress) ? model.download.progress : 0;
-  let statusLabel = '';
-  if (status === 'queued') {
-    statusLabel = 'En attente...';
-  } else if (status === 'downloading') {
-    statusLabel = `Téléchargement... ${percent}%`;
-  } else if (status === 'verifying') {
-    statusLabel = 'Vérification...';
-  } else if (status === 'paused') {
-    statusLabel = 'Téléchargement en pause.';
-  }
+  const { status, percent, label: statusLabel } = getModelDownloadStatus(model);
   entry.message.textContent = `${baseLabel} · ${statusLabel}`.trim();
   entry.fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
   entry.progressLabel.textContent = status === 'downloading' ? `${percent}%` : '';
@@ -2262,6 +2287,36 @@ function removeModelDownloadToast(id) {
   entry.toast.classList.remove('show');
   setTimeout(() => entry.toast.remove(), 300);
   modelDownloadToasts.delete(id);
+}
+
+function getModelDownloadStatus(model) {
+  const status = model.download?.status || 'queued';
+  const percent = Number.isFinite(model.download?.progress) ? model.download.progress : 0;
+  let label = '';
+  if (status === 'queued') {
+    label = 'En attente...';
+  } else if (status === 'downloading') {
+    label = `Téléchargement... ${percent}%`;
+  } else if (status === 'verifying') {
+    label = 'Vérification...';
+  } else if (status === 'paused') {
+    label = 'Téléchargement en pause.';
+  }
+  return { status, percent, label };
+}
+
+function formatDownloadDetail(model) {
+  const received = Number.isFinite(model.download?.receivedBytes) ? model.download.receivedBytes : 0;
+  const total = Number.isFinite(model.download?.totalBytes) && model.download.totalBytes > 0
+    ? model.download.totalBytes
+    : (Number.isFinite(model.sizeBytes) ? model.sizeBytes : 0);
+  if (!received && !total) {
+    return '';
+  }
+  if (!total) {
+    return formatBytes(received);
+  }
+  return `${formatBytes(received)} / ${formatBytes(total)}`;
 }
 
 function getDownloadErrorMessage(model) {
@@ -2354,7 +2409,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
     badgeRow.className = 'model-badges';
     badges.forEach((label) => {
       const badge = document.createElement('span');
-      badge.className = 'model-badge';
+      badge.className = label === 'erreur' ? 'model-badge is-error' : 'model-badge';
       badge.textContent = label;
       badgeRow.appendChild(badge);
     });
@@ -2370,6 +2425,13 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
     fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
     progress.appendChild(fill);
     meta.appendChild(progress);
+  }
+
+  if (model.download?.status === 'failed') {
+    const errorLine = document.createElement('div');
+    errorLine.className = 'model-subtitle is-error';
+    errorLine.textContent = getDownloadErrorMessage(model);
+    meta.appendChild(errorLine);
   }
 
   const actions = document.createElement('div');
@@ -2389,6 +2451,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
           } else {
             showToast('Annulation impossible.', 'error');
           }
+          await refreshLocalModelsOnly();
           await refreshDashboard();
         }
       });
@@ -2401,6 +2464,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       resume.addEventListener('click', async () => {
         if (window.electronAPI?.installLocalModel) {
           await window.electronAPI.installLocalModel(model.id);
+          await refreshLocalModelsOnly();
           await refreshDashboard();
         }
       });
@@ -2414,6 +2478,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
         activate.addEventListener('click', async () => {
           if (window.electronAPI?.setLocalModelPreset) {
             await window.electronAPI.setLocalModelPreset(model.preset);
+            await refreshLocalModelsOnly();
             await refreshDashboard();
           }
         });
@@ -2427,6 +2492,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
         upgrade.addEventListener('click', async () => {
           if (window.electronAPI?.installLocalModel) {
             await window.electronAPI.installLocalModel(model.id);
+            await refreshLocalModelsOnly();
             await refreshDashboard();
           }
         });
@@ -2439,6 +2505,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       remove.addEventListener('click', async () => {
         if (window.electronAPI?.removeLocalModel) {
           await window.electronAPI.removeLocalModel(model.id);
+          await refreshLocalModelsOnly();
           await refreshDashboard();
         }
       });
@@ -2451,6 +2518,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
       install.addEventListener('click', async () => {
         if (window.electronAPI?.installLocalModel) {
           await window.electronAPI.installLocalModel(model.id);
+          await refreshLocalModelsOnly();
           await refreshDashboard();
         }
       });
@@ -2483,6 +2551,7 @@ function buildLocalModelRow(model, snapshot, context = 'settings') {
           if (!result?.ok) {
             showToast('Téléchargement indisponible.', 'error');
           }
+          await refreshLocalModelsOnly();
           await refreshDashboard();
         }
       });
@@ -2502,6 +2571,7 @@ function renderLocalModels() {
     return;
   }
   const snapshot = localModelsData;
+  renderLocalModelDownloads();
   const models = snapshot?.models || [];
   localModelList.innerHTML = '';
   if (!models.length) {
@@ -2526,6 +2596,97 @@ function renderLocalModels() {
       localModelSummary.textContent = `Recommandé: ${recommended} · Actif: ${activePreset}${memLabel ? ` · ${memLabel}` : ''}`;
     }
   }
+}
+
+function renderLocalModelDownloads() {
+  if (!localModelDownloads) {
+    return;
+  }
+  const snapshot = localModelsData;
+  localModelDownloads.innerHTML = '';
+  if (!snapshot) {
+    localModelDownloads.style.display = 'none';
+    return;
+  }
+  const models = snapshot.models || [];
+  const active = models.filter((model) => model.download && ['queued', 'downloading', 'verifying', 'paused'].includes(model.download.status));
+  if (!active.length) {
+    localModelDownloads.style.display = 'none';
+    return;
+  }
+  localModelDownloads.style.display = 'flex';
+
+  const heading = document.createElement('div');
+  heading.className = 'model-download-heading';
+  heading.textContent = active.length > 1 ? 'Téléchargements en cours' : 'Téléchargement en cours';
+  localModelDownloads.appendChild(heading);
+
+  active.forEach((model) => {
+    const row = document.createElement('div');
+    row.className = 'model-download-row';
+
+    const meta = document.createElement('div');
+    meta.className = 'model-download-meta';
+
+    const title = document.createElement('div');
+    title.className = 'model-download-title';
+    title.textContent = `${getPresetLabel(model.preset, snapshot.presets)} · ${model.name}`;
+    meta.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'model-download-subtitle';
+    const { status, percent, label } = getModelDownloadStatus(model);
+    const detail = formatDownloadDetail(model);
+    subtitle.textContent = detail ? `${label} · ${detail}` : label;
+    meta.appendChild(subtitle);
+
+    const progress = document.createElement('div');
+    progress.className = 'model-download-progress';
+    const fill = document.createElement('div');
+    fill.className = 'model-download-progress-fill';
+    fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    progress.appendChild(fill);
+    meta.appendChild(progress);
+
+    const actions = document.createElement('div');
+    actions.className = 'model-download-actions';
+    if (['queued', 'downloading', 'verifying'].includes(status)) {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn-secondary';
+      cancel.textContent = 'Annuler';
+      cancel.addEventListener('click', async () => {
+        if (window.electronAPI?.cancelLocalModelDownload) {
+          const result = await window.electronAPI.cancelLocalModelDownload(model.id);
+          if (result?.ok) {
+            showToast('Téléchargement annulé.');
+          } else {
+            showToast('Annulation impossible.', 'error');
+          }
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(cancel);
+    } else if (status === 'paused') {
+      const resume = document.createElement('button');
+      resume.type = 'button';
+      resume.className = 'btn-secondary';
+      resume.textContent = 'Reprendre';
+      resume.addEventListener('click', async () => {
+        if (window.electronAPI?.installLocalModel) {
+          await window.electronAPI.installLocalModel(model.id);
+          await refreshDashboard();
+        }
+      });
+      actions.appendChild(resume);
+    }
+
+    row.appendChild(meta);
+    if (actions.childNodes.length) {
+      row.appendChild(actions);
+    }
+    localModelDownloads.appendChild(row);
+  });
 }
 
 function renderOnboardingLocalModels() {
@@ -2734,8 +2895,11 @@ function refreshActiveList() {
     return;
   }
   if (currentView === 'crocomni') {
-    renderCrocOmniResults(crocOmniSearchResults);
-    syncCrocOmniAnswerUiState();
+    renderCrocOmniConversationList();
+    if (!crocOmniStreaming) {
+      renderCrocOmniMessages(crocOmniMessagesData);
+    }
+    syncCrocOmniComposerState();
     return;
   }
   if (currentView === 'diff') {
@@ -3316,6 +3480,395 @@ function computeInsightsFromHistoryLocal(history, days) {
   });
   stats.streakDays = streak;
   return stats;
+}
+
+function getCrocOmniConversationTitle(conversation) {
+  if (!conversation) {
+    return 'Conversation CrocOmni';
+  }
+  const title = typeof conversation.title === 'string' ? conversation.title.trim() : '';
+  return title || 'Conversation CrocOmni';
+}
+
+function filterCrocOmniConversations(conversations) {
+  if (!searchTerm) {
+    return conversations || [];
+  }
+  const query = searchTerm.toLowerCase();
+  return (conversations || []).filter((conversation) => getCrocOmniConversationTitle(conversation).toLowerCase().includes(query));
+}
+
+function renderCrocOmniConversationList() {
+  if (!crocOmniConversationList || !crocOmniConversationEmpty) {
+    return;
+  }
+  const filtered = filterCrocOmniConversations(crocOmniConversations);
+  crocOmniConversationList.innerHTML = '';
+  if (!filtered.length) {
+    crocOmniConversationList.style.display = 'none';
+    crocOmniConversationEmpty.style.display = 'flex';
+    setEmptyStateState(crocOmniConversationEmpty, Boolean(searchTerm));
+    return;
+  }
+  crocOmniConversationList.style.display = 'flex';
+  crocOmniConversationEmpty.style.display = 'none';
+  filtered.forEach((conversation) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'croc-omni-conversation';
+    if (conversation.id === crocOmniActiveConversationId) {
+      row.classList.add('active');
+    }
+    row.addEventListener('click', () => {
+      setActiveCrocOmniConversation(conversation.id);
+    });
+
+    const title = document.createElement('div');
+    title.className = 'croc-omni-conversation-title';
+    title.textContent = getCrocOmniConversationTitle(conversation);
+
+    const meta = document.createElement('div');
+    meta.className = 'croc-omni-conversation-meta';
+    const stamp = conversation.updated_at || conversation.created_at || null;
+    meta.textContent = stamp ? formatDateTimeLabel(stamp) : '—';
+
+    row.appendChild(title);
+    row.appendChild(meta);
+    crocOmniConversationList.appendChild(row);
+  });
+}
+
+function renderCrocOmniMessageHtml(content) {
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (!text) {
+    return '';
+  }
+  return renderMarkdownLite(text);
+}
+
+function buildCrocOmniMessageMeta(message, override) {
+  if (override) {
+    return override;
+  }
+  const parts = [];
+  if (message?.created_at) {
+    parts.push(formatDateTimeLabel(message.created_at));
+  }
+  if (message?.role === 'assistant') {
+    const contextUsed = message.context_used === 1 || message.context_used === true;
+    if (message.context_used !== undefined && message.context_used !== null) {
+      parts.push(contextUsed ? 'Contexte utilisé' : 'Sans contexte');
+    }
+  }
+  return parts.join(' · ');
+}
+
+function buildCrocOmniThinkingMarkup() {
+  return `
+    <div class="croc-omni-thinking">
+      CrocOmni réfléchit
+      <span class="croc-omni-typing-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </div>
+  `;
+}
+
+function buildCrocOmniMessageElement(message, options = {}) {
+  const role = message?.role === 'assistant' ? 'assistant' : 'user';
+  const wrapper = document.createElement('div');
+  wrapper.className = `croc-omni-message ${role}`;
+  if (options.requestId) {
+    wrapper.dataset.requestId = options.requestId;
+  }
+
+  const block = document.createElement('div');
+  block.className = 'croc-omni-message-block';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'croc-omni-bubble';
+  if (options.thinking) {
+    bubble.innerHTML = buildCrocOmniThinkingMarkup();
+  } else {
+    bubble.innerHTML = renderCrocOmniMessageHtml(message?.content || '') || escapeHtml(message?.content || '');
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'croc-omni-message-meta';
+  meta.textContent = buildCrocOmniMessageMeta(message, options.metaOverride);
+
+  block.appendChild(bubble);
+  block.appendChild(meta);
+  wrapper.appendChild(block);
+
+  return { wrapper, bubble, meta };
+}
+
+function renderCrocOmniMessages(messages) {
+  if (!crocOmniMessages || !crocOmniMessagesEmpty) {
+    return;
+  }
+  crocOmniMessages.innerHTML = '';
+  if (!messages || messages.length === 0) {
+    crocOmniMessages.style.display = 'none';
+    crocOmniMessagesEmpty.style.display = 'flex';
+    setEmptyStateState(crocOmniMessagesEmpty, false);
+    return;
+  }
+  crocOmniMessages.style.display = 'flex';
+  crocOmniMessagesEmpty.style.display = 'none';
+  messages.forEach((message) => {
+    const { wrapper } = buildCrocOmniMessageElement(message);
+    crocOmniMessages.appendChild(wrapper);
+  });
+  scrollCrocOmniToBottom();
+}
+
+function appendCrocOmniMessageToUI(message, options = {}) {
+  if (!crocOmniMessages || !crocOmniMessagesEmpty) {
+    return null;
+  }
+  const element = buildCrocOmniMessageElement(message, options);
+  crocOmniMessages.appendChild(element.wrapper);
+  crocOmniMessages.style.display = 'flex';
+  crocOmniMessagesEmpty.style.display = 'none';
+  scrollCrocOmniToBottom();
+  return element;
+}
+
+function scrollCrocOmniToBottom() {
+  if (!crocOmniMessages) {
+    return;
+  }
+  crocOmniMessages.scrollTop = crocOmniMessages.scrollHeight;
+}
+
+function syncCrocOmniComposerState() {
+  const hasText = Boolean(crocOmniComposer?.value?.trim());
+  if (crocOmniSendButton) {
+    crocOmniSendButton.disabled = crocOmniStreaming || !hasText;
+  }
+  if (crocOmniComposer) {
+    crocOmniComposer.disabled = crocOmniStreaming;
+  }
+  if (crocOmniClearConversation) {
+    const hasMessages = crocOmniMessagesData.length > 0;
+    crocOmniClearConversation.disabled = crocOmniStreaming || !crocOmniActiveConversationId || !hasMessages;
+  }
+  if (crocOmniComposerMeta) {
+    crocOmniComposerMeta.textContent = crocOmniStreaming
+      ? 'CrocOmni répond...'
+      : 'Entrée pour envoyer · Shift+Entrée pour une nouvelle ligne.';
+  }
+}
+
+function setActiveCrocOmniConversation(conversationId) {
+  if (!conversationId) {
+    return;
+  }
+  if (conversationId === crocOmniActiveConversationId) {
+    return;
+  }
+  crocOmniActiveConversationId = conversationId;
+  renderCrocOmniConversationList();
+  loadCrocOmniMessages(conversationId);
+  syncCrocOmniComposerState();
+}
+
+async function loadCrocOmniMessages(conversationId) {
+  if (!window.electronAPI?.listCrocOmniMessages || !conversationId || crocOmniStreaming) {
+    return;
+  }
+  const requestId = ++crocOmniMessagesRequestId;
+  try {
+    const messages = await window.electronAPI.listCrocOmniMessages(conversationId);
+    if (requestId !== crocOmniMessagesRequestId) {
+      return;
+    }
+    crocOmniMessagesData = Array.isArray(messages) ? messages : [];
+    renderCrocOmniMessages(crocOmniMessagesData);
+  } catch (error) {
+    showToast(error?.message || 'Impossible de charger la conversation.', 'error');
+  } finally {
+    syncCrocOmniComposerState();
+  }
+}
+
+async function createCrocOmniConversation() {
+  if (!window.electronAPI?.createCrocOmniConversation) {
+    return null;
+  }
+  try {
+    const record = await window.electronAPI.createCrocOmniConversation({ title: 'Nouvelle conversation' });
+    if (record?.id) {
+      crocOmniConversations = [record, ...crocOmniConversations];
+      crocOmniActiveConversationId = record.id;
+      renderCrocOmniConversationList();
+      crocOmniMessagesData = [];
+      renderCrocOmniMessages(crocOmniMessagesData);
+      syncCrocOmniComposerState();
+      return record;
+    }
+  } catch (error) {
+    showToast(error?.message || 'Impossible de créer la conversation.', 'error');
+  }
+  return null;
+}
+
+async function clearCrocOmniConversation() {
+  if (!window.electronAPI?.clearCrocOmniConversation || !crocOmniActiveConversationId) {
+    return;
+  }
+  try {
+    await window.electronAPI.clearCrocOmniConversation(crocOmniActiveConversationId);
+    crocOmniMessagesData = [];
+    renderCrocOmniMessages(crocOmniMessagesData);
+    syncCrocOmniComposerState();
+    showToast('Conversation effacée.');
+  } catch (error) {
+    showToast(error?.message || 'Impossible d’effacer la conversation.', 'error');
+  }
+}
+
+function handleCrocOmniStream(payload) {
+  if (!payload || !payload.requestId) {
+    return;
+  }
+  const state = crocOmniStreamState.get(payload.requestId);
+  if (!state) {
+    return;
+  }
+  if (payload.delta) {
+    state.content += payload.delta;
+    state.bubble.innerHTML = renderCrocOmniMessageHtml(state.content) || escapeHtml(state.content);
+  }
+  if (payload.error && !payload.delta && !state.content) {
+    state.content = payload.error;
+    state.bubble.innerHTML = renderCrocOmniMessageHtml(state.content) || escapeHtml(state.content);
+  }
+  if (payload.done) {
+    const finalContent = payload.content || state.content || payload.error || '';
+    state.content = finalContent;
+    state.bubble.innerHTML = renderCrocOmniMessageHtml(finalContent) || escapeHtml(finalContent || '—');
+    const metaParts = [];
+    if (payload.completedAt) {
+      metaParts.push(formatDateTimeLabel(payload.completedAt));
+    } else {
+      metaParts.push(formatDateTimeLabel(new Date().toISOString()));
+    }
+    if (payload.contextUsed === true) {
+      metaParts.push('Contexte utilisé');
+    } else if (payload.contextUsed === false) {
+      metaParts.push('Sans contexte');
+    }
+    state.meta.textContent = metaParts.join(' · ');
+    crocOmniStreamState.delete(payload.requestId);
+    crocOmniMessagesData = [...crocOmniMessagesData, {
+      id: payload.messageId || payload.requestId,
+      role: 'assistant',
+      content: finalContent,
+      context_used: payload.contextUsed === true ? 1 : 0,
+      created_at: payload.completedAt || new Date().toISOString(),
+    }];
+    scrollCrocOmniToBottom();
+  }
+}
+
+async function sendCrocOmniMessage() {
+  if (!window.electronAPI?.sendCrocOmniMessage || crocOmniStreaming) {
+    return;
+  }
+  const content = crocOmniComposer?.value?.trim() || '';
+  if (!content) {
+    return;
+  }
+  let conversationId = crocOmniActiveConversationId;
+  if (!conversationId) {
+    const record = await createCrocOmniConversation();
+    conversationId = record?.id || crocOmniActiveConversationId;
+  }
+  if (!conversationId) {
+    showToast('Impossible de démarrer la conversation.', 'error');
+    return;
+  }
+  const requestId = typeof crypto?.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `croc-omni-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const now = new Date().toISOString();
+  crocOmniMessagesData = [...crocOmniMessagesData, {
+    id: requestId,
+    role: 'user',
+    content,
+    created_at: now,
+  }];
+  appendCrocOmniMessageToUI({ role: 'user', content, created_at: now });
+
+  if (crocOmniComposer) {
+    crocOmniComposer.value = '';
+  }
+  syncCrocOmniComposerState();
+
+  const thinkingElement = appendCrocOmniMessageToUI(
+    { role: 'assistant', content: '' },
+    { thinking: true, requestId, metaOverride: 'En cours...' },
+  );
+  if (thinkingElement) {
+    crocOmniStreamState.set(requestId, {
+      bubble: thinkingElement.bubble,
+      meta: thinkingElement.meta,
+      content: '',
+    });
+  }
+  scrollCrocOmniToBottom();
+
+  crocOmniStreaming = true;
+  syncCrocOmniComposerState();
+  try {
+    const res = await window.electronAPI.sendCrocOmniMessage({
+      conversationId,
+      content,
+      stream: true,
+      requestId,
+    });
+    if (res?.ok === false) {
+      handleCrocOmniStream({
+        requestId,
+        error: res.error || 'Impossible de répondre.',
+        done: true,
+      });
+    }
+  } catch (error) {
+    handleCrocOmniStream({
+      requestId,
+      error: error?.message || 'Impossible de répondre.',
+      done: true,
+    });
+  } finally {
+    crocOmniStreaming = false;
+    syncCrocOmniComposerState();
+  }
+}
+
+function applyCrocOmniSnapshot(snapshot) {
+  crocOmniConversations = Array.isArray(snapshot) ? snapshot.filter((conversation) => !conversation.archived_at) : [];
+  if (crocOmniActiveConversationId
+    && !crocOmniConversations.some((conversation) => conversation.id === crocOmniActiveConversationId)) {
+    crocOmniActiveConversationId = null;
+  }
+  if (!crocOmniActiveConversationId && crocOmniConversations.length) {
+    crocOmniActiveConversationId = crocOmniConversations[0].id;
+  }
+  renderCrocOmniConversationList();
+  if (crocOmniActiveConversationId) {
+    loadCrocOmniMessages(crocOmniActiveConversationId);
+  } else {
+    crocOmniMessagesData = [];
+    renderCrocOmniMessages(crocOmniMessagesData);
+  }
+  syncCrocOmniComposerState();
 }
 
 function setCrocOmniSearchStatus(message = '') {
@@ -4012,6 +4565,16 @@ function applyAuthState(state) {
   }
 }
 
+function applyPolishEntryState(settings) {
+  if (!polishEntryButton) {
+    return;
+  }
+  const flags = settings?.featureFlags || {};
+  const enabled = flags.contextMenu !== false;
+  polishEntryButton.hidden = !enabled;
+  polishEntryButton.disabled = !enabled || !window.electronAPI?.openPolishDiff;
+}
+
 async function submitAuthLogin() {
   if (!window.electronAPI?.authSignIn) {
     setOverlayStatus('Connexion indisponible.', true);
@@ -4040,40 +4603,104 @@ async function submitAuthLogin() {
   }
 }
 
-async function populateMicrophones() {
-  if (!navigator.mediaDevices?.enumerateDevices) {
-    return;
+function applyMicrophoneSelection(value, label) {
+  const id = typeof value === 'string' ? value : '';
+  const rawLabel = typeof label === 'string' ? label.trim() : '';
+  const normalizedLabel = rawLabel.toLowerCase();
+  const isDefaultLabel = normalizedLabel === 'défaut système'
+    || normalizedLabel === 'defaut systeme'
+    || normalizedLabel === 'aucun micro détecté'
+    || normalizedLabel === 'aucun micro detecte'
+    || normalizedLabel === 'detection auto'
+    || normalizedLabel === 'détection auto';
+  const nextLabel = id ? rawLabel : (isDefaultLabel ? '' : rawLabel);
+  currentSettings = { ...currentSettings, microphoneId: id, microphoneLabel: nextLabel };
+  if (window.electronAPI?.saveSettings) {
+    return window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
   }
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const mics = devices.filter((device) => device.kind === 'audioinput');
-    micDeviceCount = mics.length;
-    const targets = [microphoneSelect, onboardingMicrophoneSelect].filter(Boolean);
-    targets.forEach((select) => {
-      select.innerHTML = '<option value="">Défaut système</option>';
-      mics.forEach((mic) => {
-        const option = document.createElement('option');
-        option.value = mic.deviceId;
-        option.textContent = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
-        select.appendChild(option);
-      });
-      if (currentSettings.microphoneId) {
-        select.value = currentSettings.microphoneId;
-      }
-      if (!select.value && currentSettings.microphoneLabel) {
-        const match = Array.from(select.options).find((option) =>
-          option.textContent?.trim().toLowerCase() === currentSettings.microphoneLabel.trim().toLowerCase()
-        );
-        if (match) {
-          select.value = match.value;
+  return null;
+}
+
+async function populateMicrophones(micsOverride) {
+  let mics = Array.isArray(micsOverride) ? micsOverride : null;
+  let listKnown = Array.isArray(micsOverride);
+
+  if (!listKnown && navigator.mediaDevices?.enumerateDevices) {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      mics = devices.filter((device) => device.kind === 'audioinput');
+      listKnown = true;
+    } catch (error) {
+      console.error('Failed to list microphones:', error);
+    }
+  }
+
+  if ((!mics || mics.length === 0) && window.electronAPI?.getMicrophoneList) {
+    try {
+      const cached = await window.electronAPI.getMicrophoneList();
+      if (Array.isArray(cached)) {
+        const fallback = cached.filter((device) => !device?.kind || device.kind === 'audioinput');
+        if (!mics || mics.length === 0) {
+          mics = fallback;
+          listKnown = true;
         }
       }
-    });
-    if (onboardingState?.step === 'mic_check') {
-      updateOnboardingUI();
+    } catch (error) {
+      console.error('Failed to load cached microphones:', error);
     }
-  } catch (error) {
-    console.error('Failed to list microphones:', error);
+  }
+
+  if (!Array.isArray(mics)) {
+    mics = [];
+  }
+
+  micListKnown = listKnown;
+  micDeviceCount = mics.length;
+
+  const defaultLabel = listKnown && mics.length === 0 ? 'Aucun micro détecté' : 'Défaut système';
+  const storedId = currentSettings.microphoneId || '';
+  const storedLabel = (currentSettings.microphoneLabel || '').trim();
+  const storedInList = storedId && mics.some((mic) => mic?.deviceId === storedId);
+  const shouldAddFallback = storedId && !storedInList && mics.length === 0;
+  const storedFallbackLabel = storedId
+    ? (storedLabel || `Micro ${storedId.slice(0, 4)}...`)
+    : '';
+  const targets = [microphoneSelect, onboardingMicrophoneSelect].filter(Boolean);
+  targets.forEach((select) => {
+    select.innerHTML = `<option value="">${defaultLabel}</option>`;
+    mics.forEach((mic) => {
+      if (!mic?.deviceId) {
+        return;
+      }
+      const option = document.createElement('option');
+      option.value = mic.deviceId;
+      option.textContent = mic.label || `Micro ${mic.deviceId.slice(0, 4)}...`;
+      select.appendChild(option);
+    });
+    if (shouldAddFallback) {
+      const option = document.createElement('option');
+      option.value = storedId;
+      option.textContent = storedFallbackLabel;
+      select.appendChild(option);
+    }
+    if (storedId && storedInList) {
+      select.value = storedId;
+    }
+    if (!select.value && currentSettings.microphoneLabel) {
+      const match = Array.from(select.options).find((option) =>
+        option.textContent?.trim().toLowerCase() === currentSettings.microphoneLabel.trim().toLowerCase()
+      );
+      if (match) {
+        select.value = match.value;
+      }
+    }
+    if (!select.value && shouldAddFallback) {
+      select.value = storedId;
+    }
+  });
+
+  if (onboardingState?.step === 'mic_check') {
+    updateOnboardingUI();
   }
 }
 
@@ -4146,13 +4773,9 @@ function handleSettingChange(event) {
   } else {
     if (setting === 'microphoneId') {
       const selectedLabel = event.target?.selectedOptions?.[0]?.textContent || '';
-      const normalizedLabel = selectedLabel.trim().toLowerCase();
-      const isDefaultLabel = normalizedLabel === 'défaut système' || normalizedLabel === 'defaut systeme';
-      currentSettings = {
-        ...currentSettings,
-        microphoneId: value,
-        microphoneLabel: value ? selectedLabel : (isDefaultLabel ? '' : selectedLabel),
-      };
+      applyMicrophoneSelection(value, selectedLabel);
+      populateMicrophones();
+      return;
     } else {
       currentSettings = { ...currentSettings, [setting]: value };
     }
@@ -4324,9 +4947,10 @@ async function refreshDashboard() {
   renderInsights(insightsData);
   renderStyles(dashboardData.styles);
   renderSettings(currentSettings);
+  applyPolishEntryState(currentSettings);
   renderContext(dashboardData.context);
   applyCrocOmniSettings(currentSettings);
-  syncCrocOmniAnswerUiState();
+  applyCrocOmniSnapshot(dashboardData.crocOmniConversations);
   applyUploadsSnapshot(dashboardData.uploads);
   applyOnboardingStateFromSettings(currentSettings);
   applyLocalModelsSnapshot(dashboardData.localModels);
@@ -4334,6 +4958,16 @@ async function refreshDashboard() {
   renderSubscription(dashboardData.subscription, dashboardData.auth);
   await populateMicrophones();
   startSubscriptionActivationCheck();
+}
+
+async function refreshLocalModelsOnly() {
+  if (!window.electronAPI?.listLocalModels) {
+    return;
+  }
+  try {
+    const snapshot = await window.electronAPI.listLocalModels();
+    applyLocalModelsSnapshot(snapshot);
+  } catch {}
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -4452,15 +5086,16 @@ function updateCrocOmniSettings(nextSettings) {
 
   if (onboardingMicrophoneApply) {
     onboardingMicrophoneApply.addEventListener('click', async () => {
-      if (!onboardingMicrophoneSelect || !window.electronAPI?.saveSettings) {
+      if (!onboardingMicrophoneSelect) {
         return;
       }
       const value = onboardingMicrophoneSelect.value;
+      const selectedLabel = onboardingMicrophoneSelect.selectedOptions?.[0]?.textContent || '';
       if (window.electronAPI?.stopOnboardingMic) {
         window.electronAPI.stopOnboardingMic();
       }
-      currentSettings = { ...currentSettings, microphoneId: value };
-      await window.electronAPI.saveSettings(sanitizeSettingsForSave(currentSettings));
+      await applyMicrophoneSelection(value, selectedLabel);
+      populateMicrophones();
       onboardingMicReady = false;
       onboardingMicLevel = 0;
       onboardingMicLastActiveAt = 0;
@@ -4669,6 +5304,7 @@ function updateCrocOmniSettings(nextSettings) {
           } else {
             showToast('Téléchargement démarré.');
           }
+          await refreshLocalModelsOnly();
         } else {
           showToast('Téléchargement indisponible.', 'error');
         }
@@ -4913,6 +5549,16 @@ function updateCrocOmniSettings(nextSettings) {
     });
   }
 
+  if (polishEntryButton) {
+    polishEntryButton.addEventListener('click', () => {
+      if (!window.electronAPI?.openPolishDiff) {
+        showToast('Polish indisponible.', 'error');
+        return;
+      }
+      window.electronAPI.openPolishDiff();
+    });
+  }
+
   if (manageSubscriptionButton) {
     manageSubscriptionButton.addEventListener('click', async () => {
       if (!window.electronAPI?.openSubscriptionPortal) {
@@ -5040,34 +5686,18 @@ function updateCrocOmniSettings(nextSettings) {
   }
 
   if (crocOmniSearchInput) {
+    const applySearch = () => {
+      searchTerm = crocOmniSearchInput.value?.trim() || '';
+      refreshActiveList();
+    };
     crocOmniSearchInput.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') {
-        return;
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applySearch();
       }
-      event.preventDefault();
-      const query = crocOmniSearchInput.value?.trim() || '';
-      if (query && currentView !== 'crocomni' && !document.body.classList.contains('note-focus-active')) {
-        crocOmniAutoReturnView = crocOmniAutoReturnView || currentView;
-        setActiveView('crocomni');
-      }
-      runCrocOmniSearch();
     });
     crocOmniSearchInput.addEventListener('input', () => {
-      const query = crocOmniSearchInput.value?.trim() || '';
-      if (query) {
-        if (currentView !== 'crocomni' && !document.body.classList.contains('note-focus-active')) {
-          crocOmniAutoReturnView = crocOmniAutoReturnView || currentView;
-          setActiveView('crocomni');
-        }
-      } else if (currentView === 'crocomni' && crocOmniAutoReturnView) {
-        const returnView = crocOmniAutoReturnView;
-        crocOmniAutoReturnView = null;
-        setActiveView(returnView);
-      }
-      if (crocOmniSearchDebounceId) {
-        clearTimeout(crocOmniSearchDebounceId);
-      }
-      crocOmniSearchDebounceId = setTimeout(() => runCrocOmniSearch(), 250);
+      applySearch();
     });
   }
 
@@ -5110,6 +5740,39 @@ function updateCrocOmniSettings(nextSettings) {
       updateCrocOmniSettings({ crocOmni: crocOmniSettings });
       applyCrocOmniSettings(currentSettings);
     });
+  }
+
+  if (crocOmniComposer) {
+    crocOmniComposer.addEventListener('input', () => syncCrocOmniComposerState());
+    crocOmniComposer.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendCrocOmniMessage();
+      }
+    });
+  }
+
+  if (crocOmniSendButton) {
+    crocOmniSendButton.addEventListener('click', () => sendCrocOmniMessage());
+  }
+
+  if (crocOmniNewConversation) {
+    crocOmniNewConversation.addEventListener('click', () => createCrocOmniConversation());
+  }
+
+  if (crocOmniCreateButton) {
+    crocOmniCreateButton.addEventListener('click', () => createCrocOmniConversation());
+  }
+
+  if (crocOmniConversationEmpty) {
+    const emptyAction = crocOmniConversationEmpty.querySelector('.empty-action');
+    if (emptyAction) {
+      emptyAction.addEventListener('click', () => createCrocOmniConversation());
+    }
+  }
+
+  if (crocOmniClearConversation) {
+    crocOmniClearConversation.addEventListener('click', () => clearCrocOmniConversation());
   }
 
   if (shortcutInput) {
@@ -5607,13 +6270,24 @@ function updateCrocOmniSettings(nextSettings) {
   if (window.electronAPI?.onDashboardDataUpdated) {
     window.electronAPI.onDashboardDataUpdated(() => refreshDashboard());
   }
+  if (window.electronAPI?.onCrocOmniStream) {
+    window.electronAPI.onCrocOmniStream((payload) => handleCrocOmniStream(payload));
+  }
+
+  if (window.electronAPI?.onMicrophonesUpdated) {
+    window.electronAPI.onMicrophonesUpdated((payload) => {
+      populateMicrophones(payload);
+    });
+  }
 
   if (window.electronAPI?.onSettingsUpdated) {
     window.electronAPI.onSettingsUpdated((nextSettings) => {
       currentSettings = nextSettings || currentSettings;
       applyOnboardingStateFromSettings(currentSettings);
       renderSettings(currentSettings);
+      applyPolishEntryState(currentSettings);
       applyCrocOmniSettings(currentSettings);
+      populateMicrophones();
     });
   }
 

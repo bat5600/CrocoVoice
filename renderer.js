@@ -338,17 +338,68 @@ function wrapLabel(label, maxChars) {
   return lines.join('\n');
 }
 
+function setAvailableMicrophones(candidates) {
+  const list = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
+  const normalized = list
+    .filter((device) => {
+      if (device.__stored) {
+        return false;
+      }
+      if (typeof device.kind === 'string') {
+        return device.kind === 'audioinput';
+      }
+      return true;
+    })
+    .map((device) => ({
+      deviceId: device.deviceId || '',
+      label: device.label || '',
+    }));
+  const storedId = currentSettings.microphoneId || '';
+  const storedLabel = (currentSettings.microphoneLabel || '').trim();
+  if (storedId && !normalized.some((device) => device.deviceId === storedId)) {
+    normalized.unshift({
+      deviceId: storedId,
+      label: storedLabel || `Micro ${storedId.slice(0, 4)}...`,
+      __stored: true,
+    });
+  }
+  availableMicrophones = normalized;
+}
+
+function pushMicrophoneList() {
+  if (!window.electronAPI?.sendMicrophoneList) {
+    return;
+  }
+  const payload = availableMicrophones
+    .filter((mic) => !mic.__stored)
+    .map((mic) => ({
+      deviceId: mic.deviceId || '',
+      label: mic.label || '',
+      groupId: mic.groupId || '',
+    }));
+  window.electronAPI.sendMicrophoneList(payload);
+}
+
 async function refreshMicrophones() {
   if (!navigator.mediaDevices?.enumerateDevices) {
+    setAvailableMicrophones([]);
+    renderMicrophoneList();
+    updateMenuLabels();
+    pushMicrophoneList();
     return;
   }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    availableMicrophones = devices.filter((device) => device.kind === 'audioinput');
+    setAvailableMicrophones(devices);
     renderMicrophoneList();
     updateMenuLabels();
+    pushMicrophoneList();
   } catch (error) {
     console.error('Failed to list microphones:', error);
+    setAvailableMicrophones([]);
+    renderMicrophoneList();
+    updateMenuLabels();
+    pushMicrophoneList();
   }
 }
 
@@ -375,6 +426,7 @@ function saveWidgetMicrophone(deviceId, label) {
     delete payload.apiKeyPresent;
     window.electronAPI.saveSettings(payload);
   }
+  setAvailableMicrophones(availableMicrophones);
   renderMicrophoneList();
   updateMenuLabels();
 }
@@ -1710,6 +1762,7 @@ document.addEventListener('DOMContentLoaded', () => {
           audioStream = null;
         }
       }
+      setAvailableMicrophones(availableMicrophones);
       renderMicrophoneList();
       renderLanguageList(widgetLanguageSearch ? widgetLanguageSearch.value : '');
       updateMenuLabels();
@@ -1730,6 +1783,34 @@ document.addEventListener('DOMContentLoaded', () => {
     let isHovering = false;
     let hoverOutTimeout = null;
     let openSubmenu = null;
+    let submenuCloseTimeout = null;
+    const SUBMENU_CLOSE_DELAY_MS = 140;
+
+    const clearSubmenuCloseTimeout = () => {
+      if (submenuCloseTimeout) {
+        clearTimeout(submenuCloseTimeout);
+        submenuCloseTimeout = null;
+      }
+    };
+
+    const scheduleSubmenuClose = (submenuName) => {
+      if (!submenuName || !widgetContextMenu) {
+        return;
+      }
+      clearSubmenuCloseTimeout();
+      submenuCloseTimeout = setTimeout(() => {
+        if (!isContextOpen) {
+          submenuCloseTimeout = null;
+          return;
+        }
+        const targetItem = widgetContextMenu.querySelector(`.menu-item[data-submenu="${submenuName}"]`);
+        targetItem?.classList.remove('submenu-open');
+        if (openSubmenu === submenuName) {
+          openSubmenu = null;
+        }
+        submenuCloseTimeout = null;
+      }, SUBMENU_CLOSE_DELAY_MS);
+    };
 
     if (widgetLanguageSearch) {
       widgetLanguageSearch.addEventListener('input', () => {
@@ -1767,6 +1848,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeContextMenu = () => {
       widgetContainer.classList.remove('context-open');
       isContextOpen = false;
+      clearSubmenuCloseTimeout();
       if (openSubmenu) {
         const openItem = widgetContextMenu?.querySelector(`.menu-item[data-submenu="${openSubmenu}"]`);
         openItem?.classList.remove('submenu-open');
@@ -1788,6 +1870,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!widgetContextMenu) {
         return;
       }
+      clearSubmenuCloseTimeout();
       const targetItem = widgetContextMenu.querySelector(`.menu-item[data-submenu="${submenuName}"]`);
       if (!targetItem) {
         return;
@@ -1802,11 +1885,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const submenuItems = widgetContextMenu?.querySelectorAll('.menu-item[data-submenu]') || [];
     submenuItems.forEach((item) => {
+      const submenuName = item.dataset.submenu;
+      const panel = submenuName
+        ? widgetContextMenu?.querySelector(`[data-submenu-panel="${submenuName}"]`)
+        : null;
       item.addEventListener('mouseenter', () => {
         if (!isContextOpen) {
           return;
         }
-        const submenuName = item.dataset.submenu;
+        clearSubmenuCloseTimeout();
         if (!submenuName) {
           return;
         }
@@ -1821,19 +1908,31 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isContextOpen) {
           return;
         }
-        const submenuName = item.dataset.submenu;
         if (!submenuName) {
           return;
         }
-        const panel = widgetContextMenu?.querySelector(`[data-submenu-panel="${submenuName}"]`);
         if (panel && event.relatedTarget && panel.contains(event.relatedTarget)) {
           return;
         }
-        item.classList.remove('submenu-open');
-        if (openSubmenu === submenuName) {
-          openSubmenu = null;
-        }
+        scheduleSubmenuClose(submenuName);
       });
+      if (panel) {
+        panel.addEventListener('mouseenter', () => {
+          if (!isContextOpen) {
+            return;
+          }
+          clearSubmenuCloseTimeout();
+        });
+        panel.addEventListener('mouseleave', (event) => {
+          if (!isContextOpen) {
+            return;
+          }
+          if (event.relatedTarget && item.contains(event.relatedTarget)) {
+            return;
+          }
+          scheduleSubmenuClose(submenuName);
+        });
+      }
     });
 
     if (widgetContextMenu) {
@@ -1841,6 +1940,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isContextOpen) {
           return;
         }
+        clearSubmenuCloseTimeout();
         const openItem = widgetContextMenu.querySelector('.menu-item.submenu-open');
         openItem?.classList.remove('submenu-open');
         openSubmenu = null;

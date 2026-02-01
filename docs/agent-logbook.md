@@ -39,6 +39,33 @@ Use this exact template for each new entry:
 
 <!-- Add new entries here -->
 
+### 2026-02-01 15:08 +0700 - Codex
+
+- Scope: Story 0.7 low-audio hallucination guard
+- Summary: Skipped Whisper on near-silence using diagnostics, expanded subtitle hallucination filters, and added mic label/id to no-audio errors.
+- Files touched: main.js, docs/stories/0.7-no-speech-no-placeholder-transcript.md
+- Commands/tests: date
+- Outcome: done
+- Notes: No automated tests run for this update.
+
+### 2026-02-01 14:38 +0700 - Codex
+
+- Scope: Story 0.7 follow-up (low audio edge case)
+- Summary: Allowed short numeric utterances through no-speech heuristics and added post-process refusal fallback to raw transcript.
+- Files touched: main.js, docs/stories/0.7-no-speech-no-placeholder-transcript.md
+- Commands/tests: none
+- Outcome: done
+- Notes: Recommend re-testing with “1, 2” low audio case.
+
+### 2026-02-01 14:28 +0700 - Codex
+
+- Scope: Story 0.7 no-speech regression fix
+- Summary: Hardened no-speech detection (empty/filler/diagnostics-assisted) and ensured no-speech paths emit error messaging without persisting history/notes; updated story record and ran test-core.
+- Files touched: main.js, docs/stories/0.7-no-speech-no-placeholder-transcript.md
+- Commands/tests: node test-core.js
+- Outcome: done
+- Notes: Manual regression script documented in story; not executed here.
+
 ### 2026-02-01 14:03 +0700 - Codex
 
 - Scope: Video review → backlog story updates (no new epics)

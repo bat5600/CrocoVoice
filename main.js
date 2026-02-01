@@ -74,6 +74,8 @@ let widgetOverlayWindow = null;
 let widgetOverlayMoveInterval = null;
 let widgetOverlayBounds = null;
 let widgetOverlayDisplayId = null;
+let cachedMicrophones = [];
+let cachedMicrophonesReady = false;
 let trayMenuOpen = false;
 let widgetContextMenuOpen = false;
 let trayIconDefault = null;
@@ -156,6 +158,44 @@ const SNIPPET_FUZZY = {
 };
 
 const NO_AUDIO_MESSAGE = 'Aucun audio capte.';
+
+function resolveMicrophoneLabel(micDevice) {
+  const candidateId = typeof micDevice === 'string' ? micDevice.trim() : '';
+  const fallbackId = candidateId
+    || (typeof settings.microphoneId === 'string' ? settings.microphoneId.trim() : '');
+  const settingsLabel = typeof settings.microphoneLabel === 'string'
+    ? settings.microphoneLabel.trim()
+    : '';
+  if (settingsLabel) {
+    return { id: fallbackId, label: settingsLabel };
+  }
+  if (fallbackId && cachedMicrophonesReady && Array.isArray(cachedMicrophones)) {
+    const match = cachedMicrophones.find((mic) => mic.deviceId === fallbackId);
+    if (match && typeof match.label === 'string' && match.label.trim()) {
+      return { id: fallbackId, label: match.label.trim() };
+    }
+  }
+  return { id: fallbackId, label: '' };
+}
+
+function buildNoAudioCheckSuffix(micDevice) {
+  const { id, label } = resolveMicrophoneLabel(micDevice);
+  if (label) {
+    return `Verifiez le micro utilise (${label}).`;
+  }
+  if (id) {
+    return `Verifiez le micro utilise (${id}).`;
+  }
+  return 'Verifiez votre micro.';
+}
+
+function buildNoAudioMessage(micDevice) {
+  return `${NO_AUDIO_MESSAGE} ${buildNoAudioCheckSuffix(micDevice)}`;
+}
+
+function buildLowAudioMessage(micDevice) {
+  return `Audio trop faible. ${buildNoAudioCheckSuffix(micDevice)}`;
+}
 
 let widgetDisplayId = null;
 let widgetDisplayPoll = null;
@@ -251,6 +291,7 @@ const defaultSettings = {
     contextOverrides: {},
     aiReplyEnabled: false,
     aiReplyIncludeSensitive: false,
+    historyMaxTokens: 4000,
   },
   notificationsEndpoint: '',
   notificationsPollMinutes: 60,
@@ -282,6 +323,8 @@ let contextSnapshotCache = null;
 let contextSnapshotCapturedAt = 0;
 let uploadJobs = [];
 const uploadJobById = new Map();
+let uploadQueueActive = false;
+let uploadQueueScheduled = false;
 const streamSessions = new Map();
 let lastPolishDiff = null;
 const DIAGNOSTIC_EVENT_LIMIT = 20;
@@ -795,6 +838,10 @@ async function startLocalModelDownload(model) {
     let totalBytes = 0;
     let aborted = false;
     let startOffset = 0;
+    let redirectCount = 0;
+    let currentRequest = null;
+    const maxRedirects = 5;
+    const timeoutMs = 120000;
 
     if (fs.existsSync(partialPath)) {
       try {
@@ -806,20 +853,41 @@ async function startLocalModelDownload(model) {
       }
     }
 
-    const headers = {};
-    if (startOffset > 0) {
-      headers.Range = `bytes=${startOffset}-`;
-    }
+    const buildHeaders = () => {
+      const headers = {};
+      if (startOffset > 0) {
+        headers.Range = `bytes=${startOffset}-`;
+      }
+      return headers;
+    };
 
-    const client = model.url.startsWith('https') ? https : http;
-    const request = client.get(model.url, { headers }, (response) => {
-      if (!response || !response.statusCode || response.statusCode >= 400) {
-        updateLocalModelDownloadState(model.id, { status: 'failed', error: `HTTP ${response?.statusCode || 'error'}` }, { persist: true, force: true });
-        localModelDownloadJobs.delete(model.id);
-        resolve({ ok: false, reason: 'http_error' });
+    const failDownload = (reason, errorMessage) => {
+      updateLocalModelDownloadState(model.id, { status: 'failed', error: errorMessage || reason || 'download_failed' }, { persist: true, force: true });
+      localModelDownloadJobs.delete(model.id);
+      resolve({ ok: false, reason: reason || 'download_failed' });
+    };
+
+    const handleResponse = (response, requestUrl) => {
+      if (aborted) {
         return;
       }
-      if (startOffset > 0 && response.statusCode === 200) {
+      const statusCode = response?.statusCode || 0;
+      if (statusCode >= 300 && statusCode < 400 && response?.headers?.location) {
+        if (redirectCount >= maxRedirects) {
+          failDownload('redirect_limit', 'too_many_redirects');
+          return;
+        }
+        redirectCount += 1;
+        const nextUrl = new URL(response.headers.location, requestUrl).toString();
+        response.resume();
+        makeRequest(nextUrl);
+        return;
+      }
+      if (!response || !statusCode || statusCode >= 400) {
+        failDownload('http_error', `HTTP ${statusCode || 'error'}`);
+        return;
+      }
+      if (startOffset > 0 && statusCode === 200) {
         try {
           fs.unlinkSync(partialPath);
         } catch {}
@@ -827,7 +895,7 @@ async function startLocalModelDownload(model) {
         receivedBytes = 0;
       }
       const contentLength = Number.parseInt(response.headers['content-length'] || '0', 10) || 0;
-      totalBytes = response.statusCode === 206 ? (contentLength + startOffset) : contentLength;
+      totalBytes = statusCode === 206 ? (contentLength + startOffset) : contentLength;
       updateLocalModelDownloadState(model.id, {
         status: 'downloading',
         totalBytes,
@@ -860,6 +928,9 @@ async function startLocalModelDownload(model) {
         try {
           const checksum = await computeFileSha256(partialPath);
           if (checksum.toLowerCase() !== model.sha256.toLowerCase()) {
+            try {
+              fs.unlinkSync(partialPath);
+            } catch {}
             updateLocalModelDownloadState(model.id, { status: 'failed', error: 'checksum_mismatch' }, { persist: true, force: true });
             localModelDownloadJobs.delete(model.id);
             resolve({ ok: false, reason: 'checksum_mismatch' });
@@ -888,21 +959,35 @@ async function startLocalModelDownload(model) {
         localModelDownloadJobs.delete(model.id);
         resolve({ ok: false, reason: 'write_failed' });
       });
-    });
+    };
 
-    request.on('error', (error) => {
+    const makeRequest = (urlToGet) => {
       if (aborted) {
         return;
       }
-      updateLocalModelDownloadState(model.id, { status: 'failed', error: error?.message || 'download_failed' }, { persist: true, force: true });
-      localModelDownloadJobs.delete(model.id);
-      resolve({ ok: false, reason: 'download_failed' });
-    });
+      const client = urlToGet.startsWith('https') ? https : http;
+      const headers = buildHeaders();
+      const request = client.get(urlToGet, { headers }, (response) => handleResponse(response, urlToGet));
+      currentRequest = request;
+      request.setTimeout(timeoutMs, () => {
+        request.destroy(new Error('download_timeout'));
+      });
+      request.on('error', (error) => {
+        if (aborted) {
+          return;
+        }
+        updateLocalModelDownloadState(model.id, { status: 'failed', error: error?.message || 'download_failed' }, { persist: true, force: true });
+        localModelDownloadJobs.delete(model.id);
+        resolve({ ok: false, reason: 'download_failed' });
+      });
+    };
+
+    makeRequest(model.url);
 
     job.cancel = () => {
       aborted = true;
       try {
-        request.destroy();
+        currentRequest?.destroy();
       } catch {}
       updateLocalModelDownloadState(model.id, { status: 'paused', error: null }, { persist: true, force: true });
       localModelDownloadJobs.delete(model.id);
@@ -1478,8 +1563,10 @@ async function createUploadJobFromFile(filePath) {
     return { ok: false, reason: `Fichier trop volumineux (>${config.maxMb}MB).` };
   }
 
+  const now = new Date().toISOString();
   const job = {
     id: crypto.randomUUID(),
+    noteId: crypto.randomUUID(),
     filePath,
     fileName: path.basename(filePath),
     fileSize: stats.size,
@@ -1487,13 +1574,34 @@ async function createUploadJobFromFile(filePath) {
     progress: 0,
     error: null,
     cancelled: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+    durationMs: null,
+    placeholderText: 'Import audio en cours...',
   };
+  if (!store) {
+    return { ok: false, reason: 'Stockage indisponible.' };
+  }
+  try {
+    await store.addNote({
+      id: job.noteId,
+      user_id: resolveUploadUserId(),
+      title: deriveUploadTitle(job.fileName),
+      text: job.placeholderText,
+      metadata: buildUploadNoteMetadata(job, { status: 'queued' }),
+      created_at: now,
+      updated_at: now,
+    });
+    scheduleDebouncedSync();
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'Impossible de créer la note.' };
+  }
   uploadJobs = [job, ...uploadJobs].slice(0, 20);
   uploadJobById.set(job.id, job);
+  persistUploadJob(job);
   sendDashboardEvent('dashboard:data-updated');
-  setImmediate(() => processUploadJob(job));
+  kickUploadQueue();
   return { ok: true, job: serializeUploadJob(job) };
 }
 
@@ -2082,6 +2190,64 @@ function shouldTreatDiagnosticsAsNoSpeech(diagnostics) {
   return false;
 }
 
+function shouldSkipTranscriptionForSilence(diagnostics, qualityClass = null) {
+  if (!diagnostics || typeof diagnostics !== 'object') {
+    return false;
+  }
+  const silenceRatio = Number.isFinite(diagnostics.silenceRatio) ? diagnostics.silenceRatio : null;
+  const rmsAvg = Number.isFinite(diagnostics.rmsAvg) ? diagnostics.rmsAvg : null;
+  const rmsPeak = Number.isFinite(diagnostics.rmsPeak) ? diagnostics.rmsPeak : null;
+  const activeMs = Number.isFinite(diagnostics.activeMs) ? diagnostics.activeMs : null;
+  const samples = Number.isFinite(diagnostics.samples) ? diagnostics.samples : null;
+  if (samples !== null && samples < 6) {
+    return false;
+  }
+  const silenceExtreme = silenceRatio !== null && silenceRatio >= 0.95;
+  const rmsVeryLow = rmsAvg !== null && rmsAvg > 0 && rmsAvg < 0.006;
+  const peakVeryLow = rmsPeak !== null && rmsPeak > 0 && rmsPeak < 0.008;
+  const activeVeryLow = activeMs !== null && activeMs >= 0 && activeMs < 80;
+  if (silenceExtreme || rmsVeryLow || peakVeryLow || activeVeryLow) {
+    return true;
+  }
+  const flags = [
+    silenceRatio !== null && silenceRatio >= 0.9,
+    rmsAvg !== null && rmsAvg > 0 && rmsAvg < 0.008,
+    rmsPeak !== null && rmsPeak > 0 && rmsPeak < 0.01,
+    activeMs !== null && activeMs >= 0 && activeMs < 120,
+  ];
+  const score = flags.filter(Boolean).length;
+  if (score >= 3) {
+    return true;
+  }
+  if (score >= 2 && qualityClass === 'degraded') {
+    return true;
+  }
+  return false;
+}
+
+function describeSilenceDiagnostics(diagnostics, qualityClass = null) {
+  if (!diagnostics || typeof diagnostics !== 'object') {
+    return qualityClass || '';
+  }
+  const parts = [];
+  if (Number.isFinite(diagnostics.silenceRatio)) {
+    parts.push(`silence=${diagnostics.silenceRatio.toFixed(2)}`);
+  }
+  if (Number.isFinite(diagnostics.rmsAvg)) {
+    parts.push(`rms=${diagnostics.rmsAvg.toFixed(4)}`);
+  }
+  if (Number.isFinite(diagnostics.rmsPeak)) {
+    parts.push(`peak=${diagnostics.rmsPeak.toFixed(4)}`);
+  }
+  if (Number.isFinite(diagnostics.activeMs)) {
+    parts.push(`activeMs=${Math.round(diagnostics.activeMs)}`);
+  }
+  if (qualityClass) {
+    parts.push(`quality=${qualityClass}`);
+  }
+  return parts.join(' ');
+}
+
 function isNoAudioTranscription(text, diagnostics = null) {
   if (!text || typeof text !== 'string') {
     return true;
@@ -2094,9 +2260,15 @@ function isNoAudioTranscription(text, diagnostics = null) {
   if (!compact) {
     return true;
   }
+  const hasDigits = /[0-9]/.test(compact);
+  const hasLetters = /[a-z]/.test(compact);
   const hardFragments = [
     'sous titres realises par la communaute d amara org',
     'sous titrage st 501',
+    'soustitreur com',
+    'par soustitreur com',
+    'sous titreur com',
+    'par sous titreur com',
     'subtitles by the amara org community',
     'subtitles by amara org',
     'subtitles by amara',
@@ -2110,6 +2282,9 @@ function isNoAudioTranscription(text, diagnostics = null) {
   }
   const silenceLike = shouldTreatDiagnosticsAsNoSpeech(diagnostics);
   if (!silenceLike) {
+    return false;
+  }
+  if (hasDigits && !hasLetters) {
     return false;
   }
   const softFragments = [
@@ -2126,6 +2301,41 @@ function isNoAudioTranscription(text, diagnostics = null) {
     return true;
   }
   return false;
+}
+
+function isPostProcessRefusal(text) {
+  if (!text || typeof text !== 'string') {
+    return false;
+  }
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return false;
+  }
+  const compact = normalized.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!compact) {
+    return false;
+  }
+  const fragments = [
+    'je suis desole',
+    'je suis desolee',
+    'je suis navre',
+    'je ne peux pas',
+    'je ne peux pas traiter',
+    'je ne peux pas traiter ce texte',
+    'je ne peux pas repondre',
+    'je ne peux pas vous aider',
+    'i am sorry',
+    'im sorry',
+    'i cannot',
+    'i cant',
+    'i cannot process',
+    'i cant process',
+    'i cannot help',
+    'i cannot assist',
+    'as an ai',
+    'i am an ai',
+  ];
+  return fragments.some((fragment) => compact === fragment || compact.includes(fragment));
 }
 
 function getSubscriptionSnapshot() {
@@ -2664,7 +2874,7 @@ function armProcessingTimeout() {
       return;
     }
     console.warn('Processing timeout: no audio received from renderer.');
-    setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+    setRecordingState(RecordingState.ERROR, buildNoAudioMessage(settings.microphoneId || null));
     scheduleReturnToIdle(3000);
   }, 4000);
 }
@@ -2896,6 +3106,10 @@ async function postProcessText(text, prompt, contextHint) {
       }),
     });
     const content = response.choices?.[0]?.message?.content?.trim();
+    if (content && isPostProcessRefusal(content)) {
+      recordDiagnosticEvent('postprocess_refusal', content.slice(0, 160));
+      return text;
+    }
     return content || text;
   } catch (error) {
     console.error('Post-processing error:', error);
@@ -4365,6 +4579,10 @@ async function runTranscriptionPipeline(buffer, mimeType, diagnostics = null, qu
   lastNetworkLatencyMs = null;
   lastFallbackReason = null;
   lastTranscriptionPath = 'cloud';
+  if (shouldSkipTranscriptionForSilence(diagnostics, qualityClass)) {
+    recordDiagnosticEvent('audio_skip_silence', describeSilenceDiagnostics(diagnostics, qualityClass));
+    return { skip: true, transcribedText: '', reason: 'audio_too_quiet' };
+  }
   let inputBuffer = buffer;
   let enhancementReason = null;
   if (shouldAttemptLocalEnhancement(qualityClass)) {
@@ -4389,7 +4607,7 @@ async function runTranscriptionPipeline(buffer, mimeType, diagnostics = null, qu
     transcribedText = await transcribeAudio(inputBuffer, mimeType);
   }
   if (!transcribedText || isNoAudioTranscription(transcribedText, diagnostics)) {
-    return { skip: true, transcribedText: '' };
+    return { skip: true, transcribedText: '', reason: 'no_audio' };
   }
 
   const contextState = await getContextStateCached();
@@ -4518,9 +4736,14 @@ async function handleAudioPayload(event, audioData) {
 
     const pipelineResult = await runTranscriptionPipeline(buffer, mimeType, audioDiagnostics, audioQualityClass);
     if (pipelineResult.skip) {
-      setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+      const micHint = micDevice || settings.microphoneId || null;
+      const message = pipelineResult.reason === 'audio_too_quiet'
+        ? buildLowAudioMessage(micHint)
+        : buildNoAudioMessage(micHint);
+      setRecordingState(RecordingState.ERROR, message);
       scheduleReturnToIdle(3000);
-      event.reply('transcription-success', '');
+      event.reply('transcription-error', message);
+      sendDashboardEvent('dashboard:transcription-error', message);
       return;
     }
 
@@ -4665,12 +4888,226 @@ function getWavDurationMs(buffer) {
   return Math.round((totalSamples / sampleRate) * 1000);
 }
 
+function readSynchsafeInt(buffer, offset) {
+  if (!buffer || buffer.length < offset + 4) {
+    return 0;
+  }
+  return ((buffer[offset] & 0x7f) << 21)
+    | ((buffer[offset + 1] & 0x7f) << 14)
+    | ((buffer[offset + 2] & 0x7f) << 7)
+    | (buffer[offset + 3] & 0x7f);
+}
+
+function getMp3DurationMs(buffer) {
+  if (!buffer || buffer.length < 10) {
+    return null;
+  }
+  let offset = 0;
+  if (buffer.toString('ascii', 0, 3) === 'ID3') {
+    const size = readSynchsafeInt(buffer, 6);
+    offset = 10 + size;
+  }
+  while (offset + 4 < buffer.length && buffer[offset] === 0x00) {
+    offset += 1;
+  }
+  while (offset + 4 < buffer.length) {
+    if (buffer[offset] === 0xff && (buffer[offset + 1] & 0xe0) === 0xe0) {
+      break;
+    }
+    offset += 1;
+  }
+  if (offset + 4 >= buffer.length) {
+    return null;
+  }
+  const header = buffer.readUInt32BE(offset);
+  const versionBits = (header >> 19) & 0x3;
+  const layerBits = (header >> 17) & 0x3;
+  if (versionBits === 1 || layerBits !== 1) {
+    return null;
+  }
+  const bitrateIndex = (header >> 12) & 0xf;
+  const sampleRateIndex = (header >> 10) & 0x3;
+  if (bitrateIndex === 0 || bitrateIndex === 0xf || sampleRateIndex === 0x3) {
+    return null;
+  }
+  const isMpeg1 = versionBits === 3;
+  const bitrateTable = isMpeg1
+    ? [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0]
+    : [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+  const sampleRateTable = versionBits === 3
+    ? [44100, 48000, 32000]
+    : (versionBits === 2 ? [22050, 24000, 16000] : [11025, 12000, 8000]);
+  const bitrateKbps = bitrateTable[bitrateIndex];
+  const sampleRate = sampleRateTable[sampleRateIndex];
+  if (!bitrateKbps || !sampleRate) {
+    return null;
+  }
+
+  const channelMode = (header >> 6) & 0x3;
+  const isMono = channelMode === 3;
+  const sideInfoLength = isMpeg1 ? (isMono ? 17 : 32) : (isMono ? 9 : 17);
+  const xingOffset = offset + 4 + sideInfoLength;
+  if (xingOffset + 16 <= buffer.length) {
+    const tag = buffer.toString('ascii', xingOffset, xingOffset + 4);
+    if (tag === 'Xing' || tag === 'Info') {
+      const flags = buffer.readUInt32BE(xingOffset + 4);
+      if (flags & 0x1) {
+        const frames = buffer.readUInt32BE(xingOffset + 8);
+        const samplesPerFrame = isMpeg1 ? 1152 : 576;
+        if (frames > 0) {
+          return Math.round((frames * samplesPerFrame * 1000) / sampleRate);
+        }
+      }
+    }
+  }
+
+  let audioBytes = buffer.length - offset;
+  if (buffer.length >= 128 && buffer.toString('ascii', buffer.length - 128, buffer.length - 125) === 'TAG') {
+    audioBytes -= 128;
+  }
+  if (audioBytes <= 0) {
+    return null;
+  }
+  const durationSec = (audioBytes * 8) / (bitrateKbps * 1000);
+  return Number.isFinite(durationSec) ? Math.round(durationSec * 1000) : null;
+}
+
+function getMp4DurationMs(buffer) {
+  if (!buffer || buffer.length < 16) {
+    return null;
+  }
+  const readBox = (start, end) => {
+    if (start + 8 > end) {
+      return null;
+    }
+    let size = buffer.readUInt32BE(start);
+    const type = buffer.toString('ascii', start + 4, start + 8);
+    let headerSize = 8;
+    if (size === 1) {
+      if (start + 16 > end) {
+        return null;
+      }
+      size = Number(buffer.readBigUInt64BE(start + 8));
+      headerSize = 16;
+    } else if (size === 0) {
+      size = end - start;
+    }
+    if (!size || size < headerSize) {
+      return null;
+    }
+    return { size, type, headerSize };
+  };
+
+  const findMvhd = (start, end) => {
+    let cursor = start;
+    while (cursor + 8 <= end) {
+      const box = readBox(cursor, end);
+      if (!box) {
+        return null;
+      }
+      if (box.type === 'mvhd') {
+        const dataOffset = cursor + box.headerSize;
+        if (dataOffset + 20 > end) {
+          return null;
+        }
+        const version = buffer.readUInt8(dataOffset);
+        if (version === 1) {
+          if (dataOffset + 32 > end) {
+            return null;
+          }
+          const timescale = buffer.readUInt32BE(dataOffset + 20);
+          const duration = buffer.readBigUInt64BE(dataOffset + 24);
+          if (!timescale) {
+            return null;
+          }
+          return Math.round((Number(duration) * 1000) / timescale);
+        }
+        const timescale = buffer.readUInt32BE(dataOffset + 12);
+        const duration = buffer.readUInt32BE(dataOffset + 16);
+        if (!timescale) {
+          return null;
+        }
+        return Math.round((duration * 1000) / timescale);
+      }
+      cursor += box.size;
+    }
+    return null;
+  };
+
+  let offset = 0;
+  while (offset + 8 <= buffer.length) {
+    const box = readBox(offset, buffer.length);
+    if (!box) {
+      return null;
+    }
+    if (box.type === 'moov') {
+      return findMvhd(offset + box.headerSize, offset + box.size);
+    }
+    offset += box.size;
+  }
+  return null;
+}
+
+function getAudioDurationMs(buffer, filePath, mimeType) {
+  const ext = filePath ? path.extname(filePath).toLowerCase() : '';
+  if (mimeType === 'audio/wav' || ext === '.wav') {
+    return getWavDurationMs(buffer);
+  }
+  if (mimeType === 'audio/mpeg' || ext === '.mp3') {
+    return getMp3DurationMs(buffer);
+  }
+  if (mimeType === 'audio/x-m4a' || ext === '.m4a') {
+    return getMp4DurationMs(buffer);
+  }
+  return null;
+}
+
+function deriveUploadTitle(fileName) {
+  if (!fileName) {
+    return 'Import audio';
+  }
+  const base = path.parse(fileName).name;
+  return base || fileName;
+}
+
+function buildUploadNoteMetadata(job, overrides = {}) {
+  const status = overrides.status || job.status;
+  const durationMs = Number.isFinite(overrides.duration_ms) ? overrides.duration_ms : job.durationMs;
+  const meta = {
+    source: 'file_upload',
+    upload_id: job.id,
+    status,
+    file: {
+      name: job.fileName,
+      size: job.fileSize,
+      duration_ms: Number.isFinite(durationMs) ? durationMs : null,
+      path: job.filePath,
+    },
+  };
+  if (overrides.error) {
+    meta.error = overrides.error;
+  }
+  if (overrides.completed_at) {
+    meta.completed_at = overrides.completed_at;
+  }
+  return meta;
+}
+
+function isUploadCancelled(job) {
+  return Boolean(job && (job.cancelled || job.status === 'cancelled'));
+}
+
 function updateUploadJob(id, patch) {
   const job = uploadJobById.get(id);
   if (!job) {
     return null;
   }
-  Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+  const updatedAt = new Date().toISOString();
+  Object.assign(job, patch, { updatedAt });
+  if (patch && ['completed', 'failed', 'cancelled'].includes(patch.status)) {
+    job.completedAt = patch.completedAt || updatedAt;
+  }
+  persistUploadJob(job);
   sendDashboardEvent('dashboard:data-updated');
   return job;
 }
@@ -4695,23 +5132,202 @@ function listUploadJobs() {
   return uploadJobs.map(serializeUploadJob).filter(Boolean);
 }
 
+function resolveUploadUserId() {
+  return syncService && syncService.getUser() ? syncService.getUser().id : null;
+}
+
+function persistUploadJob(job) {
+  if (!store || !job) {
+    return;
+  }
+  const payload = {
+    id: job.id,
+    user_id: resolveUploadUserId(),
+    note_id: job.noteId || null,
+    status: job.status,
+    progress: Number.isFinite(job.progress) ? job.progress : 0,
+    file_name: job.fileName,
+    file_size: job.fileSize,
+    file_path: job.filePath,
+    duration_ms: Number.isFinite(job.durationMs) ? job.durationMs : null,
+    error: job.error || null,
+    created_at: job.createdAt,
+    updated_at: job.updatedAt,
+    completed_at: job.completedAt || null,
+  };
+  store.upsertUploadJob(payload)
+    .then(() => store.pruneUploadJobs(50))
+    .catch((error) => {
+      console.warn('Upload job persistence failed:', error?.message || error);
+    });
+}
+
+function hydrateUploadJobRow(row) {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    filePath: row.file_path,
+    fileName: row.file_name,
+    fileSize: row.file_size,
+    status: row.status,
+    progress: Number.isFinite(row.progress) ? row.progress : 0,
+    error: row.error || null,
+    cancelled: row.status === 'cancelled' || row.status === 'cancelling',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at || null,
+    noteId: row.note_id || null,
+    durationMs: Number.isFinite(row.duration_ms) ? row.duration_ms : null,
+  };
+}
+
+async function loadUploadJobsFromStore() {
+  if (!store) {
+    return;
+  }
+  try {
+    const rows = await store.listUploadJobs({ limit: 20 });
+    const hydrated = rows.map(hydrateUploadJobRow).filter(Boolean);
+    uploadJobs = hydrated;
+    uploadJobById.clear();
+    uploadJobs.forEach((job) => {
+      if (['processing', 'cancelling'].includes(job.status)) {
+        job.status = 'queued';
+        job.progress = 0;
+        job.error = null;
+      }
+      uploadJobById.set(job.id, job);
+      persistUploadJob(job);
+    });
+    scheduleUploadQueue();
+  } catch (error) {
+    console.warn('Failed to load upload jobs:', error?.message || error);
+  }
+}
+
+function getNextQueuedUploadJob() {
+  return uploadJobs.find((job) => job && job.status === 'queued' && !job.cancelled);
+}
+
+function scheduleUploadQueue() {
+  if (uploadQueueScheduled) {
+    return;
+  }
+  uploadQueueScheduled = true;
+  setImmediate(() => {
+    uploadQueueScheduled = false;
+    runUploadQueue();
+  });
+}
+
+function kickUploadQueue() {
+  scheduleUploadQueue();
+  runUploadQueue().catch((error) => {
+    console.warn('Upload queue run failed:', error?.message || error);
+  });
+}
+
+async function runUploadQueue() {
+  if (uploadQueueActive) {
+    return;
+  }
+  uploadQueueActive = true;
+  try {
+    let next = getNextQueuedUploadJob();
+    while (next) {
+      await processUploadJob(next);
+      next = getNextQueuedUploadJob();
+    }
+  } finally {
+    uploadQueueActive = false;
+  }
+}
+
+async function upsertUploadNote(job, { text, title, status, durationMs, error, completedAt } = {}) {
+  if (!store || !job || !job.noteId) {
+    return;
+  }
+  const metadata = buildUploadNoteMetadata(job, {
+    status: status || job.status,
+    duration_ms: durationMs,
+    error,
+    completed_at: completedAt,
+  });
+  await store.addNote({
+    id: job.noteId,
+    user_id: resolveUploadUserId(),
+    title: title || deriveUploadTitle(job.fileName),
+    text: text || '',
+    metadata,
+    created_at: job.createdAt,
+    updated_at: new Date().toISOString(),
+  });
+  scheduleDebouncedSync();
+}
+
+async function deleteUploadNote(job) {
+  if (!store || !job || !job.noteId) {
+    return;
+  }
+  await store.deleteNote(job.noteId);
+  if (syncService && syncService.isReady()) {
+    await syncService.deleteRemote('notes', job.noteId);
+  }
+  scheduleDebouncedSync();
+  job.noteId = null;
+}
+
+async function finalizeUploadFailure(job, message) {
+  if (!job) {
+    return;
+  }
+  await deleteUploadNote(job);
+  updateUploadJob(job.id, { status: 'failed', error: message || 'Erreur de traitement.' });
+}
+
+async function finalizeUploadCancel(job) {
+  if (!job) {
+    return;
+  }
+  await deleteUploadNote(job);
+  updateUploadJob(job.id, { status: 'cancelled', error: null });
+}
+
 async function processUploadJob(job) {
+  if (!job || job.status !== 'queued') {
+    return;
+  }
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
+    return;
+  }
   const config = getUploadConfig();
-  updateUploadJob(job.id, { status: 'processing', progress: 10 });
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
+    return;
+  }
+  updateUploadJob(job.id, { status: 'processing', progress: 10, error: null });
   let buffer = null;
   try {
     buffer = await fs.promises.readFile(job.filePath);
   } catch (error) {
-    updateUploadJob(job.id, { status: 'failed', error: error?.message || 'Lecture fichier impossible.' });
+    await finalizeUploadFailure(job, error?.message || 'Lecture fichier impossible.');
     return;
   }
-  if (job.cancelled) {
-    updateUploadJob(job.id, { status: 'cancelled' });
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
     return;
   }
 
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
+    return;
+  }
   updateUploadJob(job.id, { status: 'processing', progress: 35 });
   const mimeType = getMimeTypeForPath(job.filePath);
+  job.durationMs = getAudioDurationMs(buffer, job.filePath, mimeType);
   let transcribedText = '';
   const localAsr = await runLocalAsr(buffer, mimeType, { scope: 'upload' });
   if (localAsr.used) {
@@ -4720,7 +5336,7 @@ async function processUploadJob(job) {
     try {
       transcribedText = await transcribeAudio(buffer, mimeType);
     } catch (error) {
-      updateUploadJob(job.id, { status: 'failed', error: error?.message || 'Transcription impossible.' });
+      await finalizeUploadFailure(job, error?.message || 'Transcription impossible.');
       return;
     }
   } else {
@@ -4728,41 +5344,52 @@ async function processUploadJob(job) {
     const baseReason = localAsr.reason === 'local_asr_disabled'
       ? 'Transcription locale indisponible.'
       : 'Transcription locale en echec.';
-    updateUploadJob(job.id, { status: 'failed', error: `${baseReason} ${fallbackHint}` });
+    await finalizeUploadFailure(job, `${baseReason} ${fallbackHint}`);
     return;
   }
-  if (job.cancelled) {
-    updateUploadJob(job.id, { status: 'cancelled' });
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
+    return;
+  }
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
     return;
   }
   updateUploadJob(job.id, { status: 'processing', progress: 80 });
 
-  const durationMs = mimeType === 'audio/wav' ? getWavDurationMs(buffer) : null;
-  const fileMeta = {
-    source: 'file_upload',
-    file: {
-      name: job.fileName,
-      size: job.fileSize,
-      duration_ms: durationMs,
-      path: job.filePath,
-    },
-  };
-
-  const finalText = transcribedText.trim();
-  const title = await generateEntryTitle(finalText || job.fileName);
-  const userId = syncService && syncService.getUser() ? syncService.getUser().id : null;
-  await store.addNote({
-    id: crypto.randomUUID(),
-    user_id: userId,
+  let pipelineResult = null;
+  try {
+    pipelineResult = await runTextPipeline(transcribedText);
+  } catch (error) {
+    await finalizeUploadFailure(job, error?.message || 'Post-traitement impossible.');
+    return;
+  }
+  if (pipelineResult.skip) {
+    await finalizeUploadFailure(job, 'Aucun audio détecté.');
+    return;
+  }
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
+    return;
+  }
+  const finalText = pipelineResult.finalText || pipelineResult.formattedText || transcribedText.trim();
+  const title = pipelineResult.title || deriveUploadTitle(job.fileName);
+  const completedAt = new Date().toISOString();
+  if (isUploadCancelled(job)) {
+    await finalizeUploadCancel(job);
+    return;
+  }
+  await upsertUploadNote(job, {
     text: finalText,
     title,
-    metadata: fileMeta,
+    status: 'completed',
+    durationMs: job.durationMs,
+    completedAt,
   });
   sendDashboardEvent('dashboard:data-updated');
-  scheduleDebouncedSync();
   await incrementQuotaUsage(finalText);
 
-  updateUploadJob(job.id, { status: 'completed', progress: 100 });
+  updateUploadJob(job.id, { status: 'completed', progress: 100, completedAt });
 }
 
 function sanitizeContextForExport(contextPayload, includeSensitive = false) {
@@ -4795,6 +5422,7 @@ function getCrocOmniSettings() {
     contextOverrides: {},
     aiReplyEnabled: false,
     aiReplyIncludeSensitive: false,
+    historyMaxTokens: 4000,
   };
   const current = settings.crocOmni && typeof settings.crocOmni === 'object' ? settings.crocOmni : {};
   return {
@@ -4805,6 +5433,7 @@ function getCrocOmniSettings() {
       : base.contextOverrides || {},
     aiReplyEnabled: current.aiReplyEnabled === true,
     aiReplyIncludeSensitive: current.aiReplyIncludeSensitive === true,
+    historyMaxTokens: Number.isFinite(current.historyMaxTokens) ? current.historyMaxTokens : base.historyMaxTokens,
   };
 }
 
@@ -5265,13 +5894,15 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
   try {
     if (session.remoteFinalText && typeof session.remoteFinalText === 'string') {
       lastTranscriptionPath = 'remote';
-      const pipelineResult = await runTextPipeline(session.remoteFinalText.trim());
+      const pipelineResult = await runTextPipeline(session.remoteFinalText.trim(), payload.audioDiagnostics || null);
       if (pipelineResult.skip) {
-        setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+        const message = buildNoAudioMessage(settings.microphoneId || null);
+        setRecordingState(RecordingState.ERROR, message);
         scheduleReturnToIdle(3000);
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('transcription-success', '');
+          mainWindow.webContents.send('transcription-error', message);
         }
+        sendDashboardEvent('dashboard:transcription-error', message);
         return;
       }
       const {
@@ -5330,11 +5961,16 @@ ipcMain.on('stream:stop', async (event, payload = {}) => {
     const audioQualityClass = payload.audioQualityClass || null;
     const pipelineResult = await runTranscriptionPipeline(buffer, mimeType, audioDiagnostics, audioQualityClass);
     if (pipelineResult.skip) {
-      setRecordingState(RecordingState.ERROR, NO_AUDIO_MESSAGE);
+      const micHint = settings.microphoneId || null;
+      const message = pipelineResult.reason === 'audio_too_quiet'
+        ? buildLowAudioMessage(micHint)
+        : buildNoAudioMessage(micHint);
+      setRecordingState(RecordingState.ERROR, message);
       scheduleReturnToIdle(3000);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('transcription-success', '');
+        mainWindow.webContents.send('transcription-error', message);
       }
+      sendDashboardEvent('dashboard:transcription-error', message);
       return;
     }
     const { transcribedText, formattedText, finalText, title, divergenceScore, contextState } = pipelineResult;
@@ -5418,6 +6054,21 @@ ipcMain.on('mic-monitor:error', (event, message) => {
   sendDashboardEvent('onboarding:mic-error', message);
 });
 
+ipcMain.on('microphones:update', (event, payload) => {
+  if (!Array.isArray(payload)) {
+    return;
+  }
+  cachedMicrophonesReady = true;
+  cachedMicrophones = payload.map((mic) => ({
+    deviceId: mic?.deviceId || '',
+    label: mic?.label || '',
+    groupId: mic?.groupId || '',
+  }));
+  sendDashboardEvent('microphones:updated', cachedMicrophones);
+});
+
+ipcMain.handle('microphones:list', () => (cachedMicrophonesReady ? cachedMicrophones : null));
+
 ipcMain.on('recording-error', (event, error) => {
   console.error('Recording error:', error);
   recordingStartTime = null;
@@ -5430,12 +6081,16 @@ ipcMain.on('recording-error', (event, error) => {
 ipcMain.on('recording-empty', (event, reason) => {
   recordingStartTime = null;
   clearProcessingTimeout();
+  const micHint = settings.microphoneId || null;
+  const noAudioMessage = buildNoAudioMessage(micHint);
+  const idleTimeoutMessage = `Arret automatique : aucun son detecte. ${buildNoAudioCheckSuffix(micHint)}`;
   const messages = {
-    idle_timeout: "Arrêt automatique : aucun son détecté.",
-    no_audio: NO_AUDIO_MESSAGE,
+    idle_timeout: idleTimeoutMessage,
+    no_audio: noAudioMessage,
   };
-  setRecordingState(RecordingState.ERROR, messages[reason] || NO_AUDIO_MESSAGE);
-  recordDiagnosticEvent('recording_empty', messages[reason] || NO_AUDIO_MESSAGE);
+  const message = messages[reason] || noAudioMessage;
+  setRecordingState(RecordingState.ERROR, message);
+  recordDiagnosticEvent('recording_empty', message);
   scheduleReturnToIdle(3000);
 });
 
@@ -5604,6 +6259,7 @@ ipcMain.handle('onboarding:delivery-check', async (event, sampleText) => {
 });
 
 ipcMain.handle('dashboard:data', async () => {
+  kickUploadQueue();
   const stats = await store.getHistoryStats(14);
   const notesTotal = await store.getNotesCount();
   const history = await store.listHistory({ limit: 200 });
@@ -5791,6 +6447,72 @@ ipcMain.handle('crocomni:search', async (event, query, options = {}) => {
   return store.searchDocuments(raw, { source, limit, since });
 });
 
+async function buildCrocOmniSearchSources(query, options = {}) {
+  if (!store) {
+    return [];
+  }
+  const raw = typeof query === 'string' ? query.trim() : '';
+  if (!raw) {
+    return [];
+  }
+  const includeSensitive = options.includeSensitive === true;
+  const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(12, options.limit)) : 6;
+  const hits = await store.searchDocuments(raw, { source: 'all', limit });
+  const sources = [];
+  const seen = new Set();
+
+  for (const hit of hits || []) {
+    const source = hit?.source === 'notes' ? 'notes' : (hit?.source === 'history' ? 'history' : '');
+    const docId = hit?.doc_id || hit?.docId || hit?.id || '';
+    if (!source || !docId) {
+      continue;
+    }
+    const key = `${source}:${docId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    let title = typeof hit?.title === 'string' ? hit.title : '';
+    let excerpt = typeof hit?.snippet === 'string' ? hit.snippet : '';
+    excerpt = excerpt.replace(/\u0001|\u0002/g, '').trim();
+
+    if (!excerpt) {
+      try {
+        const doc = source === 'notes'
+          ? await store.getNoteById(docId)
+          : await store.getHistoryById(docId);
+        const text = doc?.text || doc?.raw_text || '';
+        excerpt = String(text).slice(0, 360).trim();
+        if (String(text).length > 360) {
+          excerpt += '...';
+        }
+        if (!title) {
+          title = doc?.title || '';
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!includeSensitive) {
+      title = redactSensitiveText(title);
+      excerpt = redactSensitiveText(excerpt);
+    }
+    if (excerpt.length > 600) {
+      excerpt = `${excerpt.slice(0, 600).trim()}...`;
+    }
+    sources.push({
+      source,
+      doc_id: String(docId),
+      title,
+      excerpt,
+    });
+  }
+
+  return sources;
+}
+
 ipcMain.handle('crocomni:answer', async (event, payload = {}) => {
   const query = typeof payload.query === 'string' ? payload.query.trim() : '';
   const hits = Array.isArray(payload.hits) ? payload.hits : [];
@@ -5914,6 +6636,15 @@ ipcMain.handle('crocomni:archive', async (event, conversationId) => {
   return { ok: true };
 });
 
+ipcMain.handle('crocomni:clear', async (event, conversationId) => {
+  if (!conversationId) {
+    return { ok: false };
+  }
+  await store.clearCrocOmniConversation(conversationId);
+  sendDashboardEvent('dashboard:data-updated');
+  return { ok: true };
+});
+
 ipcMain.handle('crocomni:messages', async (event, conversationId) => {
   if (!conversationId) {
     return [];
@@ -5923,7 +6654,19 @@ ipcMain.handle('crocomni:messages', async (event, conversationId) => {
 
 ipcMain.handle('crocomni:send', async (event, payload = {}) => {
   const conversationId = payload.conversationId || crypto.randomUUID();
+  const requestId = payload.requestId || crypto.randomUUID();
+  const stream = payload.stream === true;
   const content = typeof payload.content === 'string' ? payload.content.trim() : '';
+  const sendStream = (data) => {
+    if (!stream || !event?.sender) {
+      return;
+    }
+    if (event.sender.isDestroyed?.()) {
+      return;
+    }
+    event.sender.send('crocomni:stream', { conversationId, requestId, ...data });
+  };
+
   if (!content) {
     return { ok: false, error: 'Message vide.' };
   }
@@ -5931,6 +6674,7 @@ ipcMain.handle('crocomni:send', async (event, payload = {}) => {
   if (crocOmniSettings.enabled === false) {
     return { ok: false, error: 'CrocOmni désactivé.' };
   }
+
   await store.createCrocOmniConversation({
     id: conversationId,
     title: payload.title || 'Conversation CrocOmni',
@@ -5942,39 +6686,136 @@ ipcMain.handle('crocomni:send', async (event, payload = {}) => {
     content,
     context_used: false,
   });
+  if (store.trimCrocOmniConversation) {
+    await store.trimCrocOmniConversation(conversationId, crocOmniSettings.historyMaxTokens);
+  }
+
   const client = getOpenAIClient();
   if (!client) {
     const fallbackMessage = 'CrocOmni indisponible : OPENAI_API_KEY manquante.';
+    const fallbackId = crypto.randomUUID();
     await store.addCrocOmniMessage({
-      id: crypto.randomUUID(),
+      id: fallbackId,
       conversation_id: conversationId,
       role: 'assistant',
       content: fallbackMessage,
       context_used: false,
     });
+    if (store.trimCrocOmniConversation) {
+      await store.trimCrocOmniConversation(conversationId, crocOmniSettings.historyMaxTokens);
+    }
     sendDashboardEvent('dashboard:data-updated');
-    return { ok: true, conversationId };
+    sendStream({
+      done: true,
+      content: fallbackMessage,
+      contextUsed: false,
+      completedAt: new Date().toISOString(),
+      messageId: fallbackId,
+    });
+    return { ok: true, conversationId, requestId };
   }
 
+  const includeSensitive = crocOmniSettings.aiReplyIncludeSensitive === true;
   const contextData = await buildCrocOmniContextPayload();
   const redactedContext = contextData.used ? redactCrocOmniContext(contextData.context) : null;
+  const sources = await buildCrocOmniSearchSources(content, { includeSensitive, limit: 6 });
+  const sourcesText = sources.length
+    ? sources.map((source, index) => {
+      const label = source.source === 'notes' ? 'NOTE' : 'DICTEE';
+      const header = `[${index + 1}] ${label}${source.title ? ` - ${source.title}` : ''}`;
+      return `${header}\n${source.excerpt}`;
+    }).join('\n\n')
+    : '';
   const history = await store.listCrocOmniMessages(conversationId);
-  const trimmedHistory = history.slice(-12).map((msg) => ({
+  const trimmedHistory = history.map((msg) => ({
     role: msg.role,
     content: msg.content,
   }));
   const systemPrompt = [
     'You are CrocOmni, a helpful assistant for CrocoVoice.',
+    'Answer in French.',
     'Be concise, friendly, and actionable.',
+    'Use the provided Sources (notes/dictees) when available. Cite sources like [1], [2].',
+    'If sources are provided but insufficient, say you cannot find the answer in the sources.',
   ].join(' ');
   const contextPrompt = redactedContext
     ? `Context (redacted): ${JSON.stringify(redactedContext)}`
     : '';
+  const sourcesPrompt = sourcesText ? `Sources:\n${sourcesText}` : '';
   const messages = [
     { role: 'system', content: systemPrompt },
+    ...(sourcesPrompt ? [{ role: 'system', content: sourcesPrompt }] : []),
     ...(contextPrompt ? [{ role: 'system', content: contextPrompt }] : []),
     ...trimmedHistory,
   ];
+
+  if (stream) {
+    let reply = '';
+    try {
+      const response = await executeOpenAICall({
+        label: 'chat.completions.crocomni.stream',
+        timeoutMs: OPENAI_CHAT_TIMEOUT_MS,
+        action: () => client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          temperature: 0.4,
+          stream: true,
+          messages,
+        }),
+      });
+      for await (const chunk of response) {
+        const delta = chunk?.choices?.[0]?.delta?.content || '';
+        if (!delta) {
+          continue;
+        }
+        reply += delta;
+        sendStream({ delta });
+      }
+      const finalReply = reply.trim() || 'Je suis la pour vous aider.';
+      const messageId = crypto.randomUUID();
+      await store.addCrocOmniMessage({
+        id: messageId,
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: finalReply,
+        context_used: Boolean(contextData.used),
+      });
+      if (store.trimCrocOmniConversation) {
+        await store.trimCrocOmniConversation(conversationId, crocOmniSettings.historyMaxTokens);
+      }
+      sendDashboardEvent('dashboard:data-updated');
+      sendStream({
+        done: true,
+        content: finalReply,
+        contextUsed: Boolean(contextData.used),
+        completedAt: new Date().toISOString(),
+        messageId,
+      });
+      return { ok: true, conversationId, requestId, contextUsed: Boolean(contextData.used) };
+    } catch (error) {
+      console.error('CrocOmni message error:', error);
+      const fallbackMessage = getOpenAIUserMessage(error);
+      const messageId = crypto.randomUUID();
+      await store.addCrocOmniMessage({
+        id: messageId,
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: fallbackMessage,
+        context_used: Boolean(contextData.used),
+      });
+      if (store.trimCrocOmniConversation) {
+        await store.trimCrocOmniConversation(conversationId, crocOmniSettings.historyMaxTokens);
+      }
+      sendDashboardEvent('dashboard:data-updated');
+      sendStream({
+        done: true,
+        content: fallbackMessage,
+        contextUsed: Boolean(contextData.used),
+        completedAt: new Date().toISOString(),
+        messageId,
+      });
+      return { ok: true, conversationId, requestId, contextUsed: Boolean(contextData.used) };
+    }
+  }
 
   try {
     const response = await executeOpenAICall({
@@ -5988,27 +6829,35 @@ ipcMain.handle('crocomni:send', async (event, payload = {}) => {
     });
     const reply = response?.choices?.[0]?.message?.content?.trim()
       || 'Je suis la pour vous aider.';
+    const messageId = crypto.randomUUID();
     await store.addCrocOmniMessage({
-      id: crypto.randomUUID(),
+      id: messageId,
       conversation_id: conversationId,
       role: 'assistant',
       content: reply,
       context_used: Boolean(contextData.used),
     });
+    if (store.trimCrocOmniConversation) {
+      await store.trimCrocOmniConversation(conversationId, crocOmniSettings.historyMaxTokens);
+    }
     sendDashboardEvent('dashboard:data-updated');
-    return { ok: true, conversationId, contextUsed: Boolean(contextData.used) };
+    return { ok: true, conversationId, requestId, contextUsed: Boolean(contextData.used) };
   } catch (error) {
     console.error('CrocOmni message error:', error);
     const fallbackMessage = getOpenAIUserMessage(error);
+    const messageId = crypto.randomUUID();
     await store.addCrocOmniMessage({
-      id: crypto.randomUUID(),
+      id: messageId,
       conversation_id: conversationId,
       role: 'assistant',
       content: fallbackMessage,
       context_used: Boolean(contextData.used),
     });
+    if (store.trimCrocOmniConversation) {
+      await store.trimCrocOmniConversation(conversationId, crocOmniSettings.historyMaxTokens);
+    }
     sendDashboardEvent('dashboard:data-updated');
-    return { ok: true, conversationId, contextUsed: Boolean(contextData.used) };
+    return { ok: true, conversationId, requestId, contextUsed: Boolean(contextData.used) };
   }
 });
 
@@ -6036,9 +6885,11 @@ ipcMain.handle('upload:cancel', async (event, id) => {
   }
   job.cancelled = true;
   if (job.status === 'queued') {
-    updateUploadJob(id, { status: 'cancelled' });
+    await finalizeUploadCancel(job);
   } else if (job.status === 'processing') {
-    updateUploadJob(id, { status: 'cancelling' });
+    await finalizeUploadCancel(job);
+  } else if (job.status === 'cancelling') {
+    await finalizeUploadCancel(job);
   }
   return { ok: true };
 });
@@ -6603,6 +7454,7 @@ app.whenReady().then(async () => {
   store = new Store({ userDataPath: app.getPath('userData'), defaults: defaultSettings });
   await store.init();
   settings = await store.getSettings();
+  await loadUploadJobsFromStore();
   loadLocalModelManifest();
   loadLocalModelState();
   pruneMissingLocalModels();

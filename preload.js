@@ -89,6 +89,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
+  getMicrophoneList: () => ipcRenderer.invoke('microphones:list'),
+  sendMicrophoneList: (list) => ipcRenderer.send('microphones:update', list),
+  onMicrophonesUpdated: (callback) => {
+    return registerListener('microphones:updated', (event, payload) => callback(payload));
+  },
   openSettings: () => ipcRenderer.invoke('app:open-settings'),
   openPrivacyMicrophone: () => ipcRenderer.invoke('app:open-privacy-mic'),
   getDashboardData: () => ipcRenderer.invoke('dashboard:data'),
@@ -134,6 +139,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listCrocOmniMessages: (conversationId) => ipcRenderer.invoke('crocomni:messages', conversationId),
   createCrocOmniConversation: (payload) => ipcRenderer.invoke('crocomni:create', payload),
   archiveCrocOmniConversation: (conversationId) => ipcRenderer.invoke('crocomni:archive', conversationId),
+  clearCrocOmniConversation: (conversationId) => ipcRenderer.invoke('crocomni:clear', conversationId),
   sendCrocOmniMessage: (payload) => ipcRenderer.invoke('crocomni:send', payload),
   searchCrocOmni: (query, options) => ipcRenderer.invoke('crocomni:search', query, options),
   answerCrocOmni: (payload) => ipcRenderer.invoke('crocomni:answer', payload),
@@ -177,6 +183,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onDashboardDataUpdated: (callback) => {
     return registerListener('dashboard:data-updated', () => callback());
+  },
+  onCrocOmniStream: (callback) => {
+    return registerListener('crocomni:stream', (event, payload) => callback(payload));
   },
   onDashboardTranscription: (callback) => {
     return registerListener('dashboard:transcription-success', (event, text, target) => callback(text, target));
