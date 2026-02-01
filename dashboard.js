@@ -247,6 +247,7 @@ const DEFAULT_CONTEXT_SETTINGS = {
   enabled: true,
   postProcessEnabled: false,
   retentionDays: 30,
+  screenshotConsentAsked: false,
   signals: {
     app: true,
     window: true,
@@ -884,10 +885,12 @@ function normalizeContextSettings(value) {
   if (!value || typeof value !== 'object') {
     return { ...DEFAULT_CONTEXT_SETTINGS };
   }
+  const screenshotConsentAsked = value.screenshotConsentAsked === true || value?.signals?.screenshot === true;
   return {
     enabled: value.enabled !== false,
     postProcessEnabled: value.postProcessEnabled === true,
     retentionDays: Number.isFinite(value.retentionDays) ? value.retentionDays : DEFAULT_CONTEXT_SETTINGS.retentionDays,
+    screenshotConsentAsked,
     signals: { ...DEFAULT_CONTEXT_SETTINGS.signals, ...(value.signals || {}) },
     overrides: value.overrides && typeof value.overrides === 'object' ? value.overrides : {},
   };
@@ -4626,6 +4629,19 @@ async function populateMicrophones(micsOverride) {
   let mics = Array.isArray(micsOverride) ? micsOverride : null;
   let listKnown = Array.isArray(micsOverride);
 
+  if (!listKnown && window.electronAPI?.getMicrophoneList) {
+    try {
+      const cached = await window.electronAPI.getMicrophoneList();
+      if (Array.isArray(cached)) {
+        const fallback = cached.filter((device) => !device?.kind || device.kind === 'audioinput');
+        mics = fallback;
+        listKnown = true;
+      }
+    } catch (error) {
+      console.error('Failed to load cached microphones:', error);
+    }
+  }
+
   if (!listKnown && navigator.mediaDevices?.enumerateDevices) {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -4633,21 +4649,6 @@ async function populateMicrophones(micsOverride) {
       listKnown = true;
     } catch (error) {
       console.error('Failed to list microphones:', error);
-    }
-  }
-
-  if ((!mics || mics.length === 0) && window.electronAPI?.getMicrophoneList) {
-    try {
-      const cached = await window.electronAPI.getMicrophoneList();
-      if (Array.isArray(cached)) {
-        const fallback = cached.filter((device) => !device?.kind || device.kind === 'audioinput');
-        if (!mics || mics.length === 0) {
-          mics = fallback;
-          listKnown = true;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load cached microphones:', error);
     }
   }
 
