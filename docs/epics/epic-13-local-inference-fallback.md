@@ -17,6 +17,7 @@ Provide a safe offline or degraded-mode fallback for transcription and VAD.
 - Performance safeguards (CPU limits, max duration)
 - Optional local Whisper install during onboarding (Windows-first) with **Lite / Balanced / Quality / Ultra** presets
 - Local model manager (download/resume, checksum, versioning, storage, cleanup) shared across local transcription paths
+- Bundle a small local ASR runtime and auto-wire the command path (no manual setup)
 - **Audio enhancement layer (local-first, adaptive):**
   - Baseline audio processing (AGC / noise suppression / high-pass where available)
   - Optional local enhancement (e.g., DeepFilterNet) **only when audio is degraded**

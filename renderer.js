@@ -2011,7 +2011,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const micTarget = event.target.closest('[data-mic-id]');
         const langTarget = event.target.closest('[data-language]');
         if (micTarget && micTarget.dataset.micId !== undefined) {
-          saveWidgetMicrophone(micTarget.dataset.micId, micTarget.dataset.micLabel || '');
+          saveWidgetMicrophone(
+            micTarget.dataset.micId,
+            micTarget.dataset.micLabel || '',
+            micTarget.dataset.micGroup || ''
+          );
           event.stopPropagation();
           closeContextMenu();
           return;

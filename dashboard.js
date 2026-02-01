@@ -4798,14 +4798,31 @@ function renderLocalAsrCommandStatus(settings) {
   localAsrCommandRescan.disabled = localAsrCommandRescanPending;
 
   if (command) {
-    localAsrCommandStatus.textContent = `Commande détectée: ${command}`;
-    localAsrCommandStatus.classList.add('is-ok');
-    localAsrCommandRescan.textContent = 'Rescanner';
+    if (isLikelyPythonWhisperCommand(command)) {
+      localAsrCommandStatus.textContent = 'Commande détectée (Python Whisper). Incompatible avec les modèles locaux GGML.';
+      localAsrCommandStatus.classList.add('is-error');
+      localAsrCommandRescan.textContent = 'Rescanner';
+    } else {
+      localAsrCommandStatus.textContent = `Commande détectée: ${command}`;
+      localAsrCommandStatus.classList.add('is-ok');
+      localAsrCommandRescan.textContent = 'Rescanner';
+    }
   } else {
     localAsrCommandStatus.textContent = 'Commande locale manquante. Ajoutez un binaire ou lancez un scan automatique.';
     localAsrCommandStatus.classList.add('is-error');
     localAsrCommandRescan.textContent = 'Scanner';
   }
+}
+
+function isLikelyPythonWhisperCommand(commandPath) {
+  if (!commandPath) {
+    return false;
+  }
+  const normalized = commandPath.toLowerCase();
+  if (!normalized.endsWith('whisper.exe') && !normalized.endsWith('/whisper')) {
+    return false;
+  }
+  return normalized.includes('\\python') || normalized.includes('/python');
 }
 
 function renderAuth(auth, syncReady) {

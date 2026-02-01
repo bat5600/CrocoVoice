@@ -235,6 +235,7 @@ const defaultSettings = {
     || (process.platform === 'darwin' ? 'Command+Shift+R' : 'Ctrl+Shift+R'),
   microphoneId: '',
   microphoneLabel: '',
+  microphoneGroupId: '',
   postProcessEnabled: true,
   onboarding: {
     step: 'welcome',
