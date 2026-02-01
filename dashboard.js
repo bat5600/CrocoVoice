@@ -2434,25 +2434,31 @@ function updateUploadNotifications(uploads) {
     }
     const prev = uploadStatusCache.get(job.id);
     if (!prev) {
-      showToast(`Import vers notes : ${job.fileName || 'Fichier audio'}.`);
+      showToastKey('toast.import.started', 'success', {
+        fileName: job.fileName || t('common.audioFile'),
+      });
       return;
     }
     if (prev.status === job.status) {
       return;
     }
     if (job.status === 'completed') {
-      showToast(`Note créée : ${job.fileName || 'Fichier audio'}.`);
+      showToastKey('toast.import.noteCreated', 'success', {
+        fileName: job.fileName || t('common.audioFile'),
+      });
       return;
     }
     if (job.status === 'failed') {
       const message = job.error
-        ? `Import échoué : ${job.error}`
-        : `Import échoué : ${job.fileName || 'Fichier audio'}.`;
+        ? t('toast.import.failedReason', { reason: job.error })
+        : t('toast.import.failedFile', { fileName: job.fileName || t('common.audioFile') });
       showToast(message, 'error');
       return;
     }
     if (job.status === 'cancelled') {
-      showToast(`Import annulé : ${job.fileName || 'Fichier audio'}.`, 'error');
+      showToastKey('toast.import.cancelled', 'error', {
+        fileName: job.fileName || t('common.audioFile'),
+      });
     }
   });
 
@@ -3593,7 +3599,7 @@ function renderDictionary(dictionary) {
           to_text: res.to_text,
           created_at: entry.created_at,
         });
-        showToast('Terme mis à jour.');
+        showToastKey('toast.dictionary.updated');
         await refreshDashboard();
       }
     });
@@ -3613,7 +3619,7 @@ function renderDictionary(dictionary) {
     `;
     deleteBtn.addEventListener('click', async () => {
       await window.electronAPI.deleteDictionary(entry.id);
-      showToast('Terme supprimé.');
+      showToastKey('toast.dictionary.deleted');
       await refreshDashboard();
     });
 
