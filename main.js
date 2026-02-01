@@ -317,6 +317,13 @@ const LOCAL_MODEL_PRESETS = [
     diskTarget: '0.1-0.6 GB',
   },
   {
+    id: 'balanced',
+    label: 'Balanced',
+    description: 'Équilibre simple pour usage quotidien.',
+    minRamGb: 12,
+    diskTarget: '0.2-0.9 GB',
+  },
+  {
     id: 'quality',
     label: 'Quality',
     description: 'Équilibre vitesse / qualité.',
@@ -339,10 +346,21 @@ const DEFAULT_LOCAL_MODEL_MANIFEST = {
       id: 'whisper-tiny-multi',
       preset: 'lite',
       name: 'Whisper Tiny (multilingual)',
-      fileName: 'whisper-tiny.bin',
-      sizeBytes: 160 * 1024 * 1024,
-      sha256: '',
-      url: '',
+      fileName: 'ggml-tiny-q5_1.bin',
+      sizeBytes: 32152673,
+      sha256: '818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7',
+      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin',
+      languages: ['fr', 'en'],
+      engine: 'whisper',
+    },
+    {
+      id: 'whisper-base-multi',
+      preset: 'balanced',
+      name: 'Whisper Base (multilingual)',
+      fileName: 'ggml-base-q5_1.bin',
+      sizeBytes: 59707625,
+      sha256: '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898',
+      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin',
       languages: ['fr', 'en'],
       engine: 'whisper',
     },
@@ -350,10 +368,10 @@ const DEFAULT_LOCAL_MODEL_MANIFEST = {
       id: 'whisper-small-multi',
       preset: 'quality',
       name: 'Whisper Small (multilingual)',
-      fileName: 'whisper-small.bin',
-      sizeBytes: 950 * 1024 * 1024,
-      sha256: '',
-      url: '',
+      fileName: 'ggml-small-q5_1.bin',
+      sizeBytes: 190085487,
+      sha256: 'ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb',
+      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin',
       languages: ['fr', 'en'],
       engine: 'whisper',
     },
@@ -361,10 +379,10 @@ const DEFAULT_LOCAL_MODEL_MANIFEST = {
       id: 'whisper-medium-multi',
       preset: 'ultra',
       name: 'Whisper Medium (multilingual)',
-      fileName: 'whisper-medium.bin',
-      sizeBytes: 3 * 1024 * 1024 * 1024,
-      sha256: '',
-      url: '',
+      fileName: 'ggml-medium-q8_0.bin',
+      sizeBytes: 823000000,
+      sha256: '42a1ffcbe4167d224232443396968db4d02d4e8e87e213d3ee2e03095dea6502',
+      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q8_0.bin',
       languages: ['fr', 'en'],
       engine: 'whisper',
     },
@@ -530,6 +548,9 @@ function recommendLocalPreset(profile = getHardwareProfile()) {
   if (profile.totalMemGb >= 16) {
     return 'quality';
   }
+  if (profile.totalMemGb >= 12) {
+    return 'balanced';
+  }
   return 'lite';
 }
 
@@ -606,7 +627,7 @@ function resolveActiveLocalModel() {
   if (primaryInstalled) {
     return primaryInstalled;
   }
-  const fallbackOrder = ['ultra', 'quality', 'lite'];
+  const fallbackOrder = ['ultra', 'quality', 'balanced', 'lite'];
   for (const preset of fallbackOrder) {
     const model = manifest.models.find((entry) => entry.preset === preset && installedMap[entry.id]);
     const installed = pickInstalled(model);

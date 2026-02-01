@@ -15,7 +15,7 @@ Provide a safe offline or degraded-mode fallback for transcription and VAD.
 - Local VAD and fallback transcription path
 - Clear user messaging when fallback is active
 - Performance safeguards (CPU limits, max duration)
-- Optional local Whisper install during onboarding (Windows-first) with **Lite / Quality / Ultra** presets
+- Optional local Whisper install during onboarding (Windows-first) with **Lite / Balanced / Quality / Ultra** presets
 - Local model manager (download/resume, checksum, versioning, storage, cleanup) shared across local transcription paths
 - **Audio enhancement layer (local-first, adaptive):**
   - Baseline audio processing (AGC / noise suppression / high-pass where available)

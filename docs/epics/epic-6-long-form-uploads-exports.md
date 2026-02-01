@@ -15,7 +15,7 @@ Enable local transcription of long audio files with clear progress and reliable 
 - File upload + processing status + cancel
 - Local processing by default (no upload)
 - Opt-in cloud fallback (explicit user action)
-- Save results in history with file metadata
+- Save results in Notes with file metadata
 - Exports v1: txt/md/json with optional timestamps
 
 ## Out of Scope

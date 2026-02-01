@@ -4619,6 +4619,7 @@ function updateCrocOmniSettings(nextSettings) {
       }
       const presets = localModelsData?.presets || [
         { id: 'lite', label: 'Lite' },
+        { id: 'balanced', label: 'Balanced' },
         { id: 'quality', label: 'Quality' },
         { id: 'ultra', label: 'Ultra' },
       ];

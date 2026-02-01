@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "whisper-tiny-multi",
+      "preset": "lite",
+      "name": "Whisper Tiny (multilingual)",
+      "fileName": "ggml-tiny-q5_1.bin",
+      "sizeBytes": 32152673,
+      "sha256": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin",
+      "languages": [
+        "fr",
+        "en"
+      ],
+      "engine": "whisper"
+    },
+    {
+      "id": "whisper-base-multi",
+      "preset": "balanced",
+      "name": "Whisper Base (multilingual)",
+      "fileName": "ggml-base-q5_1.bin",
+      "sizeBytes": 59707625,
+      "sha256": "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin",
+      "languages": [
+        "fr",
+        "en"
+      ],
+      "engine": "whisper"
+    },
+    {
+      "id": "whisper-small-multi",
+      "preset": "quality",
+      "name": "Whisper Small (multilingual)",
+      "fileName": "ggml-small-q5_1.bin",
+      "sizeBytes": 190085487,
+      "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+      "languages": [
+        "fr",
+        "en"
+      ],
+      "engine": "whisper"
+    },
+    {
+      "id": "whisper-medium-multi",
+      "preset": "ultra",
+      "name": "Whisper Medium (multilingual)",
+      "fileName": "ggml-medium-q8_0.bin",
+      "sizeBytes": 823000000,
+      "sha256": "42a1ffcbe4167d224232443396968db4d02d4e8e87e213d3ee2e03095dea6502",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q8_0.bin",
+      "languages": [
+        "fr",
+        "en"
+      ],
+      "engine": "whisper"
+    }
+  ]
+}

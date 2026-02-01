@@ -21,6 +21,7 @@ CrocoVoice is a local-first Electron dictation app with a clear pipeline but lim
 | --- | --- | --- | --- |
 | 2026-01-24 | v1.0 | Reframed PRD toward robustness parity with FakeWispr | PM |
 | 2026-01-31 | v1.1 | Added milestone roadmap alignment (M1/M2/M3) | Codex |
+| 2026-02-01 | v1.2 | Video review decisions: uploads → Notes, UI language toggle, streak-first dashboard | PM |
 
 ## Requirements
 
@@ -47,9 +48,10 @@ CrocoVoice is a local-first Electron dictation app with a clear pipeline but lim
 20. FR20: Data usage controls must allow opting out of telemetry and context capture.
 21. FR21: Sync must remain non-blocking and offline-friendly (local is source of truth).
 22. FR22: Optional local inference/VAD must be supported as a fallback path.
-23. FR23: The app must support local transcription of uploaded audio files with visible progress.
+23. FR23: The app must support local transcription of uploaded audio files with visible progress and save results as a Note.
 24. FR24: Users must be able to export transcripts as txt/md/json with optional timestamps.
 25. FR25: Post-process must optionally use redacted context (app/window/url) when context capture is enabled.
+26. FR26: UI language must be English by default with an optional French toggle (per-device, no restart).
 
 ### Non Functional
 1. NFR1: End-to-end latency (start -> first partial text) should be < 700ms on supported machines.
@@ -115,7 +117,7 @@ Unit + Integration; light E2E where feasible.
 
 ## Epic List (aligned with docs/stories)
 
-1. Epic 4: Dictionary / History / Notes / Snippets (stories 4.1-4.5)
+1. Epic 4: Dictionary / History / Notes / Snippets (stories 4.1-4.7)
 2. Epic 5: Context Signals + Profiles + Adaptive Formatting + Privacy + Retention (stories 5.1-5.4)
 3. Epic 6: Long-Form Uploads + Exports (stories 6.1-6.2)
 4. Epic 7: Permissions & Diagnostics (existing story 7.2)
@@ -130,7 +132,7 @@ Unit + Integration; light E2E where feasible.
 
 | Epic | Scope | Story Files | Epic Overview |
 | --- | --- | --- | --- |
-| Epic 4 | Dictionary/History/Notes/Snippets | docs/stories/4.1-dictionary-v2.md, 4.2-history-search-and-actions.md, 4.3-notes-view-and-crud.md, 4.4-snippets-v1.md, 4.5-history-metadata-and-quality-metrics.md | docs/epics/epic-4-dictionary-history-notes-snippets.md |
+| Epic 4 | Dictionary/History/Notes/Snippets | docs/stories/4.1-dictionary-v2.md, 4.2-history-search-and-actions.md, 4.3-notes-view-and-crud.md, 4.4-snippets-v1.md, 4.5-history-metadata-and-quality-metrics.md, 4.6-app-ui-language-toggle.md, 4.7-settings-ia-consolidation.md | docs/epics/epic-4-dictionary-history-notes-snippets.md |
 | Epic 5 | Context signals + Privacy + Context-aware Post-process + Retention (adaptive formatting deferred) | docs/stories/5.1-adaptive-transcript-formatting-v1.md (deferred), 5.2-context-privacy-and-controls.md, 5.3-context-signals-and-profiles.md, 5.4-context-capture-retention-and-redaction.md, 5.5-context-aware-post-process.md | docs/epics/epic-5-context-privacy-retention.md |
 | Epic 6 | Long-Form Uploads + Exports | docs/stories/6.1-upload-flow-and-status.md, 6.2-exports-v1.md | docs/epics/epic-6-long-form-uploads-exports.md |
 | Epic 7 | Permissions & Diagnostics | docs/stories/7.2-permissions-and-diagnostics.md | docs/epics/epic-7-permissions-and-diagnostics.md |

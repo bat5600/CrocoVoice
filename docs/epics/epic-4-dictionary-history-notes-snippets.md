@@ -17,6 +17,8 @@ Deliver daily-driver data surfaces that make dictation reusable, editable, and p
 - History metadata + quality metrics storage
 - Notes CRUD in the hub
 - Snippets (voice cues -> templates) applied in the pipeline
+- App UI language toggle (English default + French option)
+- Consolidated in-app Settings surface (Profile + Billing + Settings)
 
 ## Out of Scope
 - Team/shared dictionaries or notes
@@ -49,6 +51,8 @@ Deliver daily-driver data surfaces that make dictation reusable, editable, and p
 - `docs/stories/4.3-notes-view-and-crud.md` — notes surfaces and CRUD
 - `docs/stories/4.4-snippets-v1.md` — voice cues -> templates
 - `docs/stories/4.5-history-metadata-and-quality-metrics.md` — raw/formatted/edited text + metrics
+- `docs/stories/4.6-app-ui-language-toggle.md` — UI language (English default + French toggle)
+- `docs/stories/4.7-settings-ia-consolidation.md` — settings/profile/billing consolidation
 
 ## Anti-Duplication Notes
 - Telemetry/analytics pipeline lives in Epic 10

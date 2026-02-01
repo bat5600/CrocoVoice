@@ -39,6 +39,15 @@ Use this exact template for each new entry:
 
 <!-- Add new entries here -->
 
+### 2026-02-01 14:03 +0700 - Codex
+
+- Scope: Video review → backlog story updates (no new epics)
+- Summary: Updated existing stories to reflect video review decisions (uploads → Notes, streak-first dashboard, editor/UX fixes, context/app-url requirements, CrocOmni chat UX), and added missing stories for UI language toggle + settings IA consolidation + no-speech regression guard; updated PRD + epic shards for consistency.
+- Files touched: docs/prd.md, docs/pm-video-review-20260201.md, docs/epics/epic-4-dictionary-history-notes-snippets.md, docs/epics/epic-5-context-privacy-retention.md, docs/epics/epic-6-long-form-uploads-exports.md, docs/stories/4.2-history-search-and-actions.md, docs/stories/4.3-notes-view-and-crud.md, docs/stories/4.4-snippets-v1.md, docs/stories/5.2-context-privacy-and-controls.md, docs/stories/5.3-context-signals-and-profiles.md, docs/stories/5.4-context-capture-retention-and-redaction.md, docs/stories/6.1-upload-flow-and-status.md, docs/stories/7.2-permissions-and-diagnostics.md, docs/stories/9.1-status-bubble-and-context-menu.md, docs/stories/11.1-onboarding-flow.md, docs/stories/11.2-insights-and-wrapped.md, docs/stories/12.1-crocomni-ui-and-storage.md, docs/stories/12.2-crocomni-context-injection-and-redaction.md, docs/stories/0.7-no-speech-no-placeholder-transcript.md, docs/stories/4.6-app-ui-language-toggle.md, docs/stories/4.7-settings-ia-consolidation.md
+- Commands/tests: rg; sed; git diff; git status; date
+- Outcome: done
+- Notes: No code changes; `config/local-models.json` appears untracked and was left untouched.
+
 ### 2026-01-31 13:47 +07 - Codex
 
 - Scope: Docs SSOT restructure + roadmap alignment

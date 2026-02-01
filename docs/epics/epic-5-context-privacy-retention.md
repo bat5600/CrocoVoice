@@ -12,7 +12,7 @@ Capture useful context safely and use it to improve post-processing (proper noun
 - Reduced surprise from context usage
 
 ## In Scope
-- App/window/url context capture by default
+- Context capture is OFF by default; when enabled, capture app/window/url (where available)
 - Optional sensitive signals (ax/textbox/screenshot) with explicit opt-in
 - Per-app overrides for context capture
 - Context-aware post-process using redacted context hints
